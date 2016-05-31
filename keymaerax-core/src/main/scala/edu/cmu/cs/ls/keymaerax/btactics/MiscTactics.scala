@@ -1,8 +1,11 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
+import java.io.{BufferedWriter, File, FileWriter}
+
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.core._
 import Augmentors._
+import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
 
 import scala.language.postfixOps
 
@@ -23,10 +26,44 @@ object DebuggingTactics {
     }
   }
 
+
+  /* To reproduce experiments change the following line. */
+  val OUTPUT_PREFIX = "/home/nfulton/dev/papers/lslab/tactics/data/QE/"
+  var modelName : Option[String] = None
   def recordQECall(): BuiltInTactic = new BuiltInTactic("recordQECall") {
     override def result(provable: Provable): Provable = {
-      println(s"QE CALL\n==QE==\n${provable.subgoals(0).prettyString}\n==END_QE==")
+      makeFileName match {
+        case Some(fileName) =>
+          val lemma = Lemma(provable, List(ToolEvidence(Map("asdf" -> "asdf"))))
+          saveLemmaAs(lemma, fileName)
+          printLemma(lemma, modelName.get)
+        case None => println("WARNING: NOT SAVING LEMMA BECAUSE NO MODEL NAME WAS SET!")
+
+      }
       provable
+    }
+
+    private def printLemma(lemma: Lemma, header: String) = {
+      println(s"==${header}==");
+      println(lemma.toString)
+      println(s"==${header}==")
+    }
+
+
+    private def saveLemmaAs(lemma: Lemma, fileName: String) = {
+      new BufferedWriter(new FileWriter(new File(fileName))) {
+        write(lemma.toString);
+        close
+      }
+    }
+
+    private def makeFileName : Option[String] = try {
+      val dir = new File(OUTPUT_PREFIX + modelName.get)
+      if(!dir.exists()) dir.mkdirs()
+      val fileName = (dir.listFiles.length + 1) + ".alp"
+      Some(dir + File.separator + fileName)
+    } catch {
+      case e : Throwable => None //Including if modelName isn't defined.
     }
   }
 

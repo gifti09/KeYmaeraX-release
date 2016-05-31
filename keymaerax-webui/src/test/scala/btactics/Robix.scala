@@ -26,6 +26,7 @@ import scala.language.postfixOps
 class Robix extends TacticTestBase {
 
   "Static Safety" should "be provable" in withMathematica { implicit tool =>
+    DebuggingTactics.modelName = Some("StaticSafety")
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/robix/staticsafetyabs.key"))
 
     val invariant = """v >= 0
@@ -64,6 +65,7 @@ class Robix extends TacticTestBase {
   }
 
   "Passive Safety" should "be provable" in withMathematica { implicit qeTool =>
+    DebuggingTactics.modelName = Some("PassiveSafety")
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/robix/passivesafetyabs.key"))
 
     val invariant = """v >= 0
@@ -141,6 +143,7 @@ class Robix extends TacticTestBase {
   }
 
   "Passive Safety straight and curve" should "be provable" in withMathematica { implicit qeTool =>
+    DebuggingTactics.modelName = Some("PSafetystraightandcurve")
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/robix/passivesafetyabs_curvestraight.key"))
 
     val invariant = """v >= 0
@@ -269,6 +272,7 @@ class Robix extends TacticTestBase {
   }
 
   "Passive Safety straight and curve using curvature" should "be provable" in withMathematica { implicit qeTool =>
+    DebuggingTactics.modelName = Some("passivesafetyabs_curvestraight_curvature")
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/robix/passivesafetyabs_curvestraight_curvature.key"))
 
     val invariant =
@@ -356,6 +360,7 @@ class Robix extends TacticTestBase {
   }
 
   "Passive orientation safety" should "be provable" in withMathematica { implicit qeTool =>
+    DebuggingTactics.modelName = Some("passiveorientationsafetyabs")
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/robix/passiveorientationsafetyabs.key"))
     val invariant =
       """v>=0
