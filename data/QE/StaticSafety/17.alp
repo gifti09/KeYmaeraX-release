@@ -1,0 +1,31 @@
+Lemma "".
+Sequent.
+Formula: (A)>=(0)
+Formula: (B())>(0)
+Formula: (ep)>(0)
+Formula: (v)>=(0)
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (r)!=(0)
+Formula: ((abs((x)-(xo)))>(((v)^(2))/((2)*(B()))))|((abs((y)-(yo)))>(((v)^(2))/((2)*(B()))))
+Formula: (t)=(0)
+Formula: (v_0())=(v)
+Formula: ((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))
+==>
+Formula: (v)=((v_0())+(-((B())*(t))))
+Sequent.
+Formula: (A)>=(0)
+Formula: (B())>(0)
+Formula: (ep)>(0)
+Formula: (v)>=(0)
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (r)!=(0)
+Formula: ((abs((x)-(xo)))>(((v)^(2))/((2)*(B()))))|((abs((y)-(yo)))>(((v)^(2))/((2)*(B()))))
+Formula: (t)=(0)
+Formula: (v_0())=(v)
+Formula: ((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))
+==>
+Formula: (v)=((v_0())+(-((B())*(t))))
+End.
+Tool.
+  asdf """"asdf""""
+End.

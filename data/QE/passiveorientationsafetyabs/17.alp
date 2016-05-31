@@ -1,0 +1,39 @@
+Lemma "".
+Sequent.
+Formula: (V)>=(0)
+Formula: (A)>=(0)
+Formula: (b())>(0)
+Formula: (ep)>(0)
+Formula: (gamma)>(0)
+Formula: (v)>=(0)
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (r)!=(0)
+Formula: ((v)=(0))|((((abs(beta))+(((v)^(2))/(((2)*(b()))*(abs(r))))) < (gamma))&(((isVisible) < (0))|(((abs((x)-(ox)))>((((v)^(2))/((2)*(b())))+((V)*((v)/(b())))))|((abs((y)-(oy)))>((((v)^(2))/((2)*(b())))+((V)*((v)/(b()))))))))
+Formula: (((odx)^(2))+((ody)^(2)))<=((V)^(2))
+Formula: (t)=(0)
+Formula: ((w)*(r))=(v)
+Formula: (v_0())=(v)
+Formula: ((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))
+==>
+Formula: (v)=((v_0())+(-((b())*(t))))
+Sequent.
+Formula: (V)>=(0)
+Formula: (A)>=(0)
+Formula: (b())>(0)
+Formula: (ep)>(0)
+Formula: (gamma)>(0)
+Formula: (v)>=(0)
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (r)!=(0)
+Formula: ((v)=(0))|((((abs(beta))+(((v)^(2))/(((2)*(b()))*(abs(r))))) < (gamma))&(((isVisible) < (0))|(((abs((x)-(ox)))>((((v)^(2))/((2)*(b())))+((V)*((v)/(b())))))|((abs((y)-(oy)))>((((v)^(2))/((2)*(b())))+((V)*((v)/(b()))))))))
+Formula: (((odx)^(2))+((ody)^(2)))<=((V)^(2))
+Formula: (t)=(0)
+Formula: ((w)*(r))=(v)
+Formula: (v_0())=(v)
+Formula: ((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))
+==>
+Formula: (v)=((v_0())+(-((b())*(t))))
+End.
+Tool.
+  asdf """"asdf""""
+End.

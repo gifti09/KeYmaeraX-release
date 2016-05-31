@@ -1,0 +1,50 @@
+Lemma "".
+Sequent.
+Formula: (A)>=(0)
+Formula: (B)>(0)
+Formula: (V())>=(0)
+Formula: (ep)>(0)
+Formula: (v_0)>=(0)
+Formula: (r_0)!=(0)
+Formula: (-(B))<=(a)
+Formula: (a)<=(A)
+Formula: (r)!=(0)
+Formula: (-((t)*(V())))<=((xo)-(xo_0))
+Formula: ((xo)-(xo_0))<=((t)*(V()))
+Formula: (v)=((v_0)+((a)*(t)))
+Formula: (-((t)*((v)-(((a)/(2))*(t)))))<=((x)-(x_0))
+Formula: ((x)-(x_0))<=((t)*((v)-(((a)/(2))*(t))))
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (t)>=(0)
+Formula: (t)<=(ep)
+Formula: (v)>=(0)
+==>
+Formula: (v)=(0)
+Formula: (abs((x)-(xo)))>((((v)^(2))/((2)*(B)))+((V())*((v)/(B))))
+Formula: ((abs((x_0)-(xo_0)))>(((((v_0)^(2))/((2)*(B)))+(((V())*(v_0))/(B)))+((((A)/(B))+(1))*((((A)/(2))*((ep)^(2)))+((ep)*((v_0)+(V())))))))->((abs((x_0)-(xo_0)))>(((((v_0)^(2))/((2)*(B)))+(((V())*(v_0))/(B)))+((((A)/(B))+(1))*((((A)/(2))*((t)^(2)))+((t)*((v_0)+(V())))))))
+Sequent.
+Formula: (A)>=(0)
+Formula: (B)>(0)
+Formula: (V())>=(0)
+Formula: (ep)>(0)
+Formula: (v_0)>=(0)
+Formula: (r_0)!=(0)
+Formula: (-(B))<=(a)
+Formula: (a)<=(A)
+Formula: (r)!=(0)
+Formula: (-((t)*(V())))<=((xo)-(xo_0))
+Formula: ((xo)-(xo_0))<=((t)*(V()))
+Formula: (v)=((v_0)+((a)*(t)))
+Formula: (-((t)*((v)-(((a)/(2))*(t)))))<=((x)-(x_0))
+Formula: ((x)-(x_0))<=((t)*((v)-(((a)/(2))*(t))))
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (t)>=(0)
+Formula: (t)<=(ep)
+Formula: (v)>=(0)
+Formula: (abs((x_0)-(xo_0)))>(((((v_0)^(2))/((2)*(B)))+(((V())*(v_0))/(B)))+((((A)/(B))+(1))*((((A)/(2))*((ep)^(2)))+((ep)*((v_0)+(V()))))))
+==>
+Formula: (abs((x_0)-(xo_0)))>(((((v_0)^(2))/((2)*(B)))+(((V())*(v_0))/(B)))+((((A)/(B))+(1))*((((A)/(2))*((t)^(2)))+((t)*((v_0)+(V()))))))
+End.
+Tool.
+  asdf """"asdf""""
+End.

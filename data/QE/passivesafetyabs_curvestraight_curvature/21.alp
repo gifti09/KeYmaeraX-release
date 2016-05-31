@@ -1,0 +1,13 @@
+Lemma "".
+Sequent.
+
+==>
+Formula: (2)!=(0)
+Sequent.
+
+==>
+Formula: (2)!=(0)
+End.
+Tool.
+  asdf """"asdf""""
+End.

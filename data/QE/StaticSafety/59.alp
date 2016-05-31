@@ -1,0 +1,35 @@
+Lemma "".
+Sequent.
+Formula: (A)>=(0)
+Formula: (B)>(0)
+Formula: (ep)>(0)
+Formula: (v)>=(0)
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (r)!=(0)
+Formula: ((abs((x)-(xo)))>(((v)^(2))/((2)*(B))))|((abs((y)-(yo)))>(((v)^(2))/((2)*(B))))
+Formula: (v)=(0)
+Formula: (w)=(0)
+Formula: (t)=(0)
+Formula: (v_0())=(v)
+Formula: ((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))
+==>
+Formula: [{{x'=(v)*(dx)},{{y'=(v)*(dy)},{{dx'=-((w)*(dy))},{{dy'=(w)*(dx)},{{v'=0},{{w'=(0)/(r)},{t'=1}}}}}}&((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))}](((v)=((v_0())+((0)*(t))))')
+Sequent.
+Formula: (A)>=(0)
+Formula: (B)>(0)
+Formula: (ep)>(0)
+Formula: (v)>=(0)
+Formula: (((dx)^(2))+((dy)^(2)))=(1)
+Formula: (r)!=(0)
+Formula: ((abs((x)-(xo)))>(((v)^(2))/((2)*(B))))|((abs((y)-(yo)))>(((v)^(2))/((2)*(B))))
+Formula: (v)=(0)
+Formula: (w)=(0)
+Formula: (t)=(0)
+Formula: (v_0())=(v)
+Formula: ((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1))
+==>
+Formula: \forall dx (\forall dy (\forall t (\forall v ((((((t)<=(ep))&((v)>=(0)))&((t)>=(0)))&((((dx)^(2))+((dy)^(2)))=(1)))->((0)=((0)+((0)*(1))))))))
+End.
+Tool.
+  asdf """"asdf""""
+End.

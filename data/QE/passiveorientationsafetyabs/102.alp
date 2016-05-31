@@ -1,0 +1,37 @@
+Lemma "".
+Sequent.
+Formula: (V)>=(0)
+Formula: (A)>=(0)
+Formula: (b)>(0)
+Formula: (v_0)>=(0)
+Formula: (abs_1)>(((((v_0)^(2))/((2)*(b)))+((V)*((v_0)/(b))))+((((A)/(b))+(1))*((((A)/(2))*((t)^(2)))+((t)*((v_0)+(V))))))
+Formula: (-((t)*(V)))<=((oy)-(oy_1))
+Formula: ((y)-(y_0))<=((t)*((v)-(((A)/(2))*(t))))
+Formula: (v)=((v_0)+((A)*(t)))
+Formula: (t)>=(0)
+Formula: (v)>=(0)
+Formula: (((y)-(oy))>=(0))&((abs_0)=((y)-(oy)))
+Formula: ((y_0)-(oy_1)) < (0)
+Formula: (abs_1)=(-((y_0)-(oy_1)))
+==>
+Formula: (abs_0)>((((v)^(2))/((2)*(b)))+((V)*((v)/(b))))
+Sequent.
+Formula: (V)>=(0)
+Formula: (A)>=(0)
+Formula: (b)>(0)
+Formula: (v_0)>=(0)
+Formula: (abs_1)>(((((v_0)^(2))/((2)*(b)))+((V)*((v_0)/(b))))+((((A)/(b))+(1))*((((A)/(2))*((t)^(2)))+((t)*((v_0)+(V))))))
+Formula: (-((t)*(V)))<=((oy)-(oy_1))
+Formula: ((y)-(y_0))<=((t)*((v)-(((A)/(2))*(t))))
+Formula: (v)=((v_0)+((A)*(t)))
+Formula: (t)>=(0)
+Formula: (v)>=(0)
+Formula: (((y)-(oy))>=(0))&((abs_0)=((y)-(oy)))
+Formula: ((y_0)-(oy_1)) < (0)
+Formula: (abs_1)=(-((y_0)-(oy_1)))
+==>
+
+End.
+Tool.
+  asdf """"asdf""""
+End.

@@ -1,0 +1,40 @@
+Lemma "".
+Sequent.
+Formula: (V)>=(0)
+Formula: (A)>=(0)
+Formula: (b)>(0)
+Formula: (v_0)>=(0)
+Formula: (-((t)*(V)))<=((oy)-(oy_0))
+Formula: ((oy)-(oy_0))<=((t)*(V))
+Formula: (-((t)*(V)))<=((ox)-(ox_0))
+Formula: ((ox)-(ox_0))<=((t)*(V))
+Formula: (-((t)*((v)-(-(((b)/(2))*(t))))))<=((y)-(y_0))
+Formula: ((y)-(y_0))<=((t)*((v)-(-(((b)/(2))*(t)))))
+Formula: (v)=((v_0)+(-((b)*(t))))
+Formula: (-((t)*((v)-(-(((b)/(2))*(t))))))<=((x)-(x_0))
+Formula: ((x)-(x_0))<=((t)*((v)-(-(((b)/(2))*(t)))))
+Formula: (t)>=(0)
+Formula: (v)>=(0)
+Formula: (abs((y_0)-(oy_0)))>((((v_0)^(2))/((2)*(b)))+((V)*((v_0)/(b))))
+==>
+Formula: (abs((x)-(ox)))>((((v)^(2))/((2)*(b)))+((V)*((v)/(b))))
+Formula: (abs((y)-(oy)))>((((v)^(2))/((2)*(b)))+((V)*((v)/(b))))
+Sequent.
+Formula: (V)>=(0)
+Formula: (A)>=(0)
+Formula: (b)>(0)
+Formula: (v_0)>=(0)
+Formula: (-((t)*(V)))<=((oy)-(oy_0))
+Formula: ((oy)-(oy_0))<=((t)*(V))
+Formula: (-((t)*((v)-(-(((b)/(2))*(t))))))<=((y)-(y_0))
+Formula: ((y)-(y_0))<=((t)*((v)-(-(((b)/(2))*(t)))))
+Formula: (v)=((v_0)+(-((b)*(t))))
+Formula: (t)>=(0)
+Formula: (v)>=(0)
+Formula: (abs((y_0)-(oy_0)))>((((v_0)^(2))/((2)*(b)))+((V)*((v_0)/(b))))
+==>
+Formula: (abs((y)-(oy)))>((((v)^(2))/((2)*(b)))+((V)*((v)/(b))))
+End.
+Tool.
+  asdf """"asdf""""
+End.

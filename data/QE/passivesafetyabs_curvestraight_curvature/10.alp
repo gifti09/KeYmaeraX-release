@@ -1,0 +1,25 @@
+Lemma "".
+Sequent.
+Formula: (A)>=(0)
+Formula: (B)>(0)
+Formula: (V)>=(0)
+Formula: (ep)>(0)
+Formula: (v)>=(0)
+Formula: ((x)-(xo)) < (0)
+Formula: ((y)-(yo)) < (0)
+Formula: ((v)=(0))|(((-((x)-(xo)))>((((v)^(2))/((2)*(B)))+((V)*((v)/(B)))))|((-((y)-(yo)))>((((v)^(2))/((2)*(B)))+((V)*((v)/(B))))))
+==>
+Formula: ((v)>(0))->(((((x)-(xo))^(2))+(((y)-(yo))^(2)))>(0))
+Sequent.
+Formula: (B)>(0)
+Formula: (V)>=(0)
+Formula: (v)>=(0)
+Formula: ((x)-(xo)) < (0)
+Formula: ((y)-(yo)) < (0)
+Formula: ((v)=(0))|(((-((x)-(xo)))>((((v)^(2))/((2)*(B)))+((V)*((v)/(B)))))|((-((y)-(yo)))>((((v)^(2))/((2)*(B)))+((V)*((v)/(B))))))
+==>
+Formula: ((v)>(0))->(((((x)-(xo))^(2))+(((y)-(yo))^(2)))>(0))
+End.
+Tool.
+  asdf """"asdf""""
+End.
