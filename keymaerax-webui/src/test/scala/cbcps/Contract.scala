@@ -427,8 +427,8 @@ object Contract {
     //- how to handle the global property? outermost formula?
     ctr3.verifyBaseCase(implyR('R) & andR('R) < (andR('R) < (
       //... |- inv1
-      print("inv1") &
-        hideL(-1) partial
+      andL('L) //& andL('L) & hideL(-3) & andL('L) & hideL(-3) & implyRi & by(ctr1.baseCaseLemma.get)
+        & print("inv1") partial
       ,
       //... |- inv2
       print("inv2") partial
