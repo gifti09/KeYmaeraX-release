@@ -1,0 +1,106 @@
+package cbcps
+
+
+import java.io._
+
+import edu.cmu.cs.ls.keymaerax.core._
+import Utility._
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter
+
+import scala.collection.immutable
+import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+
+import scala.util.{Failure, Success, Try}
+
+/**
+  * Created by andim on 22.07.2016.
+  */
+object Globals {
+  private var _vars: Set[Variable] = Set(eps)
+  private var _prop: Option[Formula] = None
+  val t = "t".asVariable
+  val t0 = "tOld".asVariable
+  val eps = "eps".asVariable
+
+
+  def addGlobalVariable(v: Variable) = {
+    _vars += v
+  }
+
+  def addGlobalVariables(vs: Set[Variable]) = {
+    _vars ++= vs
+  }
+
+  def addToGlobalProperty(p: Formula): Boolean = {
+    _prop match {
+      case None => _prop = Some(p)
+      case Some(gp) => _prop = Some(And(gp, p))
+    }
+    checkGlobalProperty
+  }
+
+  private def checkGlobalProperty: Boolean = _prop match {
+    case Some(gp) if v(gp).intersect(globalVars).nonEmpty => false
+    case _ => true
+  }
+
+  def globalVars = _vars + t
+
+  def globalProp = _prop match {
+    case Some(gp) => gp
+    case _ => True
+  }
+
+  def initT: Formula = Equal(t, "0".asTerm)
+
+  def oldT: Program = Assign(t0, t)
+
+  def plantT: AtomicODE = AtomicODE(DifferentialSymbol(t), "1".asTerm)
+
+  def consT: Formula = LessEqual(t, eps)
+
+  def appendGlobalPropertyToFormula(p: Formula): Formula = {
+    _prop match {
+      case Some(gp) => return And(p, gp)
+      case _ => return p
+    }
+  }
+
+  def save(i: Interface, fName: String) = {
+    val stream = new ObjectOutputStream(new FileOutputStream(new File(fName)))
+    stream.writeObject(new SerializableGlobals)
+    stream.close()
+  }
+
+  def load(fName: String): Boolean = {
+    Try(new ObjectInputStream(new FileInputStream(new File(fName)))) match {
+      case Success(stream) =>
+        Try(stream.readObject().asInstanceOf[SerializableGlobals]) match {
+          case Success(g) => {
+            _vars = g._vars.map(s => s.asVariable)
+            _prop = if (g._prop == null) None else Some(g._prop.asFormula)
+            stream.close()
+            true
+          }
+          case _ =>
+            stream.close()
+            false
+        }
+      case _ => false
+    }
+
+  }
+
+  class SerializableGlobals extends Serializable {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
+
+    def _vars: Set[String] = Globals._vars.map(v => v.prettyString)
+
+    def _prop: String = Globals._prop match {
+      case None => null
+      case Some(f) => f.prettyString
+    }
+  }
+
+}
+
