@@ -43,58 +43,58 @@ object Tester {
 //    prettyPrinterTest()
 
 
-    //Component 1
-    val c1: Component = {
-      new Component("C1", //Name
-        "a:=a+y;".asProgram, //Control
-        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
-    }
-    //Interface 1
-    val i1: Interface = {
-      new Interface(
-        Map("y".asVariable -> "y>=0".asFormula), //In
-        Map("out1".asVariable -> "out1=42".asFormula)) //Out
-    }
-    //Contract 1
-    val ctr1: Contract = new DelayContract(c1, i1,
-      "a=0&y>=0".asFormula, //Pre
-      "a>=0".asFormula, //Post
-      "a>=0&y>=0".asFormula) //Invariant
-    println("Contract(C1,I1): " + ctr1.contract())
-    //Verify Contract 1 from scratch
-    verifyContract1(ctr1)
-    //Verify Contract 1 from Lemmas
-    //        verifyContract1Lemma(ctr1)
-    //Save Contract 1
-    Contract.save(ctr1, "contract1.cbcps")
-
-    //Component 2
-    val c2: Component = {
-      new Component("C2", //Name
-        "{{x:=1;}++{x:=3;}}".asProgram, //Control
-        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
-    }
-    //Interface 2
-    val i2: Interface = {
-      new Interface(
-        Map("in2".asVariable -> "in2=42".asFormula), //In
-        Map("x".asVariable -> "x>=1".asFormula)) //Out
-    }
-    //Contract 2
-    val ctr2: Contract = new DelayContract(c2, i2,
-      "x=2&in2=42".asFormula, //Pre
-      "true".asFormula, //Post
-      "x<=3&x>=1&in2=42".asFormula) //Invariant
-    println("Contract(C2,I2): " + ctr2.contract())
-    //Verify Contract 2 from scratch
-    verifyContract2(ctr2)
-    //Verify Contract 2 from Lemmas
-    //        verifyContract2Lemma(ctr2)
-    //Save Contract 2
-    Contract.save(ctr2, "contract2.cbcps")
-    //Everything Verified?
-    println("Contract(C1,I1) verified? " + ctr1.isVerified())
-    println("Contract(C2,I2) verified? " + ctr2.isVerified())
+//    //Component 1
+//    val c1: Component = {
+//      new Component("C1", //Name
+//        "a:=a+y;".asProgram, //Control
+//        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
+//    }
+//    //Interface 1
+//    val i1: Interface = {
+//      new Interface(
+//        Map("y".asVariable -> "y>=0".asFormula), //In
+//        Map("out1".asVariable -> "out1=42".asFormula)) //Out
+//    }
+//    //Contract 1
+//    val ctr1: Contract = new DelayContract(c1, i1,
+//      "a=0&y>=0".asFormula, //Pre
+//      "a>=0".asFormula, //Post
+//      "a>=0&y>=0".asFormula) //Invariant
+//    println("Contract(C1,I1): " + ctr1.contract())
+//    //Verify Contract 1 from scratch
+//    verifyContract1(ctr1)
+//    //Verify Contract 1 from Lemmas
+//    //        verifyContract1Lemma(ctr1)
+//    //Save Contract 1
+//    Contract.save(ctr1, "contract1.cbcps")
+//
+//    //Component 2
+//    val c2: Component = {
+//      new Component("C2", //Name
+//        "{{x:=1;}++{x:=3;}}".asProgram, //Control
+//        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
+//    }
+//    //Interface 2
+//    val i2: Interface = {
+//      new Interface(
+//        Map("in2".asVariable -> "in2=42".asFormula), //In
+//        Map("x".asVariable -> "x>=1".asFormula)) //Out
+//    }
+//    //Contract 2
+//    val ctr2: Contract = new DelayContract(c2, i2,
+//      "x=2&in2=42".asFormula, //Pre
+//      "true".asFormula, //Post
+//      "x<=3&x>=1&in2=42".asFormula) //Invariant
+//    println("Contract(C2,I2): " + ctr2.contract())
+//    //Verify Contract 2 from scratch
+//    verifyContract2(ctr2)
+//    //Verify Contract 2 from Lemmas
+//    //        verifyContract2Lemma(ctr2)
+//    //Save Contract 2
+//    Contract.save(ctr2, "contract2.cbcps")
+//    //Everything Verified?
+//    println("Contract(C1,I1) verified? " + ctr1.isVerified())
+//    println("Contract(C2,I2) verified? " + ctr2.isVerified())
 
 
     val lc1 = Contract.load("contract1.cbcps")

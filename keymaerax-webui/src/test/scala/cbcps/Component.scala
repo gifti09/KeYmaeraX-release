@@ -59,7 +59,7 @@ object Component {
     * @return A new component as the composition of the two received components.
     */
   def compose(c1: Component, c2: Component, ports: Program): Component = {
-    new Component(c1.name + "||" + c2.name,
+    new Component(c1.name + "-" + c2.name,
       Choice(Compose(c1.ctrl, c2.ctrl), Compose(c2.ctrl, c1.ctrl)),
       ODESystem(DifferentialProduct(c1.plant.ode, c2.plant.ode), And(c1.plant.constraint, c2.plant.constraint)),
       Compose(Compose(c1.ports, c2.ports), ports)

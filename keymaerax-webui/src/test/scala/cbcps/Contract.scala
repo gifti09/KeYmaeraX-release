@@ -427,16 +427,15 @@ object Contract {
     //- how to handle the global property? outermost formula?
     ctr3.verifyBaseCase(implyR('R) & andR('R) < (andR('R) < (
       //... |- inv1
-      andL('L) //& andL('L) & hideL(-3) & andL('L) & hideL(-3) & implyRi & by(ctr1.baseCaseLemma.get)
-        & print("inv1") partial
+      andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-3) & andLi *@ TheType() & implyRi & by(ctr1.baseCaseLemma.get)
       ,
       //... |- inv2
-      print("inv2") partial
-      ) partial,
+      andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-2) & andLi *@ TheType() & implyRi & by(ctr2.baseCaseLemma.get)
+      ),
       //... |- preDelta
-      print("preDelta") partial
+      andL('L) & andL('L) & hideL(-2) & hideL(-1) & andLi *@ TheType() & close(-1, 1) //implyRi & by(ctr2.baseCaseLemma.get)
       )
-      & print("end") partial)
+    )
 
     //Return verified composite contract
     return ctr3
