@@ -42,9 +42,9 @@ class Interface(
 
   def vInit: Set[Variable] = pre.values.toSet
 
-  def piOutAll: Formula = piOut.values.reduce((a, b) => And(a, b))
+  def piOutAll: Formula = if (piOut.isEmpty) return "true".asFormula else piOut.values.reduce((a, b) => And(a, b))
 
-  def piInAll: Formula = piIn.values.reduce((a, b) => And(a, b))
+  def piInAll: Formula = if (piIn.isEmpty) return "true".asFormula else piIn.values.reduce((a, b) => And(a, b))
 
   override def toString = s"Interface(\npiIn=${piIn.map { case (v, f) => v.prettyString + "->" + f.prettyString }}\npiOut=${piOut.map { case (v, f) => v.prettyString + "->" + f.prettyString }},\npre=${pre.map { case (v1, v2) => v1.prettyString + "->" + v2.prettyString }})"
 

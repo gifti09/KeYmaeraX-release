@@ -12,7 +12,7 @@ import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{print, printIndexed}
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import testHelper.ParserFactory._
 
-import scala.collection.immutable._
+import scala.collection.immutable.{Map, _}
 
 /**
   * Created by Andreas on 19.11.2015.
@@ -23,7 +23,6 @@ object Tester {
   def main(args: Array[String]) {
 
     ProofHelper.initProver
-
     //Match Test
     //    matchTest("x,x>0&x<10,y,y=0")
     //(Free/Bound) Variable Test
@@ -38,63 +37,73 @@ object Tester {
     //    proofTest("[{c&H(??)}]p(??) -> [{c&H(??)&r(??)}]p(??)".asFormula, implyR(1) & useAt("DW differential weakening")(1, 1 :: Nil))
     //DifferentialProgram Test
     //    differentialProgramTest()
-
     //PrettyPrinter tTest
-//    prettyPrinterTest()
+    //    prettyPrinterTest()
+    //Lemma Test
+    //    lemmaTest()
+    //    //Position Test
+    //    positionTest()
+    //    return
 
-
-//    //Component 1
-//    val c1: Component = {
-//      new Component("C1", //Name
-//        "a:=a+y;".asProgram, //Control
-//        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
-//    }
-//    //Interface 1
-//    val i1: Interface = {
-//      new Interface(
-//        Map("y".asVariable -> "y>=0".asFormula), //In
-//        Map("out1".asVariable -> "out1=42".asFormula)) //Out
-//    }
-//    //Contract 1
-//    val ctr1: Contract = new DelayContract(c1, i1,
-//      "a=0&y>=0".asFormula, //Pre
-//      "a>=0".asFormula, //Post
-//      "a>=0&y>=0".asFormula) //Invariant
-//    println("Contract(C1,I1): " + ctr1.contract())
-//    //Verify Contract 1 from scratch
-//    verifyContract1(ctr1)
-//    //Verify Contract 1 from Lemmas
-//    //        verifyContract1Lemma(ctr1)
-//    //Save Contract 1
-//    Contract.save(ctr1, "contract1.cbcps")
-//
-//    //Component 2
-//    val c2: Component = {
-//      new Component("C2", //Name
-//        "{{x:=1;}++{x:=3;}}".asProgram, //Control
-//        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
-//    }
-//    //Interface 2
-//    val i2: Interface = {
-//      new Interface(
-//        Map("in2".asVariable -> "in2=42".asFormula), //In
-//        Map("x".asVariable -> "x>=1".asFormula)) //Out
-//    }
-//    //Contract 2
-//    val ctr2: Contract = new DelayContract(c2, i2,
-//      "x=2&in2=42".asFormula, //Pre
-//      "true".asFormula, //Post
-//      "x<=3&x>=1&in2=42".asFormula) //Invariant
-//    println("Contract(C2,I2): " + ctr2.contract())
-//    //Verify Contract 2 from scratch
-//    verifyContract2(ctr2)
-//    //Verify Contract 2 from Lemmas
-//    //        verifyContract2Lemma(ctr2)
-//    //Save Contract 2
-//    Contract.save(ctr2, "contract2.cbcps")
-//    //Everything Verified?
-//    println("Contract(C1,I1) verified? " + ctr1.isVerified())
-//    println("Contract(C2,I2) verified? " + ctr2.isVerified())
+    //    //Component 1
+    //    val c1: Component = {
+    //      new Component("C1", //Name
+    //        "a:=a+y;".asProgram, //Control
+    //        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
+    //    }
+    //    //Interface 1
+    //    val i1: Interface = {
+    //      new Interface(
+    //        Map("y".asVariable -> "y>=0".asFormula), //In
+    //        Map(//Out
+    //          "out1".asVariable -> "out1=42".asFormula
+    //        )
+    //      )
+    //    }
+    //    //Contract 1
+    //    val ctr1: Contract = new DelayContract(c1, i1,
+    //      "a=0&y>=0&out1=42".asFormula, //Pre
+    //      "a>=0".asFormula, //Post
+    //      "a>=0&y>=0&out1=42".asFormula) //Invariant
+    //    println("Contract(C1,I1): " + ctr1.contract())
+    //    //Verify Contract 1 from scratch
+    //    verifyContract1(ctr1)
+    //    //Verify Contract 1 from Lemmas
+    //    //        verifyContract1Lemma(ctr1)
+    //    //Save Contract 1
+    //    Contract.save(ctr1, "contract1.cbcps")
+    //
+    //    //Component 2
+    //    val c2: Component = {
+    //      new Component("C2", //Name
+    //        "{{x:=1;}++{x:=3;}}".asProgram, //Control
+    //        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
+    //    }
+    //    //Interface 2
+    //    val i2: Interface = {
+    //      new Interface(
+    //        Map("in2".asVariable -> "in2=42".asFormula), //In
+    //        Map(//Out
+    //          "x".asVariable -> "x>=1".asFormula
+    //          //                    ,"out2".asVariable -> "true".asFormula
+    //        )
+    //      )
+    //    }
+    //    //Contract 2
+    //    val ctr2: Contract = new DelayContract(c2, i2,
+    //      "x=2&in2=42".asFormula, //Pre
+    //      "true".asFormula, //Post
+    //      "x<=3&x>=1&in2=42".asFormula) //Invariant
+    //    println("Contract(C2,I2): " + ctr2.contract())
+    //    //Verify Contract 2 from scratch
+    //    verifyContract2(ctr2)
+    //    //Verify Contract 2 from Lemmas
+    //    //        verifyContract2Lemma(ctr2)
+    //    //Save Contract 2
+    //    Contract.save(ctr2, "contract2.cbcps")
+    //    //Everything Verified?
+    //    println("Contract(C1,I1) verified? " + ctr1.isVerified())
+    //    println("Contract(C2,I2) verified? " + ctr2.isVerified())
 
 
     val lc1 = Contract.load("contract1.cbcps")
@@ -107,7 +116,17 @@ object Tester {
       "y".asVariable -> "x".asVariable
     )
 
-    val ctr3 = Contract.compose(lc1, lc2, X, null, null, null)
+
+
+    var cpoT: Map[(Variable, Variable), BelleExpr] = Map.empty
+    cpoT += ("y".asVariable, "x".asVariable) -> (implyR('R) & assignb('R) & implyR('R) & QE)
+    val sc1T = master()
+    TactixLibrary.proveBy(lc1.sideCondition(lc2, X), sc1T)
+    val sc2T = master()
+    TactixLibrary.proveBy(lc2.sideCondition(lc1, X), sc2T)
+
+
+    val ctr3 = Contract.compose(lc1, lc2, X, cpoT, sc1T, sc2T)
     println("Contract(C1,I1)=\n\t" + lc1.contract())
     println("Contract(C2,I2)=\n\t" + lc2.contract())
     println("Contract( (C1,I1)||(C2,I2) )=\n\t" + ctr3.contract())
@@ -186,6 +205,16 @@ object Tester {
     ctr2.isVerified()
   }
 
+  def lemmaTest() = {
+    val f = "a>0-> (a>-1 & a>-2)".asFormula
+    val p = TactixLibrary.proveBy(f, QE)
+    val l = Utility.addLemma("lemmaTest", p)
+
+    val f2 = "a>0-> (a>-2 & a>-1)".asFormula
+    val p2 = TactixLibrary.proveBy(f2, by(l))
+    println("p2? " + p2.isProved)
+  }
+
   def prettyPrinterTest() = {
     PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
     val a = "a=0".asFormula
@@ -230,7 +259,15 @@ object Tester {
     var plant: Program = "{t'=1&true}".asProgram
     println("" + plant.isInstanceOf[DifferentialProgram])
   }
+
+  def positionTest() = {
+    val ret = TactixLibrary.proveBy(Sequent(IndexedSeq.empty, IndexedSeq("[?true;a:=2;?true;]a=2".asFormula)),
+      master())
+  }
 }
+
+//*@ TheType()
+
 
 /*
 

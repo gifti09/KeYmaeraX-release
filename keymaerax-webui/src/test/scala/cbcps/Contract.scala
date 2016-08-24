@@ -171,28 +171,18 @@ abstract class Contract(
 
   def isVerified() = isBaseCaseVerified() && isUseCaseVerified() && isStepVerified()
 
-  //  def tactic(): BelleExpr
+  def sideCondition(ctr2: Contract, X: Map[Variable, Variable]): Formula
 
-  def sideCondition(): Formula
-
-  def cpo(ctr2: Contract, X: Map[Variable, Variable]): Seq[Formula]
+  def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula]
 
   def contractPre(): Formula
 
   def contractPlant(): ODESystem
+
+  def contractPlant(thePlant: ODESystem): ODESystem
+
+  def contractPost(): Formula
 }
-
-/*
-                         val component: Component,
-                         val interface: Interface,
-                         val pre: Formula,
-                         val post: Formula,
-                         val invariant: Formula,
-                         var baseCaseLemma: Option[Lemma] = None,
-                         var useCaseLemma: Option[Lemma] = None,
-                         var stepLemma: Option[Lemma] = None
-
- */
 
 private class SerializableContract(ctr: Contract@transient) extends Serializable {
   PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
@@ -249,25 +239,29 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   extends Contract(component, interface, pre, post, invariant, baseCaseLemma, useCaseLemma, stepLemma) {
 
   override def contractPlant(): ODESystem = {
-    ODESystem(DifferentialProduct(Globals.plantT, component.plant.ode), And(component.plant.constraint, Globals.consT))
+    contractPlant(component.plant)
   }
+
+  override def contractPlant(thePlant: ODESystem): ODESystem =
+    ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), And(thePlant.constraint, Globals.consT))
 
 
   override def contract(): Formula = Imply(
     contractPre(),
     Box(Loop(
-      Compose(Compose(Compose(Compose(Compose(interface.deltaPart, component.ctrl), Globals.oldT), contractPlant()), interface.in), component.ports)), post)
+      Compose(Compose(Compose(Compose(Compose(interface.deltaPart, component.ctrl), Globals.oldT), contractPlant()), interface.in), component.ports)), contractPost())
   )
 
+  override def contractPost(): Formula = {
+    And(post, interface.piOutAll)
+  }
 
   override def proofGoals(): IndexedSeq[Sequent] = _proofGoals
 
   /**
     * Extracts the proof goals that need to be closed in order to verify the delay contract.
     */
-  lazy val _proofGoals: IndexedSeq[Sequent] = pg
-
-  private def pg = {
+  lazy val _proofGoals: IndexedSeq[Sequent] = {
     val t: BelleExpr = implyR('R) & loop(invariant)('R) < ( //& andL('L) *@ TheType()
       andLi *@ TheType() & cut(contractPre()) <
         (hideL(-1) & implyRi partial, hideR(1) & QE) partial, //& print("Base case")
@@ -291,22 +285,23 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   //  }
 
   // \varphi -> [delta-part][ctrl][t0:=t][{t'=1,plant & t-t0<=\varepsilon}] \Pi_out
-  override def sideCondition(): Formula = Imply(
-    invariant,
+  override def sideCondition(ctr2: Contract, X: Map[Variable, Variable]): Formula = Imply(
+    this.invariant,
     Box(
-      interface.deltaPart,
-      Box(component.ctrl,
+      Interface.compose(this.interface, ctr2.interface, X).deltaPart,
+      Box(Component.compose(this.component, ctr2.component, Contract.composePorts(X)).ctrl,
         Box(Globals.oldT,
-          Box(contractPlant(), interface.piOutAll)
+          Box(this.contractPlant(Component.compose(this.component, ctr2.component, Contract.composePorts(X)).plant), this.interface.piOutAll)
         )
       )
     )
   )
 
-  override def cpo(ctr2: Contract, X: Map[Variable, Variable]): Seq[Formula] = {
+
+  override def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula] = {
     //useless and just to avoid errors
     val ctr1 = this
-    var s = Seq.empty[Formula]
+    var s = Map.empty[(Variable, Variable), Formula]
 
     require(X.keySet.subsetOf(ctr1.interface.vIn ++ ctr2.interface.vIn) || !X.values.toSet.subsetOf(ctr1.interface.vOut ++ ctr2.interface.vOut),
       "invalid port mapping X")
@@ -321,9 +316,9 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
           Globals.globalProp
         }
       }
-      Imply(pre, Box(Assign(in, out), Imply(ctr2.interface.piOut(out), ctr1.interface.piIn(in))))
+      ((in, out) -> Imply(pre, Box(Assign(in, out), Imply(ctr2.interface.piOut(out), ctr1.interface.piIn(in)))))
     }
-    }.toSeq
+    }
     s ++= X.filter { case (in, out) => ctr2.interface.vIn.contains(in) }.map { case (in, out) => {
       val pre = {
         if (ctr1.interface.pre.keySet.contains(in)) {
@@ -335,10 +330,9 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
           Globals.globalProp
         }
       }
-      Imply(pre, Box(Assign(in, out), Imply(ctr1.interface.piOut(out), ctr2.interface.piIn(in))))
+      (in, out) -> Imply(pre, Box(Assign(in, out), Imply(ctr1.interface.piOut(out), ctr2.interface.piIn(in))))
     }
-    }.toSeq
-
+    }
     return s
   }
 
@@ -366,6 +360,7 @@ object Contract {
       (bv(component.ctrl) ++ bv(component.plant)).intersect(interface.vIn).isEmpty
   }
 
+  //TODO check before use
   def changeContract(component: Component, interface: Interface, pre: Formula, post: Formula): Formula = {
     Imply(
       Globals.appendGlobalPropertyToFormula(pre),
@@ -373,7 +368,6 @@ object Contract {
         Compose(Compose(Compose(Compose(interface.deltaPart, component.ctrl), component.plant), interface.in), component.ports)), post)
     )
   }
-
 
   private val preTactic = andLi *@ TheType() & implyRi
 
@@ -403,16 +397,12 @@ object Contract {
     require(ctr1.isVerified() && ctr2.isVerified(), "only verified contracts can be composed")
 
     //Compose all parts of the contract
-    val ports: Program = X.map(x => Assign(x._1, x._2).asInstanceOf[Program]) match {
-      case ass if ass.nonEmpty => ass.reduce((a1, a2) => Compose(a1, a2))
-      case _ => Test(True)
-    }
+    val ports: Program = composePorts(X)
     val i3 = Interface.compose(ctr1.interface, ctr2.interface, X)
     val c3 = Component.compose(ctr1.component, ctr2.component, ports)
-    val preDelta = X.map { case (in, out) => Equal(in, out) }.reduce((a: Formula, b: Formula) => And(a, b))
-    val pre3 = And(And(ctr1.pre, ctr2.pre), preDelta)
-    val post3 = And(ctr1.post, ctr2.post)
-    val inv3 = And(And(ctr1.invariant, ctr2.invariant), preDelta)
+    val pre3 = composePre(ctr1, ctr2, X)
+    val post3 = composePost(ctr1, ctr2)
+    val inv3 = composeInvariant(ctr1, ctr2, X)
 
     //Construct a new contract
     val constructor = ctr1.getClass.getConstructors()(0)
@@ -424,21 +414,144 @@ object Contract {
     // Verify side condition
 
     // Verify composite contract
+    // move andLs???
     //- how to handle the global property? outermost formula?
-    ctr3.verifyBaseCase(implyR('R) & andR('R) < (andR('R) < (
-      //... |- inv1
-      andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-3) & andLi *@ TheType() & implyRi & by(ctr1.baseCaseLemma.get)
-      ,
-      //... |- inv2
-      andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-2) & andLi *@ TheType() & implyRi & by(ctr2.baseCaseLemma.get)
-      ),
-      //... |- preDelta
-      andL('L) & andL('L) & hideL(-2) & hideL(-1) & andLi *@ TheType() & close(-1, 1) //implyRi & by(ctr2.baseCaseLemma.get)
+    //    ctr3.verifyBaseCase(implyR('R) & andR('R) < (andR('R) < (
+    //      //... |- inv1
+    //      andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-3) & andLi *@ TheType() & implyRi & by(ctr1.baseCaseLemma.get)
+    //      ,
+    //      //... |- inv2
+    //    andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-2) & andLi *@ TheType() & implyRi & by(ctr2.baseCaseLemma.get)
+    //      ),
+    //      //... |- preDelta
+    //      andL('L) & andL('L) & hideL(-2) & hideL(-1) & andLi *@ TheType() & close(-1, 1) //implyRi & by(ctr2.baseCaseLemma.get)
+    //      )
+    //    )
+
+    //    val outTactic = {
+    //      if (ctr1.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
+    //        if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
+    //          println("both have out ports!")
+    //          (andR('R) < (
+    //            //... |- out1
+    //            hideL(-3) & hideL(-1) & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //              //use cut
+    //              prop,
+    //              //show cut
+    //              hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
+    //              )
+    //            ,
+    //            //... |- out2
+    //            hideL(-2) & hideL(-1) & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //              //use cut
+    //              prop,
+    //              //show cut
+    //              hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
+    //              )
+    //            )
+    //            )
+    //        }
+    //        else {
+    //          println("only c1 has out ports!")
+    //          //... |- out1
+    //          hideL(-3) & hideL(-1) & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //            //use cut
+    //            prop,
+    //            //show cut
+    //            hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
+    //            )
+    //        }
+    //      }
+    //      else {
+    //        if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
+    //          println("only c2 has out ports!")
+    //          //... |- out2
+    //          hideL(-2) & hideL(-1) & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //            //use cut
+    //            prop,
+    //            //show cut
+    //            hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
+    //            )
+    //        }
+    //        else {
+    //          println("none has out ports!")
+    //          prop
+    //        }
+    //      }
+    //    }
+    //    ctr3.verifyUseCase(implyR('R) & andL('L) & andL('L) & andR('R) < (andR('R) < (
+    //      //... |- post1
+    //      hideL(-3) & hideL(-1) & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //        //use cut
+    //        prop,
+    //        //show cut
+    //        hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
+    //        )
+    //      ,
+    //      //... |- post2
+    //      hideL(-2) & hideL(-1) & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //        //use cut
+    //        prop
+    //          & print("use") partial,
+    //        //show cut
+    //        hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
+    //          & print("show") partial
+    //        ) partial
+    //      ), outTactic
+    //      )
+    //    )
+
+    ctr3.verifyStep(implyR('R) & splitb('R) & andR('R) < (
+      splitb('R) & andR('R) < (
+        //inv1
+        composeb('R) * (5) & choiceb(1, List(1)) & splitb('R) & andR('R) < (
+          print("C1;C2") &
+          cut(ctr2.sideCondition(ctr1,X)) <(
+              //use cut
+              print("use cut") partial
+            ,
+              //show cut
+
+              print("show cut") partial
+            )
+          ,
+          print("C2;C1") partial
+          ) partial
+        ,
+        //inv2
+        print("inv2") partial
+        ) partial,
+      //pre delta
+      //TODO does this master() always close, or should I try to reduce the thing further? (how??)
+      hideL(-1) & composeb('R) & G & master()
       )
+      & print("todo") partial
     )
 
     //Return verified composite contract
     return ctr3
   }
 
+  def composePorts[C <: Contract](X: Map[Variable, Variable]): Program = {
+    X.map(x => Assign(x._1, x._2).asInstanceOf[Program]) match {
+      case ass if ass.nonEmpty => ass.reduce((a1, a2) => Compose(a1, a2))
+      case _ => Test(True)
+    }
+  }
+
+  private def composeInvariant[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
+    And(And(ctr1.invariant, ctr2.invariant), preDelta(X))
+  }
+
+  private def composePost[C <: Contract](ctr1: C, ctr2: C): And = {
+    And(ctr1.post, ctr2.post)
+  }
+
+  protected def composePre[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
+    And(And(ctr1.pre, ctr2.pre), preDelta(X))
+  }
+
+  def preDelta[C <: Contract](X: Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
+    X.map { case (in, out) => Equal(in, out) }.reduce((a: Formula, b: Formula) => And(a, b))
+  }
 }
