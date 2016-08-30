@@ -1,8 +1,8 @@
 <div class="modal-header" >
     <h3 class="modal-title"><!--<i class="glyphicon glyphicon-thumbs-down"></i>-->KeYmaera X License</h4>
 </div>
-<div class="modal-body">
-    KeYmaera X version 4.1b1, Copyright (C) Carnegie Mellon University<br/>
+<div class="modal-body" ng-controller="ServerInfoCtrl">
+    KeYmaera X version {{keymaeraXVersion}}, Copyright (C) Carnegie Mellon University<br/>
     2014-2016 Andre Platzer, Stefan Mitsch, Nathan Fulton, Jan-David Quesel, Brandon Bohrer, Marcus Voelp, Ran Ji.<br>
     KeYmaera X comes with ABSOLUTELY NO WARRANTY. A full software license agreement follows.<br/>
     SOFTWARE LICENSE AGREEMENT
@@ -447,7 +447,7 @@ of this license document, but changing it is not allowed.
 </div>
 <div class="modal-footer" ng-if="!noModalForHelpDialogHack">
     <button class="btn" ng-click="rejectLicense()">Reject</button>
-    <button class="btn btn-primary" ng-click="cancel()">I Agree</button>
+    <button class="btn btn-primary" ng-click="ok()">I Agree</button>
 </div>
 
 <div class="modal-header" ng-show="noModalForHelpDialogHack">

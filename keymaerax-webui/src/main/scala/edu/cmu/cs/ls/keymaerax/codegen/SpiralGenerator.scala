@@ -21,6 +21,7 @@ import scala.collection.immutable.Map
  * Hcol file consists of
  *  - monitor (.g): constant table + monitor
  *  - header (.h): coefficients vectors
+ * @author Ran Ji
  */
 class Hcol {
   private var constTbl : String = ""
@@ -35,6 +36,10 @@ class Hcol {
   def setCoefficients(ceh : String) = this.coeffs = ceh
 }
 
+/**
+  * Spiral generator.
+  * @author Ran Ji
+  */
 object SpiralGenerator extends CodeGenerator {
   def apply(kExpr: Expression): String = apply(kExpr, Nil, "")._1
   def apply(kExpr: Expression, fileName: String): String = apply(kExpr, Nil, fileName)._1
@@ -46,7 +51,7 @@ object SpiralGenerator extends CodeGenerator {
 
   /** Mathematica settings */
   private val mathematicaConfig: Map[String, String] = DefaultConfiguration.defaultMathematicaConfig
-  private val link : JLinkMathematicaLink= new JLinkMathematicaLink()
+  private val link : JLinkMathematicaLink = new JLinkMathematicaLink
   link.init(mathematicaConfig.apply(mathematicaConfig.keys.head), None)
 
   /** Name counter used for generating new vector names */
@@ -81,7 +86,7 @@ object SpiralGenerator extends CodeGenerator {
   private def define(fileName: String) = "#define _" + {if(fileName.nonEmpty) fileName.toUpperCase else "VECTOR"} + "_H_\n"
   private val endIf = "#endif"
 
-  private val defaultK2MConverter = new KeYmaeraToMathematica
+  private val defaultK2MConverter = KeYmaeraToMathematica
 
   /**
    * Generate Spiral monitor
@@ -159,7 +164,7 @@ object SpiralGenerator extends CodeGenerator {
 
   /** Compute the DNF form of the given formula */
   private def convertToDnf(e: Expression): Expr = {
-    val mathCmd = "BooleanConvert[" +  defaultK2MConverter.fromKeYmaera(e) + ",DNF]"
+    val mathCmd = "BooleanConvert[" +  defaultK2MConverter(e) + ",DNF]"
     link.ml.evaluate(mathCmd)
     link.ml.waitForAnswer()
     link.ml.getExpr
@@ -182,9 +187,9 @@ object SpiralGenerator extends CodeGenerator {
       val cnfNum = me.length()
       var cnfPoly = new Array[String](cnfNum)
       for(i <- 0 until cnfNum)
-        cnfPoly(i)=compileToSpiral(MathematicaToKeYmaera.fromMathematica(me.args().apply(i)), vars)
+        cnfPoly(i)=compileToSpiral(MathematicaToKeYmaera(me.args().apply(i)), vars)
       "TForAll(" + cnfNum +", " + cnfPoly.mkString(", ") + ")"
-    } else compileToSpiral(MathematicaToKeYmaera.fromMathematica(me), vars)
+    } else compileToSpiral(MathematicaToKeYmaera(me), vars)
   }
 
   /** Compile the input formula to Spiral */
@@ -303,10 +308,10 @@ object SpiralGenerator extends CodeGenerator {
     } else {
       // get sorted variables in Mathematica syntax
       val mathVarsSorted = vars.map(s => s match {
-        case v: Variable => defaultK2MConverter.fromKeYmaera(v)
-        case fn: Function => defaultK2MConverter.fromKeYmaera(FuncOf(fn, Nothing))
+        case v: Variable => defaultK2MConverter(v)
+        case fn: Function => defaultK2MConverter(FuncOf(fn, Nothing))
       })
-      val mathTerm = defaultK2MConverter.fromKeYmaera(t)
+      val mathTerm = defaultK2MConverter(t)
       if(mathVarsSorted.length==1) {   
         // one relevant variable, t is single polynomial
         compileSinglePoly(mathTerm, mathVarsSorted)
@@ -341,7 +346,7 @@ object SpiralGenerator extends CodeGenerator {
     val itemNumber = resCoeffList.length()
     var coeffArray: Array[Expression] = new Array[Expression](itemNumber)
     for(i <- 0 until itemNumber)
-      coeffArray(i) = MathematicaToKeYmaera.fromMathematica(resCoeffList.args().apply(itemNumber - 1 - i))
+      coeffArray(i) = MathematicaToKeYmaera(resCoeffList.args().apply(itemNumber - 1 - i))
     val vectorName = getNewVecName
     val ct: String = hcol.getConstTbl.concat(vectorName + " := var(\"" + vectorName + "\", TPtr(T_Real(64)));\n")
     hcol.setConstTbl(ct)
@@ -367,7 +372,7 @@ object SpiralGenerator extends CodeGenerator {
         varArray(i)(j) = resCoeffMap.args().apply(i).part(1).part(j+1).asInt()
         if(maxDegree < varArray(i)(j)) maxDegree = varArray(i)(j)
       }
-      coeffArray(i) = MathematicaToKeYmaera.fromMathematica(resCoeffMap.args().apply(i).part(2))
+      coeffArray(i) = MathematicaToKeYmaera(resCoeffMap.args().apply(i).part(2))
     }
     val vectorName = getNewVecName
     val ct: String = hcol.getConstTbl.concat(vectorName + " := var(\"" + vectorName + "\", TPtr(T_Real(64)));\n")

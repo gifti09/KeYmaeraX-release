@@ -15,7 +15,7 @@ import scala.annotation.switch
  * Axiom Indexing data structures for canonical proof strategies.
  * @note Could be generated automatically, yet better in a precomputation fashion, not on the fly.
  * @author Andre Platzer
- * @see Andre Platzer. [[http://www.cs.cmu.edu/~aplatzer/pub/usubst.pdf A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015.
+ * @see Andre Platzer. [[http://dx.doi.org/10.1007/978-3-319-21401-6_32 A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015.
  * @see Andre Platzer. [[http://arxiv.org/pdf/1503.01981.pdf A uniform substitution calculus for differential dynamic logic.  arXiv 1503.01981]], 2015.
  * @see [[edu.cmu.cs.ls.keymaerax.core.AxiomBase]]
  * @see [[edu.cmu.cs.ls.keymaerax.btactics.AxiomInfo]]
@@ -55,10 +55,13 @@ object AxiomIndex {
     case "DE differential effect" | "DE differential effect (system)" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::PosInExpr(Nil)::Nil)
     case "DI differential invariance" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DI differential invariant" => (PosInExpr(1::Nil), PosInExpr(1::1::Nil)::Nil)
+    case "DE differential effect" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
+    //@todo unclear recursor
+    case "DE differential effect system" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
+    case "DIo open differential invariance >" | "DIo open differential invariance <" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DG differential ghost" => directReduction
-    case "DG differential Lipschitz ghost system" => directReduction
-    case "DG++ System" => ???
-    case "DG++" => ???
+    case "DG inverse differential ghost system" => (PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(Nil)::Nil)
+    case "DG inverse differential ghost" => (PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(Nil)::Nil) //todo copies from DG inverse differential ghost system. Not sure if this is correct.
     case ", commute" => (PosInExpr(0::Nil), Nil)
     case "DS& differential equation solution" => (PosInExpr(0::Nil), PosInExpr(0::1::1::Nil)::PosInExpr(Nil)::Nil)
     case "DX differential skip" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
@@ -97,10 +100,6 @@ object AxiomIndex {
 
 
     case "DW differential weakening" => (PosInExpr(0::Nil), unknown)
-    case "DC differential cut" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
-    case "DE differential effect" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
-    //@todo unclear recursor
-    case "DE differential effect system" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
     case "DI differential invariant" => (PosInExpr(1::Nil), PosInExpr(1::1::Nil)::Nil)
     //@todo other axioms
 
@@ -197,7 +196,6 @@ object AxiomIndex {
         //@todo "[:=] assign equality" does not automatically do the fresh renaming of "assignbTactic", which is not available forward, though.
         //case _: Assign => "assignbTactic" :: Nil
         case _: AssignAny => "[:*] assign nondet" :: Nil
-        case _: DiffAssign => "[':=] differential assign" :: Nil
         case _: Test => "[?] test" :: Nil
         case _: Compose => "[;] compose" :: Nil
         case _: Choice => "[++] choice" :: Nil

@@ -147,9 +147,10 @@ class GetModelTacticResponse(model : ModelPOJO) extends Response {
   )
 }
 
-class LoginResponse(flag:Boolean, userId:String) extends Response {
+class LoginResponse(flag:Boolean, userId:String, sessionToken : Option[String]) extends Response {
   def getJson = JsObject(
     "success" -> (if(flag) JsTrue else JsFalse),
+    "sessionToken" -> (if(flag && sessionToken.isDefined) JsString(sessionToken.get) else JsFalse),
     "key" -> JsString("userId"),
     "value" -> JsString(userId),
     "type" -> JsString("LoginResponse")
@@ -160,6 +161,11 @@ class CreatedIdResponse(id : String) extends Response {
   def getJson = JsObject("id" -> JsString(id))
 }
 
+class PossibleAttackResponse(val msg: String) extends Response {
+  println(s"POSSIBLE ATTACK: ${msg}")
+  override def getJson: JsValue = new ErrorResponse(msg).getJson
+}
+
 class ErrorResponse(val msg: String, val exn: Throwable = null) extends Response {
   lazy val writer = new StringWriter
   lazy val stacktrace = if (exn != null) { exn.printStackTrace(new PrintWriter(writer)); writer.toString } else ""
@@ -168,6 +174,10 @@ class ErrorResponse(val msg: String, val exn: Throwable = null) extends Response
     "errorThrown" -> JsString(stacktrace),
     "type" -> JsString("error")
   )
+}
+
+class KvpResponse(val key: String, val value: String) extends Response {
+  override def getJson: JsValue = JsObject(key -> JsString(value))
 }
 
 class ParseErrorResponse(msg: String, expect: String, found: String, detailedMsg: String, loc: Location, exn: Throwable = null) extends ErrorResponse(msg, exn) {
@@ -318,10 +328,14 @@ object Helpers {
          formula number = strictly positive if succedent, strictly negative if antecedent, 0 is never used
         */
         val idx = if (isAnte) (-i)-1 else i+1
-        val fmlJson = JSONConverter.convertFormula(fml, idx.toString, "")
+        val fmlHtml = JsString(UIKeYmaeraXPrettyPrinter(idx.toString, plainText=false)(fml))
+        val fmlString = JsString(UIKeYmaeraXPrettyPrinter(idx.toString, plainText=true)(fml))
         JsObject(
           "id" -> JsString(idx.toString),
-          "formula" -> fmlJson
+          "formula" -> JsObject(
+            "html" -> fmlHtml,
+            "string" -> fmlString
+          )
         )}.toVector)
     }
     JsObject(
@@ -739,6 +753,12 @@ class NodeResponse(tree : String) extends Response {
 class ExtractTacticResponse(tacticText: String) extends Response {
   def getJson = JsObject(
     "tacticText" -> JsString(tacticText)
+  )
+}
+
+class ExtractProblemSolutionResponse(tacticText: String) extends Response {
+  def getJson = JsObject(
+    "fileContents" -> JsString(tacticText)
   )
 }
 

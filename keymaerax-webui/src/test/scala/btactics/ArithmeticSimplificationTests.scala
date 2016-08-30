@@ -32,7 +32,7 @@ class ArithmeticSimplificationTests extends TacticTestBase {
   })}
 
   it should "not throw away transitivity info" in {withMathematica(implicit qeTool => {
-    val tactic = TactixLibrary.implyR(1) & TactixLibrary.andL('L)*@(TheType()) & ArithmeticSimplification.smartHide
+    val tactic = TactixLibrary.implyR(1) & (andL('L)*) & ArithmeticSimplification.smartHide
     val goal = "x=y & y=z & z > 0 -> x>0".asFormula
     val result = proveBy(goal, tactic)
     result.subgoals(0).ante.length shouldBe 3
@@ -40,7 +40,7 @@ class ArithmeticSimplificationTests extends TacticTestBase {
   })}
 
   it should "forget useless stuff" in {withMathematica(implicit qeTool => {
-    val tactic = TactixLibrary.implyR(1) & TactixLibrary.andL('L)*@(TheType()) & ArithmeticSimplification.smartHide
+    val tactic = TactixLibrary.implyR(1) & (andL('L)*) & ArithmeticSimplification.smartHide
     val goal = "x>y & y>z & a > 0 & z > 0 -> x>0".asFormula
     val result = proveBy(goal, tactic)
     result.subgoals(0).ante.length shouldBe 3 //forget about a>0
@@ -70,18 +70,18 @@ class ArithmeticSimplificationTests extends TacticTestBase {
       prop & transformEquality("t=ep".asFormula)(2) & closeId) shouldBe 'proved
   }
 
-  "absQE" should "prove abs(x-y)>=t -> abs(x-y+0)>=t+0" in withMathematica { tool =>
+  "absQE" should "prove abs(x-y)>=t -> abs(x-y+0)>=t+0" in withMathematica { implicit tool =>
     proveBy("abs(x-y)>=t -> abs(x-y+0)>=t+0".asFormula, implyR(1) & ArithmeticSpeculativeSimplification.proveOrRefuteAbs) shouldBe 'proved
   }
 
-  ignore should "prove abs(x-y)>=t -> abs(x-y)>=t+0" in withMathematica { tool =>
+  it should "prove abs(x-y)>=t -> abs(x-y)>=t+0" ignore withMathematica { implicit tool =>
     //@todo exhaustiveAbsSplit computes all abs positions before calling abs... but abs abbreviates both succ and ante if same
     proveBy("abs(x-y)>=t -> abs(x-y)>=t+0".asFormula, implyR(1) & ArithmeticSpeculativeSimplification.proveOrRefuteAbs) shouldBe 'proved
   }
 
-  it should "prove a Robix example" in withMathematica { tool =>
+  it should "prove a Robix example" in withMathematica { implicit tool =>
     val fml = "A>=0 & B>0 & V()>=0 & ep>0 & v_0>=0 & -B<=a & a<=A & abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V())) & -t*V()<=xo-xo_0 & xo-xo_0<=t*V() & v=v_0+a*t & -t*(v-a/2*t)<=x-x_0 & x-x_0<=t*(v-a/2*t) & t>=0 & t<=ep & v>=0 -> abs(x-xo)>v^2/(2*B)+V()*(v/B)".asFormula
-    val tactic = alphaRule*@TheType() &
+    val tactic = (alphaRule*) &
       replaceTransform("ep".asTerm, "t".asTerm)(-8, s"abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V()))".asFormula) &
       ArithmeticSpeculativeSimplification.proveOrRefuteAbs
 
@@ -176,7 +176,7 @@ class ArithmeticSimplificationTests extends TacticTestBase {
 
   it should "work on the Robix example" in {
     val fml = "A>=0 & B>0 & V()>=0 & ep>0 & v_0>=0 & -B<=a & a<=A & abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V())) & -t*V()<=xo-xo_0 & xo-xo_0<=t*V() & v=v_0+a*t & -t*(v-a/2*t)<=x-x_0 & x-x_0<=t*(v-a/2*t) & t>=0 & t<=ep & v>=0 -> v=0|abs(x-xo)>v^2/(2*B)+V()*(v/B)".asFormula
-    val s = proveBy(fml, alphaRule*@TheType())
+    val s = proveBy(fml, alphaRule*)
     // only check atoms
     val signs = SignAnalysis.computeSigns(s.subgoals.head)
     println(signs)
@@ -195,10 +195,10 @@ class ArithmeticSimplificationTests extends TacticTestBase {
 
   it should "work on another Robix example" in withMathematica { tool =>
     val fml = "A>=0 & B>0 & V()>=0 & ep>0 & v_0>=0 & -B<=a & a<=A & abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V())) & -t*V()<=xo-xo_0 & xo-xo_0<=t*V() & v=v_0+a*t & -t*(v-a/2*t)<=x-x_0 & x-x_0<=t*(v-a/2*t) & t>=0 & t<=ep & v>=0 -> v=0|abs(x-xo)>v^2/(2*B)+V()*(v/B)".asFormula
-    val tactic = alphaRule*@TheType() &
+    val tactic = (alphaRule*) &
       replaceTransform("ep".asTerm, "t".asTerm)(-8, s"abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V()))".asFormula) &
       abs(2, 0::Nil) & abs(-8, 0::Nil) & orL(-18) & OnAll(orL(-17) partial) &
-      OnAll(andL('_)*@TheType() partial) & OnAll(exhaustiveEqL2R(hide=true)('L)*@TheType() partial)
+      OnAll((andL('_)*) partial) & OnAll((exhaustiveEqL2R(hide=true)('L)*) partial)
     val s = proveBy(fml, tactic)
     // only check atoms
     val signs = SignAnalysis.computeSigns(s.subgoals.head)
@@ -236,10 +236,10 @@ class ArithmeticSimplificationTests extends TacticTestBase {
 
   it should "work on a Robix example" in withMathematica { tool =>
     val fml = "A>=0 & B>0 & V()>=0 & ep>0 & v_0>=0 & -B<=a & a<=A & abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V())) & -t*V()<=xo-xo_0 & xo-xo_0<=t*V() & v=v_0+a*t & -t*(v-a/2*t)<=x-x_0 & x-x_0<=t*(v-a/2*t) & t>=0 & t<=ep & v>=0 -> abs(x-xo)>v^2/(2*B)+V()*(v/B)".asFormula
-    val tactic = alphaRule*@TheType() &
+    val tactic = (alphaRule*) &
       replaceTransform("ep".asTerm, "t".asTerm)(-8, s"abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V()))".asFormula) &
       abs(1, 0::Nil) & abs(-8, 0::Nil) & orL(-18) & OnAll(orL(-17) partial) &
-      OnAll(andL('_)*@TheType() partial) & OnAll(exhaustiveEqL2R(hide=true)('L)*@TheType() partial)
+      OnAll((andL('_)*) partial) & OnAll((exhaustiveEqL2R(hide=true)('L)*) partial)
     val s = proveBy(fml, tactic)
     val signs = SignAnalysis.computeSigns(s.subgoals.head)
     val bounds = SignAnalysis.bounds(s.subgoals.head.succ, signs, SuccPos)
@@ -287,18 +287,18 @@ class ArithmeticSimplificationTests extends TacticTestBase {
     boundHidden.subgoals.head.ante should contain theSameElementsAs List("v>=0".asFormula, "-B<0".asFormula, "v^2<=2*B*(m-x)".asFormula, "v<0".asFormula, "2*C-C^2>=0".asFormula)
     boundHidden.subgoals.head.succ should contain only "x<=m".asFormula
 
-    proveBy(boundHidden.subgoals.head, ArithmeticSpeculativeSimplification.speculativeQE(tool)) shouldBe 'proved
+    proveBy(boundHidden.subgoals.head, ArithmeticSpeculativeSimplification.speculativeQE) shouldBe 'proved
   }
 
   it should "work on a Robix example" in withMathematica { tool =>
     val fml = "A>=0 & B>0 & V()>=0 & ep>0 & v_0>=0 & -B<=a & a<=A & abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V())) & -t*V()<=xo-xo_0 & xo-xo_0<=t*V() & v=v_0+a*t & -t*(v-a/2*t)<=x-x_0 & x-x_0<=t*(v-a/2*t) & t>=0 & t<=ep & v>=0 -> abs(x-xo)>v^2/(2*B)+V()*(v/B)".asFormula
-    val tactic = alphaRule*@TheType() &
+    val tactic = (alphaRule*) &
       replaceTransform("ep".asTerm, "t".asTerm)(-8, s"abs(x_0-xo_0)>v_0^2/(2*B)+V()*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V()))".asFormula) &
       abs(1, 0::Nil) & abs(-8, 0::Nil) & orL(-18) & OnAll(orL(-17) partial) &
-      OnAll(andL('_)*@TheType() partial) & OnAll(exhaustiveEqL2R(hide=true)('L)*@TheType() partial)
+      OnAll((andL('_)*) partial) & OnAll((exhaustiveEqL2R(hide=true)('L)*) partial)
 
     //@todo hideNonmatchingBounds does not yet work on the "middle" abs branches
-    val s = proveBy(fml, tactic <(ArithmeticSpeculativeSimplification.speculativeQE(tool), skip, skip, ArithmeticSpeculativeSimplification.speculativeQE(tool)))
+    val s = proveBy(fml, tactic <(ArithmeticSpeculativeSimplification.speculativeQE, skip, skip, ArithmeticSpeculativeSimplification.speculativeQE))
     s.subgoals should have size 2
   }
 

@@ -39,9 +39,8 @@ object JSONConverter {
       override def preT(p: PosInExpr, e: Term): Either[Option[StopTraversal], Term] = {
         e match {
           case Number(_) => /* Nothing to do here */
-          case Variable(_, _, _) => /* Nothing to do here */
+          case BaseVariable(_, _, _) => /* Nothing to do here */
           case Nothing => /* Nothing to do here */
-          case Anything => /* Nothing to do here */
           case _ => jsonStack.push(List())
         }
         Left(None)
@@ -50,7 +49,7 @@ object JSONConverter {
       override def preP(p: PosInExpr, e: Program): Either[Option[StopTraversal], Program] = {
         e match {
           case ProgramConst(_) => /* Nothing to do */
-          case DifferentialProgramConst(_) => /* Nothing to do */
+          case DifferentialProgramConst(_, _) => /* Nothing to do @todo would it make sense to look at the Space? */
           case _ => jsonStack.push(List())
         }
         Left(None)
@@ -87,9 +86,8 @@ object JSONConverter {
         val cf = ("id" -> convertPos(formulaId, p)) :: Nil
         val o = e match {
           case Number(i) => JsObject(("name" -> JsString(i.toString())) +: cf)
-          case x@Variable(_, _, _) => JsObject(("name" -> convertNamedSymbol(x.asInstanceOf[Variable])) +: cf)
+          case x@BaseVariable(_, _, _) => JsObject(("name" -> convertNamedSymbol(x.asInstanceOf[BaseVariable])) +: cf)
           case Nothing => JsObject(("name" -> JsString("Nothing")) +: cf)
-          case Anything => JsObject(("name" -> JsString("Anything")) +: cf)
           case FuncOf(a, b) => JsObject(("name" -> JsString("apply")) :: ("fnName" -> convertNamedSymbol(a)) :: ("sort" -> JsString(a.sort.toString)) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
           case Differential(a) => JsObject(("name" -> JsString("derivative")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
           case DifferentialSymbol(a) => JsObject(("name" -> JsString("differentialsymbol")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
@@ -109,10 +107,10 @@ object JSONConverter {
         val cf = ("id" -> convertPos(formulaId, p)) :: Nil
         val o = e match {
           case x@ProgramConst(_) => JsObject(("name" -> convertNamedSymbol(x.asInstanceOf[ProgramConst])) +: cf)
-          case x@DifferentialProgramConst(_) => JsObject(("name" -> convertNamedSymbol(x.asInstanceOf[DifferentialProgramConst])) +: cf)
+          case x@DifferentialProgramConst(_, _) => JsObject(("name" -> convertNamedSymbol(x.asInstanceOf[DifferentialProgramConst])) +: cf)
           case Assign(_, _) => JsObject(("name" -> JsString("Assign")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
           case AssignAny(_) => JsObject(("name" -> JsString("NDetAssign")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
-          case DiffAssign(_, _) => JsObject(("name" -> JsString("Assign")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
+          //case DiffAssign(_, _) => JsObject(("name" -> JsString("Assign")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
           case Compose(_, _) => JsObject(("name" -> JsString("Sequence")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
           case Choice(_, _) => JsObject(("name" -> JsString("Choice")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
           case Test(_) => JsObject(("name" -> JsString("Test")) :: ("children" -> JsArray(jsonStack.pop())) :: Nil ++: cf)
@@ -139,11 +137,15 @@ object JSONConverter {
   def convertRule(rule : Rule): JsObject = {
     val cf = ("name" -> JsString(rule.name)) :: Nil
     rule match {
-      case r : AssumptionRule => JsObject(("kind" -> JsString("AssumptionRule")) :: ("pos" -> convertPosition(r.pos))
+      case r : Close => JsObject(("kind" -> JsString("AssumptionRule")) :: ("pos" -> convertPosition(r.pos))
         :: ("assumption" -> convertPosition(r.assume)) :: Nil ++: cf)
       case r : PositionRule => JsObject(("kind" -> JsString("PositionRule"))
         :: ("pos" -> convertPosition(r.pos)) :: Nil ++: cf)
-      case r : TwoPositionRule => JsObject(("kind" -> JsString("TwoPositionRule"))
+      case r : CoHide2 => JsObject(("kind" -> JsString("TwoPositionRule"))
+        :: ("pos1" -> convertPosition(r.pos1)) :: ("pos2" -> convertPosition(r.pos2)) :: Nil ++: cf)
+      case r : ExchangeLeftRule => JsObject(("kind" -> JsString("TwoPositionRule"))
+        :: ("pos1" -> convertPosition(r.pos1)) :: ("pos2" -> convertPosition(r.pos2)) :: Nil ++: cf)
+      case r : ExchangeRightRule => JsObject(("kind" -> JsString("TwoPositionRule"))
         :: ("pos1" -> convertPosition(r.pos1)) :: ("pos2" -> convertPosition(r.pos2)) :: Nil ++: cf)
       case _ => JsObject(("kind" -> JsString("UnspecificRule")) +: cf)
     }

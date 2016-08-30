@@ -7,7 +7,6 @@ package edu.cmu.cs.ls.keymaerax.btactics
 
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
-import edu.cmu.cs.ls.keymaerax.btactics.{RandomFormula, Context, TactixLibrary, UnifyUSCalculus}
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXParser
@@ -78,7 +77,8 @@ class TactixLibraryTests extends TacticTestBase {
   it should "generate and master prove x>=5 -> [{x'=x^2}]x>=5 from list of invariants" in withMathematica { implicit qeTool =>
     proveBy("x>=5 -> [{x'=x^2}]x>=5".asFormula,
       implyR(1) &
-        ChooseSome(someList, (inv:Formula) => diffInvariant(inv)(1) & diffWeaken(1) & master())
+        //@note master() together with ChooseSome leaves goals open, if first alternative doesn't QE --> demand QE after master
+        ChooseSome(someList, (inv:Formula) => diffInvariant(inv)(1) & diffWeaken(1) & (master() & QE))
     ) shouldBe 'proved
   }
 
@@ -112,7 +112,8 @@ class TactixLibraryTests extends TacticTestBase {
   it should "generate and master prove x>=5 -> [{{x'=2}}*]x>=5 from list of loop invariants" in withMathematica { implicit qeTool =>
     proveBy("x>=5 -> [{{x'=2}}*]x>=5".asFormula,
       implyR(1) &
-        ChooseSome(someList, (inv:Formula) => loop(inv)(1) & master())
+        //@note master() together with ChooseSome leaves goals open, if first alternative doesn't QE --> demand QE after master
+        ChooseSome(someList, (inv:Formula) => loop(inv)(1) & (master() & QE))
     ) shouldBe 'proved
   }
 }

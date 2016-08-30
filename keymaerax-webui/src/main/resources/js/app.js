@@ -3,10 +3,12 @@
   'ngCookies',
   'ngSanitize',
   'ngAnimate',
+  'ngTextcomplete',
   'angularTreeview',
   'angularSpinners',
   'ui.tree',
   'cgBusy',
+  'diff-match-patch',
   'ui.bootstrap',
   'ui.bootstrap.tabs',
   'ui.bootstrap.tooltip',
@@ -16,9 +18,12 @@
   'ui.bootstrap.modal',
   'keymaerax.controllers',
   'keymaerax.errorHandlers',
+  'keymaerax.interceptors',
   'keymaerax.services',
+  'keymaerax.ui.keyevents',
   'keymaerax.ui.mouseevents',
   'keymaerax.ui.directives',
+  'keymaerax.ui.tacticeditor',
   'progressMeter',
   'proofProgressChart',
   'formula',
@@ -100,7 +105,7 @@ keymaeraProofApp.config(['$routeProvider',
       }).
       when('/license', {
                 templateUrl: 'partials/license_dialog.html',
-                controller: 'DashboardCtrl.License'
+                controller: 'ServerInfoCtrl'
       }).
       otherwise({
         redirectTo: '/dashboard'
@@ -114,7 +119,8 @@ keymaeraProofApp.config(['$uibTooltipProvider', function($tooltipProvider) {
   });
 }]);
 
-// intercept all generic ErrorResponses
+// intercept all generic ErrorResponses, intercept all requests to add authentication header
 keymaeraProofApp.config(['$httpProvider', function($httpProvider) {
   $httpProvider.interceptors.push('ResponseErrorHandler');
+  $httpProvider.interceptors.push('authInjector');
 }])

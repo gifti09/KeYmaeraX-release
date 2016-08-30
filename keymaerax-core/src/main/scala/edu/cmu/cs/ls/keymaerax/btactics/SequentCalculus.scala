@@ -34,7 +34,7 @@ trait SequentCalculus {
   // Propositional tactics
 
   /** Hide/weaken whether left or right */
-  lazy val hide               : DependentPositionTactic = ProofRuleTactics.hide
+  val hide    : DependentPositionTactic = ProofRuleTactics.hide
   /** Hide/weaken left: weaken a formula to drop it from the antecedent ([[edu.cmu.cs.ls.keymaerax.core.HideLeft HideLeft]]) */
   val hideL   : BuiltInLeftTactic = "HideL" by { (pr:Provable, pos:AntePosition) => pr(HideLeft(pos.checkTop), 0) }
   /** Hide/weaken right: weaken a formula to drop it from the succcedent ([[edu.cmu.cs.ls.keymaerax.core.HideRight HideRight]]) */
@@ -57,14 +57,14 @@ trait SequentCalculus {
   val notR    : BuiltInRightTactic = "notR" by { (pr:Provable, pos:SuccPosition) => pr(NotRight(pos.checkTop), 0) }
   /** &L And left: split a conjunction in the antecedent into separate assumptions ([[edu.cmu.cs.ls.keymaerax.core.AndLeft AndLeft]]) */
   val andL    : BuiltInLeftTactic = "andL" by { (pr:Provable, pos:AntePosition) => pr(AndLeft(pos.checkTop), 0) }
-  /** Inverse of andL */
+  /** Inverse of [[andL]] */
   def andLi(pos1: AntePos = AntePos(0), pos2: AntePos = AntePos(1)): DependentTactic = PropositionalTactics.andLi(pos1, pos2)
   lazy val andLi: DependentTactic = andLi()
   /** &R And right: prove a conjunction in the succedent on two separate branches ([[edu.cmu.cs.ls.keymaerax.core.AndRight AndRight]]) */
   val andR    : BuiltInRightTactic = "andR" by { (pr:Provable, pos:SuccPosition) => pr(AndRight(pos.checkTop), 0) }
   /** |L Or left: use a disjunction in the antecedent by assuming each option on separate branches ([[edu.cmu.cs.ls.keymaerax.core.OrLeft OrLeft]]) */
   val orL     : BuiltInLeftTactic = "orL" by { (pr:Provable, pos:AntePosition) => pr(OrLeft(pos.checkTop), 0) }
-  /** Inverse of orR */
+  /** Inverse of [[orR]] */
   def orRi(pos1: SuccPos = SuccPos(0), pos2: SuccPos = SuccPos(1)): DependentTactic = PropositionalTactics.orRi(pos1, pos2)
   lazy val orRi: DependentTactic = orRi()
   /** |R Or right: split a disjunction in the succedent into separate formulas to show alternatively ([[edu.cmu.cs.ls.keymaerax.core.OrRight OrRight]]) */
@@ -73,7 +73,7 @@ trait SequentCalculus {
   val implyL  : BuiltInLeftTactic = "implyL" by { (pr:Provable, pos:AntePosition) => pr(ImplyLeft(pos.checkTop), 0) }
   /** ->R Imply right: prove an implication in the succedent by assuming its left-hand side and proving its right-hand side ([[edu.cmu.cs.ls.keymaerax.core.ImplyRight ImplyRight]]) */
   val implyR  : BuiltInRightTactic = "implyR" by { (pr:Provable, pos:SuccPosition) => pr(ImplyRight(pos.checkTop), 0) }
-  /** Inverse of implyR */
+  /** Inverse of [[implyR]] */
   def implyRi(antePos: AntePos = AntePos(0), succPos: SuccPos = SuccPos(0)): DependentTactic = PropositionalTactics.implyRi(antePos, succPos)
   lazy val implyRi: DependentTactic = implyRi()
   /** <->L Equiv left: use an equivalence by considering both true or both false cases ([[edu.cmu.cs.ls.keymaerax.core.EquivLeft EquivLeft]]) */
@@ -98,19 +98,26 @@ trait SequentCalculus {
     * @see [[edu.cmu.cs.ls.keymaerax.core.Skolemize]]
     * @see [[edu.cmu.cs.ls.keymaerax.btactics.FOQuantifierTactics.allSkolemize]] */
   lazy val allR               : DependentPositionTactic = FOQuantifierTactics.allSkolemize
-  /** all left: instantiate a universal quantifier in the antecedent by a concrete instance */
+  /** all left: instantiate a universal quantifier for variable x in the antecedent by the concrete instance `term`. */
   def allL(x: Variable, inst: Term) : DependentPositionTactic = FOQuantifierTactics.allInstantiate(Some(x), Some(inst))
+  /** all left: instantiate a universal quantifier in the antecedent by the concrete instance `term`. */
   def allL(inst: Term)              : DependentPositionTactic = FOQuantifierTactics.allInstantiate(None, Some(inst))
+  /** all left: instantiate a universal quantifier in the antecedent by itself. */
   lazy val allL                     : DependentPositionTactic = FOQuantifierTactics.allInstantiate(None, None)
+  /** all left: instantiate a universal quantifier in the antecedent by the term obtained from position `instPos`. */
+  //@todo turn this into a more general function that obtains data from the sequent.
   def allLPos(instPos: Position)    : DependentPositionTactic = "all instantiate pos" by ((pos:Position, sequent:Sequent) => sequent.sub(instPos) match {
     case Some(t: Term) => allL(t)(pos)
   })
-  /** exists left: Skolemize an existential quantifier in the antecedent */
-  lazy val existsL            : DependentPositionTactic = FOQuantifierTactics.existsSkolemize
-  /** exists right: instantiate an existential quantifier in the succedent by a concrete instance as a witness */
+  /** exists left: Skolemize an existential quantifier in the antecedent by introducing a new name for the witness. */
+  lazy val existsL                    : DependentPositionTactic = "existsL" by ((pos,seq) => FOQuantifierTactics.existsSkolemize(pos))
+  /** exists right: instantiate an existential quantifier for x in the succedent by a concrete instance `inst` as a witness */
   def existsR(x: Variable, inst: Term): DependentPositionTactic = FOQuantifierTactics.existsInstantiate(Some(x), Some(inst))
+  /** exists right: instantiate an existential quantifier in the succedent by a concrete instance `inst` as a witness */
   def existsR(inst: Term)             : DependentPositionTactic = FOQuantifierTactics.existsInstantiate(None, Some(inst))
-  lazy val existsR                    : DependentPositionTactic = FOQuantifierTactics.existsInstantiate(None, None)
+  /** exists right: instantiate an existential quantifier for x in the succedent by itself as a witness */
+  lazy val existsR                    : DependentPositionTactic = "existsR" by ((pos,seq) => FOQuantifierTactics.existsInstantiate(None, None)(pos))
+  /** exists right: instantiate an existential quantifier in the succedent by a concrete term obtained from position `instPos`. */
   def existsRPos(instPos: Position)   : DependentPositionTactic = "exists instantiate pos" by ((pos:Position, sequent:Sequent) => sequent.sub(instPos) match {
     case Some(t: Term) => existsR(t)(pos)
   })
@@ -126,7 +133,7 @@ trait SequentCalculus {
   def close(a: AntePos, s: SuccPos) : BelleExpr = //cohide2(a, s) & ProofRuleTactics.trivialCloser
     new BuiltInTactic("close") {
       override def result(provable: Provable) = {
-        ProofRuleTactics.requireOneSubgoal(provable)
+        ProofRuleTactics.requireOneSubgoal(provable, "close(" + a + "," + s + ")")
         provable(Close(a, s), 0)
       }
     }

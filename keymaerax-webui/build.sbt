@@ -1,12 +1,14 @@
+import java.io.{BufferedReader, FileReader}
+
 name := "KeYmaeraX-Web"
 
-version := "4.2b1"
+version := new BufferedReader(new FileReader("keymaerax-core/src/main/resources/VERSION")).readLine()
 
 //scalacOptions ++= Seq("-Xno-patmat-analysis")
 
 resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots" // ScalaMeter
 
-assemblyJarName in assembly := "keymaerax-web-" + version.value + ".jar"
+assemblyJarName in assembly := "keymaerax-web.jar"
 
 scalacOptions in (Compile, doc) ++= Seq("-doc-root-content", "rootdoc.txt")
 
@@ -24,7 +26,7 @@ libraryDependencies += "org.scalamock" %% "scalamock-scalatest-support" % "3.2" 
 
 /// mongodb driver
 
-libraryDependencies += "org.mongodb" %% "casbah" % "2.7.4"
+//libraryDependencies += "org.mongodb" %% "casbah" % "2.7.4"
 
 /// sqlite driver
 

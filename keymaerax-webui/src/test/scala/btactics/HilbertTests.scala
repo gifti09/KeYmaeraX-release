@@ -7,7 +7,6 @@ package edu.cmu.cs.ls.keymaerax.btactics
 
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.{RenUSubst, TheType, Position, PosInExpr, SuccPosition}
-import edu.cmu.cs.ls.keymaerax.btactics.{RandomFormula, Context, TactixLibrary, UnifyUSCalculus}
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXParser
@@ -24,6 +23,7 @@ import scala.collection.immutable._
 @SummaryTest
 @UsualTest
 class HilbertTests extends TacticTestBase {
+  import HilbertCalculus.Derive._
 
   object TestLib extends UnifyUSCalculus
 
@@ -221,7 +221,7 @@ class HilbertTests extends TacticTestBase {
       implyR(1) &
         //@todo the problem is that DI should be used in show prereq branch of useAt instead of defaulting to master
         DC("5<=x".asFormula)(1) <(
-        debug("DC to DI") & diffInd(qeTool)(1),
+        debug("DC to DI") & diffInd()(1),
         debug("DC to DW") & DW(1) & abstractionb(1) & QE
         )
     ) shouldBe 'proved
@@ -234,7 +234,7 @@ class HilbertTests extends TacticTestBase {
         useAt("[:=] assign equational")(1) &
         step(1) & step(1) &
         useAt("DI differential invariant")(1) & //@todo diffInd(1)
-        ((step('L) | step('R))*@TheType()) & abstractionb(1) & master()
+        ((step('L) | step('R))*) & abstractionb(1) & master()
     ) shouldBe 'proved
   }
 
@@ -326,7 +326,7 @@ class HilbertTests extends TacticTestBase {
       implyR(1) &
         chase(3,3)(1) &
         //@todo need to locate diffInd to after update prefix
-        diffInd(qeTool)(1, 1::Nil) &
+        diffInd()(1, 1::Nil) &
         assignb(1) & // handle updates
         QE
     ) shouldBe 'proved
@@ -348,7 +348,7 @@ class HilbertTests extends TacticTestBase {
     proveBy(Sequent(IndexedSeq(), IndexedSeq("x>=5 -> [x:=x+1;{x'=2}]x>=5".asFormula)),
       implyR(1) & chase(1) &
         //@todo need to locate diffInd to after update prefix
-        diffInd(qeTool)(1, 1::Nil) &
+        diffInd()(1, 1::Nil) &
         assignb(1) & // handle updates
         QE
     ) shouldBe 'proved
@@ -516,7 +516,7 @@ class HilbertTests extends TacticTestBase {
 
   "useFor" should "use DX to forward (true&x=y) to <{x'=2}>x=y" in {
     useFor("DX diamond differential skip", PosInExpr(0::Nil),
-      (us:RenUSubst) => us++RenUSubst(Seq((DifferentialProgramConst("c"), KeYmaeraXParser.differentialProgramParser("x'=2"))))
+      (us:RenUSubst) => us++RenUSubst(Seq((DifferentialProgramConst("c", AnyArg), KeYmaeraXParser.differentialProgramParser("x'=2"))))
     )(SuccPosition(1, Nil)) (
       Provable.startProof(Sequent(IndexedSeq(), IndexedSeq("(true&x=y)".asFormula)))
     ).conclusion shouldBe Sequent(IndexedSeq(), IndexedSeq("<{x'=2}>x=y".asFormula))

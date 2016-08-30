@@ -1,13 +1,13 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, BelleProvable, SequentialInterpreter}
-import edu.cmu.cs.ls.keymaerax.btactics.{ConfigurableGenerate, DerivedAxioms, NoneGenerate, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.launcher.DefaultConfiguration
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.tools._
 import org.scalactic.{AbstractStringUniformity, Uniformity}
 import org.scalatest.{BeforeAndAfterEach, FlatSpec, Matchers}
+
 
 /**
  * Base class for tactic tests.
@@ -25,9 +25,9 @@ class TacticTestBase extends FlatSpec with Matchers with BeforeAndAfterEach {
    * }}}
    * */
   def withMathematica(testcode: Mathematica => Any) {
-    val mathematica = new Mathematica()
-    mathematica.init(DefaultConfiguration.defaultMathematicaConfig)
-    withTool(mathematica)(testcode)
+    val provider = new MathematicaToolProvider(DefaultConfiguration.defaultMathematicaConfig)
+    ToolProvider.setProvider(provider)
+    testcode(provider.tool)
   }
 
   /**
@@ -41,9 +41,9 @@ class TacticTestBase extends FlatSpec with Matchers with BeforeAndAfterEach {
     * }}}
     * */
   def withZ3(testcode: Z3 => Any) {
-    val z3 = new Z3()
-    z3.init(DefaultConfiguration.defaultMathematicaConfig)
-    withTool(z3)(testcode)
+    val provider = new Z3ToolProvider
+    ToolProvider.setProvider(provider)
+    testcode(provider.tool)
   }
 
   /**
@@ -57,19 +57,9 @@ class TacticTestBase extends FlatSpec with Matchers with BeforeAndAfterEach {
     * }}}
     * */
   def withPolya(testcode: Polya => Any) {
-    val polya = new Polya()
-    polya.init(DefaultConfiguration.defaultMathematicaConfig)
-    withTool(polya)(testcode)
-  }
-
-  /** Sets 'tool' as the tool used in DerivedAxioms and TactixLibrary. tool must be initialized already. */
-  def withTool[T <: Tool with QETool with DiffSolutionTool with CounterExampleTool](tool: T)(testcode: T => Any): Unit = {
-    tool shouldBe 'initialized
-    DerivedAxioms.qeTool = tool
-    TactixLibrary.tool = tool
-    try {
-      testcode(tool)
-    } finally tool.shutdown()
+    val provider = new PolyaToolProvider
+    ToolProvider.setProvider(provider)
+    testcode(provider.tool)
   }
 
   /** Test setup */
@@ -82,18 +72,15 @@ class TacticTestBase extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   /* Test teardown */
   override def afterEach() = {
-    if (DerivedAxioms.qeTool != null) {
-      DerivedAxioms.qeTool match { case t: Tool => t.shutdown() }
-      DerivedAxioms.qeTool = null
-    }
-    if (TactixLibrary.tool != null) {
-      TactixLibrary.tool match { case t: Tool => t.shutdown() }
-      TactixLibrary.tool = null
-      TactixLibrary.invGenerator = new NoneGenerate()
-    }
+    PrettyPrinter.setPrinter(e => e.getClass.getName)
+    ToolProvider.shutdown()
+    TactixLibrary.invGenerator = new NoneGenerate()
   }
 
-  /** Proves a formula using the specified tactic. Fails the test when tactic fails. */
+  /** Proves a formula using the specified tactic. Fails the test when tactic fails.
+    * @todo remove proveBy in favor of [[TactixLibrary.proveBy]] to avoid incompatibilities or meaingless tests if they do something else
+    */
+  //@deprecated("TactixLibrary.proveBy should probably be used instead of TacticTestBase")
   def proveBy(fml: Formula, tactic: BelleExpr): Provable = {
     val v = BelleProvable(Provable.startProof(fml))
     theInterpreter(tactic, v) match {
@@ -103,8 +90,18 @@ class TacticTestBase extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 
   /** Proves a sequent using the specified tactic. Fails the test when tactic fails. */
+  //@deprecated("TactixLibrary.proveBy should probably be used instead of TacticTestBase")
   def proveBy(s: Sequent, tactic: BelleExpr): Provable = {
     val v = BelleProvable(Provable.startProof(s))
+    theInterpreter(tactic, v) match {
+      case BelleProvable(provable, _) => provable
+      case r => fail("Unexpected tactic result " + r)
+    }
+  }
+
+  //@deprecated("TactixLibrary.proveBy should probably be used instead of TacticTestBase")
+  def proveBy(p: Provable, tactic: BelleExpr): Provable = {
+    val v = BelleProvable(p)
     theInterpreter(tactic, v) match {
       case BelleProvable(provable, _) => provable
       case r => fail("Unexpected tactic result " + r)
@@ -121,4 +118,10 @@ class TacticTestBase extends FlatSpec with Matchers with BeforeAndAfterEach {
       def normalized(s: String): String = s.replaceAll("\\s+", "")
       override def toString: String = "whiteSpaceRemoved"
     }
+
+  def loneSucc(p: Provable) = {
+    assert(p.subgoals.length==1)
+    assert(p.subgoals.last.succ.length==1)
+    p.subgoals.last.succ.last
+  }
 }

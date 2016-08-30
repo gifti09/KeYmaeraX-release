@@ -51,8 +51,9 @@ function showMessage(modal, title, message, size) {
 angular.module('keymaerax.errorHandlers', []).factory('ResponseErrorHandler', ['$q', '$injector', function($q, $injector) {
 
   var responseInterceptor = {
+    loginPromise: null,
     response: function(response) {
-      if (response.data.type === 'error') {
+      if (response.data !== undefined && response.data !== null && response.data.type === 'error') {
         console.error(response.data.textStatus);
         // server-created error response -> reject so that $http.get and $http.post error handlers are invoked
         return $q.reject(response);
@@ -60,10 +61,23 @@ angular.module('keymaerax.errorHandlers', []).factory('ResponseErrorHandler', ['
       return response;
     },
     responseError: function(rejection) {
-      if (rejection.status === 500) {
+      if (rejection.status == -1) {
+        // server unavailable
+        var $uibModal = $injector.get('$uibModal'); // inject manually to avoid circular dependency
+        $uibModal.open({
+          //@note template instead of template URL, since server is offline already
+          template: '<div class="modal-header"><h3 class="modal-title">Server is offline</h3></div><div class="modal-body"><p>The KeYmaera X server is unavailable. All your recent work is saved (except for the click that just failed). If you run KeYmaera X locally, please restart the server.</p><p>This dialog will close automatically when the server is online again.</p></div>',
+          controller: 'ServerOfflineDialogCtrl',
+          size: 'md',
+          backdrop: 'static',
+          animation: false
+        });
+        // response handled here, prevent further calls
+        return rejection;
+      } else if (rejection.status === 500) {
         // report uncaught server-side exception
-        var uibModal = $injector.get('$uibModal'); // inject manually to avoid circular dependency
-        var modalInstance = uibModal.open({
+        var $uibModal = $injector.get('$uibModal'); // inject manually to avoid circular dependency
+        var modalInstance = $uibModal.open({
           templateUrl: 'partials/error_alert.html',
           controller: 'ErrorAlertCtrl',
           size: 'lg',
@@ -75,6 +89,28 @@ angular.module('keymaerax.errorHandlers', []).factory('ResponseErrorHandler', ['
         });
         // response handled here, prevent further calls
         return rejection;
+      } else if (rejection.status === 401 || rejection.status === 403) {
+        // session expired or user does not have privileges to access data -> display login
+        var $uibModal = $injector.get('$uibModal'); // inject manually to avoid circular dependency
+        var $http = $injector.get('$http');
+        var deferred = $q.defer();
+        // on a page with multiple async requests: show login only on first such request, chain all others to successful login
+        if (this.loginPromise == null) {
+          var modalInstance = $uibModal.open({
+            templateUrl: 'templates/logindialog.html',
+            controller: 'LoginDialogCtrl',
+            size: 'md',
+            backdrop: 'static'
+          });
+          this.loginPromise = modalInstance.result.then(deferred.resolve, deferred.reject);
+        } else {
+          this.loginPromise.then(deferred.resolve, deferred.reject);
+        }
+        // When the user is logged in, make the same backend call again and chain the request
+        return deferred.promise.then(function() {
+          this.loginPromise = null;
+          return $http(rejection.config);
+        });
       } else {
         // somebody else has to handle
         return $q.reject(rejection);
@@ -181,3 +217,52 @@ angular.module('keymaerax.controllers').controller('ModalMessageCtrl', function(
   $scope.message = message;
   $scope.ok = function() { $uibModalInstance.close(); }
 });
+
+angular.module('keymaerax.controllers').controller('LoginDialogCtrl', ['$scope', '$http', '$uibModal', '$uibModalInstance', 'sessionService', function($scope, $http, $uibModal, $uibModalInstance, sessionService) {
+  $scope.username = ""
+  $scope.password = ""
+
+  $scope.processLogin = function() { login($scope.username, $scope.password); }
+
+  $scope.close = function() { $uibModalInstance.dismiss("Close"); }
+
+  login = function(username, password) {
+    if (username === "guest") {
+      // guests have to accept the license every time
+      var modalInstance = $uibModal.open({
+        templateUrl: 'partials/license_dialog.html',
+        controller: 'LicenseDialogCtrl',
+        backdrop: "static",
+        size: 'lg'
+      });
+      modalInstance.result.then(function() {
+        $http.get("/user/" + username + "/" + password).then(function(response) {
+          if(response.data.type == "LoginResponse") {
+            if(response.data.success) {
+              sessionService.setToken(response.data.sessionToken);
+              sessionService.setUser(response.data.value);
+              $uibModalInstance.close("Login success");
+            } else {
+              $uibModalInstance.dismiss("Please check user name and/or password");
+              showMessage($uibModal, "Login failed", "Please check user name and/or password");
+            }
+          }
+        });
+      })
+    } else {
+      $http.get("/user/" + username + "/" + password)
+      .then(function(response) {
+        if(response.data.type == "LoginResponse") {
+          if(response.data.success) {
+            sessionService.setToken(response.data.sessionToken);
+            sessionService.setUser(response.data.value);
+            $uibModalInstance.close("Login success");
+          } else {
+            $uibModalInstance.dismiss("Please check user name and/or password");
+            showMessage($uibModal, "Login failed", "Please check user name and/or password");
+          }
+        }
+      });
+    }
+  }
+}]);

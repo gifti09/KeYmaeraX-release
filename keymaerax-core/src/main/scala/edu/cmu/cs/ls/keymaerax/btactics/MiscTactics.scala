@@ -47,9 +47,9 @@ object DebuggingTactics {
   def printIndexed(message: => String): BuiltInTactic = debug(message, doPrint=true, _.prettyString)
 
   /** debug is a no-op tactic that prints a message and the current provable, if the system property DEBUG is true. */
-  def debugAt(message: => String): BuiltInPositionTactic = new BuiltInPositionTactic("debug") {
+  def debugAt(message: => String, doPrint: Boolean = DEBUG): BuiltInPositionTactic = new BuiltInPositionTactic("debug") {
     override def computeResult(provable: Provable, pos: Position): Provable = {
-      if (DEBUG) println("===== " + message + " ==== " + "\n\t with formula: " + provable.subgoals.head.at(pos)
+      if (doPrint) println("===== " + message + " ==== " + "\n\t with formula: " + provable.subgoals.head.at(pos)
         + " at position " + pos + " of first subgoal,"
         + "\n\t entire provable: " + provable + " =====")
       provable
@@ -92,6 +92,14 @@ object DebuggingTactics {
     }
   }
 
+  def assertProvableSize(provableSize: Int): BuiltInTactic = new BuiltInTactic(s"assertProvableSize(${provableSize})") {
+    override def result(provable: Provable): Provable = {
+      if (provable.subgoals.length != provableSize)
+        throw new BelleUserGeneratedError(s"assertProvableSize failed: Expected to have ${provableSize} open goals but found an open goal with ${provable.subgoals.size}");
+      provable
+    }
+  }
+
   /** assert is a no-op tactic that raises an error if the provable does not satisfy a condition at position pos. */
   def assert(cond: (Sequent,Position)=>Boolean, message: => String): BuiltInPositionTactic = new BuiltInPositionTactic("assert") {
     override def computeResult(provable: Provable, pos: Position): Provable = {
@@ -115,10 +123,11 @@ object DebuggingTactics {
   }
 
   /** no-op tactic that raises an error if the provable is not proved */
-  lazy val assertProved = new BuiltInTactic("assert proved") {
+  lazy val assertProved: BelleExpr = assertProved()
+  def assertProved(msg: String = ""): BelleExpr = new BuiltInTactic("assert proved") {
     override def result(provable : Provable): Provable =
       if (provable.isProved) provable
-      else throw new BelleError("Expected proved provable, but got " + provable)
+      else throw new BelleError((if (msg.nonEmpty) msg+"\n" else "") + "Expected proved provable, but got " + provable)
   }
 }
 
@@ -157,16 +166,6 @@ object Idioms {
     override def computeExpr(v: BelleValue): BelleExpr = tactic
   }
 
-  /** Establishes the fact by appealing to an existing tactic. */
-  //@todo why is this not just UnifyUSCalculus.by(Provable)?
-  @deprecated("Use UnifyUSCalculus.by(Provable) instead")
-  def by(fact: Provable) = new BuiltInTactic("Established by existing provable") {
-    override def result(provable: Provable): Provable = {
-      assert(provable.subgoals.length == 1, "Expected one subgoal but found " + provable.subgoals.length)
-      provable(fact, 0)
-    }
-  }
-
   /**
    * shift(shift, t) does t shifted from position p to shift(p)
    */
@@ -177,7 +176,7 @@ object Idioms {
   /**
    * shift(child, t) does t to positions shifted by child
    */
-  def shift(child: PosInExpr, t: DependentPositionTactic): DependentPositionTactic = shift(p => p + child, t)
+  def shift(child: PosInExpr, t: DependentPositionTactic): DependentPositionTactic = shift(p => p ++ child, t)
 }
 
 /** Creates tactic objects */
@@ -191,10 +190,26 @@ object TacticFactory {
    * @param name The tactic name.
    */
   implicit class TacticForNameFactory(val name: String) {
+    {
+      try {
+        if (name != "ANON" && DerivationInfo.ofCodeName(name).codeName.toLowerCase() != name.toLowerCase())
+          println("WARNING: codeName should be changed to a consistent name: " + name + " vs. " + DerivationInfo.ofCodeName(name).codeName)
+      } catch {
+        case _: IllegalArgumentException => println("WARNING: codeName not found: " + name)
+      }
+    }
+
     /** Creates a named tactic */
     def by(t: BelleExpr): BelleExpr = new NamedTactic(name, t)
 
+    def byTactic(t: ((Provable, Position, Position) => BelleExpr)) = new DependentTwoPositionTactic(name) {
+      override def computeExpr(p1: Position, p2: Position): DependentTactic = new DependentTactic("") {
+        override def computeExpr(p: Provable) = t(p, p1, p2)
+      }
+    }
+
     /** Creates a dependent position tactic without inspecting the formula at that position */
+    //@todo why does this have to have a DependentPositionTactic instead of a PositionalTactic?
     def by(t: (Position => BelleExpr)): DependentPositionTactic = new DependentPositionTactic(name) {
       override def factory(pos: Position): DependentTactic = new DependentTactic(name) {
         override def computeExpr(provable: Provable): BelleExpr = t(pos)
@@ -211,7 +226,7 @@ object TacticFactory {
       }
     }
 
-    def byWithInput(input: Expression, t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic = new DependentPositionWithAppliedInputTactic(name, input) {
+    def byWithInputs(inputs: List[Expression], t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic = new DependentPositionWithAppliedInputTactic(name, inputs) {
       override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
         override def computeExpr(sequent: Sequent): BelleExpr = {
           require(pos.isIndexDefined(sequent), "Cannot apply at undefined position " + pos + " in sequent " + sequent)
@@ -219,6 +234,9 @@ object TacticFactory {
         }
       }
     }
+
+    def byWithInput(input: Expression, t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic =
+      byWithInputs(List(input), t)
 
     /** Creates a dependent tactic, which can inspect the sole sequent */
     def by(t: Sequent => BelleExpr): DependentTactic = new SingleGoalDependentTactic(name) {
@@ -232,7 +250,7 @@ object TacticFactory {
       */
     def by(t: (Provable, SuccPosition) => Provable): BuiltInRightTactic = new BuiltInRightTactic(name) {
       override def computeSuccResult(provable: Provable, pos: SuccPosition): Provable = {
-        requireOneSubgoal(provable)
+        requireOneSubgoal(provable, name)
         t(provable, pos)
       }
     }
@@ -244,7 +262,7 @@ object TacticFactory {
       */
     def by(t: (Provable, AntePosition) => Provable): BuiltInLeftTactic = new BuiltInLeftTactic(name) {
       override def computeAnteResult(provable: Provable, pos: AntePosition): Provable = {
-        requireOneSubgoal(provable)
+        requireOneSubgoal(provable, name)
         t(provable, pos)
       }
     }
@@ -256,11 +274,14 @@ object TacticFactory {
       */
     def by(t: (Provable, Position, Position) => Provable): BuiltInTwoPositionTactic = new BuiltInTwoPositionTactic(name) {
       override def computeResult(provable: Provable, pos1: Position, pos2: Position): Provable = {
-        requireOneSubgoal(provable)
+        requireOneSubgoal(provable, name)
         t(provable, pos1, pos2)
       }
     }
   }
+
+  def anon(t: ((Position, Sequent) => BelleExpr)) = "ANON" by t
+  def anon(t: (Sequent => BelleExpr)) = "ANON" by t
 
 }
 

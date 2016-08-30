@@ -2,6 +2,9 @@
 * Copyright (c) Carnegie Mellon University.
 * See LICENSE.txt for the conditions of this license.
 */
+/**
+  * @note Code Review: 2016-08-02 postponed since Polya output processing needs to be made more robust
+  */
 package edu.cmu.cs.ls.keymaerax.tools
 
 import java.io.{FileWriter, FileOutputStream, File, InputStream}
@@ -19,6 +22,8 @@ import scala.sys.process._
  */
 class PolyaSolver extends SMTSolver {
   private val DEBUG = System.getProperty("DEBUG", "true")=="true"
+
+  private val converter = DefaultSMTConverter
 
   /** Get the absolute path to Polya jar */
   private val pathToPolya : String = {
@@ -54,10 +59,11 @@ class PolyaSolver extends SMTSolver {
       // Copy file to temporary directory
       polyaDest.getChannel.transferFrom(polyaSource, 0, Long.MaxValue)
       val polyaAbsPath = polyaTemp.getAbsolutePath
+      //@note this is a non-windows solution but there's no windows version currently
       Runtime.getRuntime.exec("chmod u+x " + polyaAbsPath)
       polyaSource.close()
       polyaDest.close()
-      assert(new File(polyaAbsPath).exists())
+      assert(new File(polyaAbsPath).exists(), "Polya has been unpacked successfully")
       polyaAbsPath
     }
   }
@@ -75,6 +81,13 @@ class PolyaSolver extends SMTSolver {
    *                  result
    *
    * @return result
+    * @todo Code Review: this is not a trustworthy way of getting reliable decisions from Polya. Example broken output would be {{{
+    *       I am about to multiply
+    *       x*5+2*x*x*y+
+    *       1
+    *    }}}
+    *    stop, which will be incorrectly interpreted as True
+    * @todo Consider direct Java->Python link instead of misparsing
    */
   private def getTruncatedResult(output: String) : String = {
     var reversedOutput = output.reverse
@@ -82,36 +95,12 @@ class PolyaSolver extends SMTSolver {
       reversedOutput = reversedOutput.stripPrefix("\n")
     }
     val reversedResult = reversedOutput.substring(0, reversedOutput.indexOf("\n"))
-    return reversedResult.reverse
-  }
-
-  /**
-   * Check satisfiability with Polya
-   * @param cmd the command for running Polya with a given SMT file
-   * @return    Polya output as String and the interpretation of Polya output as KeYmaera X formula
-   */
-  def run(cmd: String) : (String, Formula) = {
-    val polyaOutput = cmd.!!
-    if (DEBUG) println("[Polya result] \n" + polyaOutput)
-    val polyaResult = getTruncatedResult(polyaOutput)
-    val kResult = {
-      if (polyaResult.startsWith("-1")) False
-      else if(polyaResult.startsWith("1")) True
-      else if(polyaResult.startsWith("0")) False
-      else throw new SMTConversionException("Conversion of Polya result \n" + polyaResult + "\n is not defined")
-    }
-    (polyaOutput, kResult)
-  }
-
-  //@todo Code Review: this function should be removed
-  /** Return Polya QE result */
-  def qe(f: Formula) : Formula = {
-    qeEvidence(f)._1
+    reversedResult.reverse
   }
 
   /** Return Polya QE result and the proof evidence */
   def qeEvidence(f: Formula) : (Formula, Evidence) = {
-    val smtCode = SMTConverter(f, "Polya") + "\n(check-sat)\n"
+    val smtCode = converter(f)
     if (DEBUG) println("[Solving with Polya...] \n" + smtCode)
     val smtFile = File.createTempFile("polyaQe", ".smt2")
     val writer = new FileWriter(smtFile)
@@ -119,11 +108,19 @@ class PolyaSolver extends SMTSolver {
     writer.flush()
     writer.close()
     val cmd = pathToPolya + " " + smtFile.getAbsolutePath
-    val (polyaOutput, kResult) = run(cmd)
-    kResult match {
-      case f: Formula => (f, new ToolEvidence(immutable.Map("input" -> smtCode, "output" -> polyaOutput)))
-      case _ => throw new Exception("Expected a formula from QE call but got a non-formula expression.")
-    }
+    /** Polya output as String, (check-sat) gives 1, -1 or 0 */
+    val polyaOutput = cmd.!!
+    if (DEBUG) println("[Polya result] \n" + polyaOutput)
+    val polyaResult = getTruncatedResult(polyaOutput)
+    /** Interpretation of Polya output as KeYmaera X formula
+      * if Polya output is 1, then return True
+      * if Polya output is -1 or 0, then throw exception
+      * Polya does not have other possible result for (check-sat)
+      */
+    if (polyaResult.equals("-1")) throw new SMTQeException("QE with Polya gives -1 (POSSIBLY SAT). Cannot reduce the following formula to True:\n" + KeYmaeraXPrettyPrinter(f) + "\n")
+    else if(polyaResult.equals("1")) (True, ToolEvidence(immutable.List("input" -> smtCode, "output" -> polyaOutput)))
+    else if(polyaResult.equals("0")) throw new SMTQeException("QE with Polya gives 0 (FAILED). Cannot reduce the following formula to True:\n" + KeYmaeraXPrettyPrinter(f) + "\n")
+    else throw new SMTConversionException("Conversion of Polya result \n" + polyaResult + "\n is not defined")
   }
 
   /**
@@ -132,7 +129,7 @@ class PolyaSolver extends SMTSolver {
    * @return   the simplified term, or the original term if the simplify result is not a parsable KeYmaera X term
    */
   def simplify(t: Term) : Term = {
-    val smtCode = SMTConverter.generateSimplify(t, "Polya")
+    val smtCode = converter.generateSimplify(t)
     if (DEBUG) println("[Simplifying with Polya ...] \n" + smtCode)
     val smtFile = File.createTempFile("polyaSimplify", ".smt2")
     val writer = new FileWriter(smtFile)

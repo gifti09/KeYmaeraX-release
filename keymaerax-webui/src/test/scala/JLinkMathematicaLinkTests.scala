@@ -61,25 +61,21 @@ class  JLinkMathematicaLinkTests extends TacticTestBase {
   }
 
   if (new java.io.File("/Applications/Mathematica9.app").exists) {
-    "Mathematica 9" should "not fail activation test on MacOS" taggedAs IgnoreInBuildTest in withTool({
+    "Mathematica 9" should "not fail activation test on MacOS" taggedAs IgnoreInBuildTest in {
       val mathematica = new Mathematica()
       mathematica.init(Map("linkName" -> "/Applications/Mathematica9.app/Contents/MacOS/MathKernel"))
-      mathematica
-    }) { link =>
-      // nothing to do here, initialization is done already and will have failed if Mathematica is not activated
+      mathematica shouldBe 'initialized
     }
   }
 
-  "Mathematica 10" should "not fail activation test on MacOS" taggedAs IgnoreInBuildTest in withTool({
+  "Mathematica 10" should "not fail activation test on MacOS" taggedAs IgnoreInBuildTest in {
     val mathematica = new Mathematica()
     mathematica.init(Map("linkName" -> "/Applications/Mathematica.app/Contents/MacOS/MathKernel"))
-    mathematica
-  }) { link =>
-    // nothing to do here, initialization is done already and will have failed if Mathematica is not activated
+    mathematica shouldBe 'initialized
   }
 
-  "Function conversion" should "prove no-argument functions correctly" in withMathematica { link =>
-    link.qeEvidence("f()>0 -> f()>=0".asFormula)._1 shouldBe True
+  "Function conversion" should "refuse to prove no-argument functions" in withMathematica { link =>
+    a [MatchError] should be thrownBy link.qeEvidence("f()>0 -> f()>=0".asFormula)
   }
 
   it should "prove one-argument functions correctly" in withMathematica { link =>

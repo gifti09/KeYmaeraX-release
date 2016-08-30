@@ -146,8 +146,7 @@ class FOQuantifierTests extends TacticTestBase {
       Sequent(IndexedSeq("\\forall x [{x'=5}]x>=0".asFormula), IndexedSeq()),
       allInstantiate(Some("x".asVariable), Some("z".asTerm))(-1))
     result.subgoals should have size 1
-    //result.subgoals.head.ante should contain only "[{z'=5}]z>0".asFormula
-    result.subgoals.head.ante should contain only ("x=z".asFormula, "[{x'=5}]x>=0".asFormula)
+    result.subgoals.head.ante should contain only "\\forall x (x=z -> [{x'=5}]x>=0)".asFormula
     result.subgoals.head.succ shouldBe empty
   }
 
@@ -156,7 +155,7 @@ class FOQuantifierTests extends TacticTestBase {
       Sequent(IndexedSeq("\\forall y [{y'=5}]y>=0".asFormula), IndexedSeq()),
       allInstantiate(Some("y".asVariable), Some("z".asTerm))(-1))
     result.subgoals should have size 1
-    result.subgoals.head.ante should contain only ("y=z".asFormula, "[{y'=5}]y>=0".asFormula)
+    result.subgoals.head.ante should contain only "\\forall y (y=z -> [{y'=5}]y>=0)".asFormula
     result.subgoals.head.succ shouldBe empty
   }
 
@@ -165,7 +164,7 @@ class FOQuantifierTests extends TacticTestBase {
       Sequent(IndexedSeq("\\forall y [{y'=x & y>2}]y>0".asFormula), IndexedSeq()),
       allInstantiate(Some("y".asVariable), Some("z".asTerm))(-1))
     result.subgoals should have size 1
-    result.subgoals.head.ante should contain only ("y=z".asFormula, "[{y'=x & y>2}]y>0".asFormula)
+    result.subgoals.head.ante should contain only "\\forall y (y=z -> [{y'=x & y>2}]y>0)".asFormula
     result.subgoals.head.succ shouldBe empty
   }
 
@@ -174,7 +173,7 @@ class FOQuantifierTests extends TacticTestBase {
       Sequent(IndexedSeq("\\forall y (y=0 -> [{y'=x & y>2}]y>0)".asFormula), IndexedSeq()),
       allInstantiate(Some("y".asVariable), Some("z".asTerm))(-1))
     result.subgoals should have size 1
-    result.subgoals.head.ante should contain only ("y=z".asFormula, "y=0 -> [{y'=x & y>2}]y>0".asFormula)
+    result.subgoals.head.ante should contain only "\\forall y (y=z -> y=0 -> [{y'=x & y>2}]y>0)".asFormula
     result.subgoals.head.succ shouldBe empty
   }
 
@@ -247,6 +246,15 @@ class FOQuantifierTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante should contain only "a=2 -> !z>0".asFormula
     result.subgoals.head.succ shouldBe empty
+  }
+
+  it should "instantiate variables bound in an ODE" in {
+    val result = proveBy(
+      Sequent(IndexedSeq(), IndexedSeq("\\exists y [{x'=2,y'=0*y+1&true}]x>0".asFormula)),
+      existsInstantiate()(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "[{x'=2,y'=0*y+1&true}]x>0".asFormula
   }
 
   "exists generalize" should "only generalize the specified occurrences of t" in {
@@ -358,6 +366,11 @@ class FOQuantifierTests extends TacticTestBase {
   it should "not be applicable when the order is not a subset of the free variables plus signature" in {
     a [BelleError] should be thrownBy proveBy("a>0 & x>5 & y<2".asFormula, universalClosure(Variable("b")::Nil)(1))
   }
+
+//  "Exists eliminate" should "instantiate example from axiomatic ODE solver" in {
+//    val tactic = HilbertCalculus.useAt("exists eliminate", (us:Subst) => {RenUSubst(scala.collection.immutable.Seq(("x_".asVariable, "t".asVariable)))})(1)
+//    val result = proveBy("\\exists t [{x'=v,v'=a, t'=1}]x>0".asFormula, tactic)
+//  }
 
   "all skolemize" should "skolemize simple" in {
     val result = proveBy("\\forall x x>0".asFormula, allSkolemize(1))
