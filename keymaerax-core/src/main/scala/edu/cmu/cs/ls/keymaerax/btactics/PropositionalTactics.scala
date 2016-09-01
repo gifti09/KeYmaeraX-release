@@ -15,7 +15,7 @@ import scala.language.postfixOps
 /**
  * [[PropositionalTactics]] provides tactics for propositional reasoning.
  */
-private object PropositionalTactics {
+object PropositionalTactics {
   /**
    * Inverse of [[ProofRuleTactics.implyR]].
    * {{{

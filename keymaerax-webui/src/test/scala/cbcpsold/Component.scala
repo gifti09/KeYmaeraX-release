@@ -261,7 +261,7 @@ class Component() extends Serializable {
 
       if (ret.isProved) {
         var lemmaName = "Lemma Proof " + name
-        val evidence = ToolEvidence(Map("input" -> ret.toString, "output" -> "true")) :: Nil
+        val evidence = ToolEvidence(immutable.List("input" -> ret.toString, "output" -> "true")) :: Nil
         //proved, so keep lemma and save lemma to LemmaDB
         val lemmaDB = LemmaDBFactory.lemmaDB
         var i = 1

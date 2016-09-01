@@ -7,20 +7,27 @@ import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 
+import scala.collection.mutable.LinkedHashMap
+
 /**
+  * The interface of a component.
   * Created by andim on 22.07.2016.
+  *
+  * @param piIn  The set of input variables and respective input properties.
+  * @param piOut The set of output variables and respective output properties.
+  * @param pre   A set of delta-variables and respective variables to store the previous values.
   */
 class Interface(
                  //                vIn: Set[Variable] = Set.empty,
-                 val piIn: Map[Variable, Formula] = Map.empty,
+                 val piIn: LinkedHashMap[Variable, Formula] = LinkedHashMap.empty[Variable, Formula],
                  //                vOut: Set[Variable] = Set.empty,
-                 val piOut: Map[Variable, Formula] = Map.empty,
+                 val piOut: LinkedHashMap[Variable, Formula] = LinkedHashMap.empty[Variable, Formula],
                  //                vDelta: Set[Variable]= Set.empty,
                  //                vInit: Set[Variable] = Set.empty,
-                 val pre: Map[Variable, Variable] = Map.empty
+                 val pre: LinkedHashMap[Variable, Variable] = LinkedHashMap.empty[Variable, Variable]
                ) {
 
-  require(vIn.forall(x => (v(x).intersect(vIn ++ vOut) - x).isEmpty),
+  require(vIn.forall(x => (v(x).intersect(vIn ++ vOut).toSet - x).isEmpty),
     "No input formula can mention other input/output variables!")
   require(vIn.intersect(vOut).isEmpty, "" +
     "Input- and output variables must be disjoint!")
@@ -34,13 +41,13 @@ class Interface(
     && Globals.globalVars.intersect(vDelta).isEmpty,
     "Global variables must be pairwise disjoint with input-, output-, delta- and initial variables")
 
-  def vIn: Set[Variable] = piIn.keySet
+  def vIn: Seq[Variable] = piIn.keys.toSeq
 
-  def vOut: Set[Variable] = piOut.keySet
+  def vOut: Seq[Variable] = piOut.keys.toSeq
 
-  def vDelta: Set[Variable] = pre.keySet
+  def vDelta: Seq[Variable] = pre.keys.toSeq
 
-  def vInit: Set[Variable] = pre.values.toSet
+  def vInit: Seq[Variable] = pre.values.toSeq
 
   def piOutAll: Formula = if (piOut.isEmpty) return "true".asFormula else piOut.values.reduce((a, b) => And(a, b))
 
@@ -69,9 +76,9 @@ class Interface(
 
 private class SerializableInterface(i: Interface@transient) extends Serializable {
   PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
-  val _piIn: Map[String, String] = i.piIn.map { case (v: Variable, p: Formula) => (v.prettyString, p.prettyString) }
-  val _piOut: Map[String, String] = i.piOut.map { case (v: Variable, p: Formula) => (v.prettyString, p.prettyString) }
-  val _pre: Map[String, String] = i.pre.map { case (v1: Variable, v2: Variable) => (v1.prettyString, v2.prettyString) }
+  val _piIn: LinkedHashMap[String, String] = i.piIn.map { case (v: Variable, p: Formula) => (v.prettyString, p.prettyString) }
+  val _piOut: LinkedHashMap[String, String] = i.piOut.map { case (v: Variable, p: Formula) => (v.prettyString, p.prettyString) }
+  val _pre: LinkedHashMap[String, String] = i.pre.map { case (v1: Variable, v2: Variable) => (v1.prettyString, v2.prettyString) }
 
   def interface(): Interface = {
     return new Interface(_piIn.map { case (v: String, p: String) => (v.asVariable, p.asFormula) },
@@ -109,9 +116,10 @@ object Interface {
     },
       "delta inputs must be connected to delta outputs")
 
-    val piIn = (i1.piIn ++ i2.piIn).filter(a => !X.keySet.contains(a._1))
-    val piOut = (i1.piOut ++ i2.piOut).filter(a => !X.values.toSet.contains(a._1))
-    val pre = i1.pre ++ i2.pre
+
+    val piIn = LinkedHashMap((i1.piIn ++ i2.piIn).toSeq:_*).filter(a => !X.keySet.contains(a._1))
+    val piOut = LinkedHashMap((i1.piOut ++ i2.piOut).toSeq:_*).filter(a => !X.values.toSet.contains(a._1))
+    val pre = LinkedHashMap((i1.pre ++ i2.pre).toSeq:_*)
 
     new Interface(piIn, piOut, pre)
   }

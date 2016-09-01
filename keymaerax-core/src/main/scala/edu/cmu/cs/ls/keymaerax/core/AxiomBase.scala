@@ -505,5 +505,10 @@ End.
 Axiom "const formula congruence".
   s() = t() -> (ctxF_(s()) <-> ctxF_(t()))
 End.
+
+/* AM Axioms */
+Axiom "DCi".
+  [{c&H(||)}]p(||) -> [{c&H(||)&r(||)}]p(||)
+End.
 """
 }

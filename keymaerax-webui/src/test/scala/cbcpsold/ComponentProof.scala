@@ -21,7 +21,7 @@ case class ComponentProof(invariant: Formula, indInit: Lemma, indUseCase: Lemma,
 }
 
 object ComponentProof {
-  val preTactic = andLi *@ TheType() & implyRi
+  val preTactic = (andLi *) & implyRi
 
   def apply(invariant: Formula, indInitName: String, indUseCaseName: String, indStepName: String): ComponentProof = {
     val lemmaDB = LemmaDBFactory.lemmaDB

@@ -16,7 +16,7 @@ import scala.util.{Failure, Success, Try}
   * Created by andim on 22.07.2016.
   */
 object Globals {
-  private var _vars: Set[Variable] = Set(eps)
+  private var _vars: Seq[Variable] = Seq(eps)
   private var _prop: Option[Formula] = None
   val t = "t".asVariable
   val t0 = "tOld".asVariable
@@ -24,10 +24,10 @@ object Globals {
 
 
   def addGlobalVariable(v: Variable) = {
-    _vars += v
+    addGlobalVariables(Seq(v))
   }
 
-  def addGlobalVariables(vs: Set[Variable]) = {
+  def addGlobalVariables(vs: Seq[Variable]) = {
     _vars ++= vs
   }
 
@@ -44,7 +44,7 @@ object Globals {
     case _ => true
   }
 
-  def globalVars = _vars + t
+  def globalVars = _vars ++ Seq(t)
 
   def globalProp = _prop match {
     case Some(gp) => gp
@@ -94,7 +94,7 @@ object Globals {
   class SerializableGlobals extends Serializable {
     PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
 
-    def _vars: Set[String] = Globals._vars.map(v => v.prettyString)
+    def _vars: Seq[String] = Globals._vars.map(v => v.prettyString)
 
     def _prop: String = Globals._prop match {
       case None => null

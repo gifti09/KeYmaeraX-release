@@ -1,8 +1,9 @@
 package cbcps
 
 import java.io.FileInputStream
+import java.time.DayOfWeek
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, TheType}
+import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, PosInExpr}
 import edu.cmu.cs.ls.keymaerax.btactics.{DerivedAxioms, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core.{DifferentialProgram, ODESystem, Program}
@@ -12,7 +13,8 @@ import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{print, printIndexed}
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import testHelper.ParserFactory._
 
-import scala.collection.immutable.{Map, _}
+import scala.collection.mutable._
+import scala.collection.immutable
 
 /**
   * Created by Andreas on 19.11.2015.
@@ -23,6 +25,113 @@ object Tester {
   def main(args: Array[String]) {
 
     ProofHelper.initProver
+
+    //    test()
+
+    /*
+
+    //Component 1
+    val c1: Component = {
+      new Component("C1", //Name
+        "a:=a+y;".asProgram, //Control
+        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
+    }
+    //Interface 1
+    val i1: Interface = {
+      new Interface(
+        LinkedHashMap("y".asVariable -> "y>=0".asFormula), //In
+        LinkedHashMap(//Out
+          "out1".asVariable -> "out1=42".asFormula
+        )
+      )
+    }
+    //Contract 1
+    val ctr1: Contract = new DelayContract(c1, i1,
+      "a=0&y>=0&out1=42".asFormula, //Pre
+      "a>=0".asFormula, //Post
+      "a>=0&y>=0&out1=42".asFormula) //Invariant
+    println("Contract(C1,I1): " + ctr1.contract())
+    //Verify Contract 1 from scratch
+    verifyContract1(ctr1)
+    //Verify Contract 1 from Lemmas
+    //        verifyContract1Lemma(ctr1)
+    //Save Contract 1
+    Contract.save(ctr1, "contract1.cbcps")
+
+    //Component 2
+    val c2: Component = {
+      new Component("C2", //Name
+        "{{x:=1;}++{x:=3;}}".asProgram, //Control
+        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
+    }
+    //Interface 2
+    val i2: Interface = {
+      new Interface(
+        LinkedHashMap("in2".asVariable -> "in2=42".asFormula), //In
+        LinkedHashMap(//Out
+          "x".asVariable -> "x>=1".asFormula
+          //                    ,"out2".asVariable -> "true".asFormula
+        )
+      )
+    }
+    //Contract 2
+    val ctr2: Contract = new DelayContract(c2, i2,
+      "x=2&in2=42".asFormula, //Pre
+      "true".asFormula, //Post
+      "x<=3&x>=1&in2=42".asFormula) //Invariant
+    println("Contract(C2,I2): " + ctr2.contract())
+    //Verify Contract 2 from scratch
+    verifyContract2(ctr2)
+    //Verify Contract 2 from Lemmas
+    //        verifyContract2Lemma(ctr2)
+    //Save Contract 2
+    Contract.save(ctr2, "contract2.cbcps")
+
+    //Everything Verified?
+    println("Contract(C1,I1) verified? " + ctr1.isVerified())
+    println("Contract(C2,I2) verified? " + ctr2.isVerified())
+    */
+
+    val lc1 = Contract.load("contract1.cbcps")
+    val lc2 = Contract.load("contract2.cbcps")
+    println("Loaded Contract(C1,I1) verified? " + lc1.isVerified())
+    println("Loaded Contract(C2,I2) verified? " + lc2.isVerified())
+
+    val X = immutable.Map(
+      "y".asVariable -> "x".asVariable
+    )
+
+    var cpoT: immutable.Map[(Variable, Variable), BelleExpr] = immutable.Map.empty
+    cpoT += ("y".asVariable, "x".asVariable) -> (implyR('R) & assignb('R) & implyR('R) & QE)
+    println("CPO verified? " + cpoT.forall { case (m, t) => TactixLibrary.proveBy(lc1.cpo(lc2, X)(m), t).isProved })
+
+    val sc1T = master()
+    val sc1 = TactixLibrary.proveBy(lc1.sideCondition(lc2, X), sc1T)
+    println("SC1 verified? " + sc1.isProved)
+    val sc2T = master()
+    val sc2 = TactixLibrary.proveBy(lc2.sideCondition(lc1, X), sc2T)
+    println("SC2 verified? " + sc2.isProved)
+
+    println("Composing...")
+    val ctr3 = Contract.compose(lc1, lc2, X, cpoT, sc1T, sc2T)
+    println("Contract(C1,I1)=\n\t" + lc1.contract())
+    println("Contract(C2,I2)=\n\t" + lc2.contract())
+    println("Contract( (C1,I1)||(C2,I2) )=\n\t" + ctr3.contract())
+
+    //    val lemmaDB = LemmaDBFactory.lemmaDB
+    //    val cpoLemma = lemmaDB.get(new lemmaDB.LemmaID("CPO"))
+    //
+    //    if (cpoLemma.isDefined && ProofHelper.verify(Component.compatibilityProofObligation(c1, c2, X).getOrElse(False), cpoLemma.get).isDefined)
+    //      Component.verifyComposite(c1, c2, X, cpoLemma.get)
+    //    else
+    //      println("CPO not defined!")
+
+    ProofHelper.shutdownProver
+  }
+
+  // --- HELPER METHODS ---
+
+  def test() = {
     //Match Test
     //    matchTest("x,x>0&x<10,y,y=0")
     //(Free/Bound) Variable Test
@@ -43,105 +152,39 @@ object Tester {
     //    lemmaTest()
     //    //Position Test
     //    positionTest()
-    //    return
+    //Diff-Match-Test
+    //    diffTest()
+    dci()
 
-    //    //Component 1
-    //    val c1: Component = {
-    //      new Component("C1", //Name
-    //        "a:=a+y;".asProgram, //Control
-    //        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
-    //    }
-    //    //Interface 1
-    //    val i1: Interface = {
-    //      new Interface(
-    //        Map("y".asVariable -> "y>=0".asFormula), //In
-    //        Map(//Out
-    //          "out1".asVariable -> "out1=42".asFormula
-    //        )
-    //      )
-    //    }
-    //    //Contract 1
-    //    val ctr1: Contract = new DelayContract(c1, i1,
-    //      "a=0&y>=0&out1=42".asFormula, //Pre
-    //      "a>=0".asFormula, //Post
-    //      "a>=0&y>=0&out1=42".asFormula) //Invariant
-    //    println("Contract(C1,I1): " + ctr1.contract())
-    //    //Verify Contract 1 from scratch
-    //    verifyContract1(ctr1)
-    //    //Verify Contract 1 from Lemmas
-    //    //        verifyContract1Lemma(ctr1)
-    //    //Save Contract 1
-    //    Contract.save(ctr1, "contract1.cbcps")
-    //
-    //    //Component 2
-    //    val c2: Component = {
-    //      new Component("C2", //Name
-    //        "{{x:=1;}++{x:=3;}}".asProgram, //Control
-    //        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
-    //    }
-    //    //Interface 2
-    //    val i2: Interface = {
-    //      new Interface(
-    //        Map("in2".asVariable -> "in2=42".asFormula), //In
-    //        Map(//Out
-    //          "x".asVariable -> "x>=1".asFormula
-    //          //                    ,"out2".asVariable -> "true".asFormula
-    //        )
-    //      )
-    //    }
-    //    //Contract 2
-    //    val ctr2: Contract = new DelayContract(c2, i2,
-    //      "x=2&in2=42".asFormula, //Pre
-    //      "true".asFormula, //Post
-    //      "x<=3&x>=1&in2=42".asFormula) //Invariant
-    //    println("Contract(C2,I2): " + ctr2.contract())
-    //    //Verify Contract 2 from scratch
-    //    verifyContract2(ctr2)
-    //    //Verify Contract 2 from Lemmas
-    //    //        verifyContract2Lemma(ctr2)
-    //    //Save Contract 2
-    //    Contract.save(ctr2, "contract2.cbcps")
-    //    //Everything Verified?
-    //    println("Contract(C1,I1) verified? " + ctr1.isVerified())
-    //    println("Contract(C2,I2) verified? " + ctr2.isVerified())
-
-
-    val lc1 = Contract.load("contract1.cbcps")
-    val lc2 = Contract.load("contract2.cbcps")
-
-    println("Loaded Contract(C1,I1) verified? " + lc1.isVerified())
-    println("Loaded Contract(C2,I2) verified? " + lc2.isVerified())
-
-    val X = Map(
-      "y".asVariable -> "x".asVariable
-    )
-
-
-
-    var cpoT: Map[(Variable, Variable), BelleExpr] = Map.empty
-    cpoT += ("y".asVariable, "x".asVariable) -> (implyR('R) & assignb('R) & implyR('R) & QE)
-    val sc1T = master()
-    TactixLibrary.proveBy(lc1.sideCondition(lc2, X), sc1T)
-    val sc2T = master()
-    TactixLibrary.proveBy(lc2.sideCondition(lc1, X), sc2T)
-
-
-    val ctr3 = Contract.compose(lc1, lc2, X, cpoT, sc1T, sc2T)
-    println("Contract(C1,I1)=\n\t" + lc1.contract())
-    println("Contract(C2,I2)=\n\t" + lc2.contract())
-    println("Contract( (C1,I1)||(C2,I2) )=\n\t" + ctr3.contract())
-
-    //    val lemmaDB = LemmaDBFactory.lemmaDB
-    //    val cpoLemma = lemmaDB.get(new lemmaDB.LemmaID("CPO"))
-    //
-    //    if (cpoLemma.isDefined && ProofHelper.verify(Component.compatibilityProofObligation(c1, c2, X).getOrElse(False), cpoLemma.get).isDefined)
-    //      Component.verifyComposite(c1, c2, X, cpoLemma.get)
-    //    else
-    //      println("CPO not defined!")
-
-    ProofHelper.shutdownProver
+    System.exit(0)
   }
 
+  def dci() = {
+    val f = "[{c&H(||)}]p(||) -> [{c&H(||)&r(||)}]p(||)".asFormula
+    //    val t = implyR('R) & useAt("DC differential cut", PosInExpr(1 :: 1 :: Nil))('R) < (
+    val t = implyR('R) & useAt(DerivedAxioms.DWeakening, PosInExpr(0 :: Nil))('R) &
+      useAt(DerivedAxioms.DWeakening, PosInExpr(0 :: Nil))('L) &
+      useAt("DC differential cut", PosInExpr(1 :: 1 :: Nil))('R) &
+      (print("x") partial)
+    TactixLibrary.proveBy(f, t)
+  }
+
+  def diffTest() = {
+    val f = "[{a'=1,b'=2&a<100&b<100}]a>42".asFormula
+    f match {
+      case Box(o: ODESystem, f: Formula) =>
+
+        var leftmost: DifferentialProgram = o.ode
+        var search = true
+        while (search) {
+          leftmost match {
+            case s: AtomicODE => search = false
+            case p: DifferentialProduct => leftmost = p.left
+          }
+        }
+        println("leftmost dg? " + leftmost)
+    }
+  }
 
   def verifyContract1(ctr1: Contract): Boolean = {
     println(ctr1.component.name + " - Base Case: " + (ctr1.verifyBaseCase(QE) match {
@@ -154,7 +197,7 @@ object Tester {
       case Some(p) => "verified." + " -> LemmaID='" + ctr1.useCaseLemma.get.name.get + "'"
     }));
     println(ctr1.component.name + " - Step: " + (ctr1.verifyStep(
-      implyR('R) & (composeb('R)) *@ TheType() & testb('R)
+      implyR('R) & (composeb('R) *) & testb('R)
         & implyR('R) & assignb('R) & assignb('R) & diffSolve()('R)
         & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R)
         & QE
@@ -176,7 +219,7 @@ object Tester {
       case Some(p) => "verified." + " -> LemmaID='" + ctr2.useCaseLemma.get.name.get + "'"
     }));
     println(ctr2.component.name + " - Step: " + (ctr2.verifyStep(
-      implyR('R) & (composeb('R)) *@ TheType() & testb('R)
+      implyR('R) & (composeb('R) *) & testb('R)
         & implyR('R) & choiceb('R) & andR('R) < (
         assignb('R) & assignb('R) & diffSolve()('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE,
         assignb('R) & assignb('R) & diffSolve()('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE
@@ -247,8 +290,7 @@ object Tester {
 
   }
 
-  def proofTest(f: Formula, t: BelleExpr): Unit = proofTest(Sequent(IndexedSeq.empty[Formula], IndexedSeq(f)), t)
-
+  def proofTest(f: Formula, t: BelleExpr): Unit = proofTest(Sequent(immutable.IndexedSeq.empty[Formula], immutable.IndexedSeq(f)), t)
 
   def proofTest(s: Sequent, t: BelleExpr) = {
     val ret = TactixLibrary.proveBy(s, t)
@@ -261,7 +303,7 @@ object Tester {
   }
 
   def positionTest() = {
-    val ret = TactixLibrary.proveBy(Sequent(IndexedSeq.empty, IndexedSeq("[?true;a:=2;?true;]a=2".asFormula)),
+    val ret = TactixLibrary.proveBy(Sequent(immutable.IndexedSeq.empty, immutable.IndexedSeq("[?true;a:=2;?true;]a=2".asFormula)),
       master())
   }
 }

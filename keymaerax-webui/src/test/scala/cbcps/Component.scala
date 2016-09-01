@@ -7,6 +7,8 @@ import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import Utility._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 
+import scala.collection.mutable._
+
 /**
   * Created by Andreas on 11.11.2015.
   */
@@ -82,7 +84,7 @@ object Component {
     var c = new Component("Test Component", "out:=0;a:=5;".asProgram, new ODESystem(KeYmaeraXParser.differentialProgramParser("a'=1"), "a<=A".asFormula))
     println("Component: " + c)
 
-    var i = new Interface(Map("in".asVariable -> "in>=0".asFormula), Map("out".asVariable -> "out<A".asFormula), Map("out".asVariable -> "outInit".asVariable))
+    var i = new Interface(LinkedHashMap("in".asVariable -> "in>=0".asFormula), LinkedHashMap("out".asVariable -> "out<A".asFormula), LinkedHashMap("out".asVariable -> "outInit".asVariable))
     println("Interface: " + i)
   }
 }

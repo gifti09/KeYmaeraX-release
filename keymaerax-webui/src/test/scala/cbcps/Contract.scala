@@ -19,7 +19,19 @@ import scala.collection.immutable.ListMap
 import scala.util.Try
 
 /**
+  * The contract of a component and its interface.
+  * Comprises a component and its interface, pre- and post-conditions,
+  * the invariant used to verify the contract, and
+  * lemmas for verifying baseCase, useCase and step.
   * Created by andim on 25.07.2016.
+  * @param component The component.
+  * @param interface The interface.
+  * @param pre The contracts precondition.
+  * @param post The contracts postcondition.
+  * @param invariant The invariant used to verify the contract.
+  * @param baseCaseLemma The lemma used to verify the baseCase. Can be [[None]].
+  * @param useCaseLemma The lemma used to verify the useCase. Can be [[None]].
+  * @param stepLemma The lemma used to verify the step. Can be [[None]].
   */
 abstract class Contract(
                          val component: Component,
@@ -49,31 +61,86 @@ abstract class Contract(
     case _ =>
   }
 
+  /**
+    * Returns a list of proof goals that have to be verified to proof the components contract.
+    * Should be avoided, rather use [[baseCaseProofGoal()]], [[useCaseProofGoal()]] and [[stepProofGoal()]].
+    *
+    * @return An [[IndexedSeq]] of proof goals, i.e. sequents.
+    */
   def proofGoals(): IndexedSeq[Sequent]
 
+  /**
+    * Returns the proof goal that has to be verified to proof the base case of loop induction.
+    *
+    * @return The baseCase proof goal.
+    */
   def baseCaseProofGoal() = proofGoals()(0)
 
+  /**
+    * Returns the proof goal that has to be verified to proof the use case of loop induction.
+    *
+    * @return The useCase proof goal.
+    */
   def useCaseProofGoal() = proofGoals()(1)
 
+  /**
+    * Returns the proof goal that has to be verified to proof the step of loop induction.
+    *
+    * @return The step proof goal.
+    */
   def stepProofGoal() = proofGoals()(2)
 
+  /**
+    * Checks if the baseCase of loop induction was verified.
+    * This is the case, if a lemma was stored as baseCaseLemma.
+    *
+    * @return True, if the baseCase of loop induction as verified.
+    */
   def isBaseCaseVerified(): Boolean = baseCaseLemma match {
     case Some(l) => true
     case _ => false
   }
 
+  /**
+    * Checks if the useCase of loop induction was verified.
+    * This is the case, if a lemma was stored as useCaseLemma.
+    *
+    * @return True, if the useCase of loop induction as verified.
+    */
   def isUseCaseVerified(): Boolean = useCaseLemma match {
     case Some(l) => true
     case _ => false
   }
 
+  /**
+    * Checks if the step of loop induction was verified.
+    * This is the case, if a lemma was stored as stepLemma.
+    *
+    * @return True, if the step of loop induction as verified.
+    */
   def isStepVerified(): Boolean = stepLemma match {
     case Some(l) => true
     case _ => false
   }
 
+  /**
+    * Tries to verify the baseCase with the provided lemma.
+    * Fails if the baseCase was verified already.
+    *
+    * @param l The lemma used to attempt to verify the baseCase.
+    * @return True, if the baseCase could be verified.
+    */
   def verifyBaseCase(l: Lemma): Boolean = verifyBaseCase(l, true)
 
+  /**
+    * Tries to verify the baseCase with the provided lemma.
+    * The lemma is stored in the contract, if successfull.
+    * Only fails if the baseCase was verified already and check was true.
+    *
+    * @param l     The lemma used to attempt to verify the baseCase.
+    * @param check If check is false, it will not be checked if the baseCase was already verified.
+    * @return True, if the baseCase could be verified.
+    */
   private def verifyBaseCase(l: Lemma, check: Boolean): Boolean = {
     require(!check || !isBaseCaseVerified(), "base case already verified")
     if (TactixLibrary.proveBy(baseCaseProofGoal(), by(l)).isProved) {
@@ -86,8 +153,24 @@ abstract class Contract(
     }
   }
 
+  /**
+    * Tries to verify the useCase with the provided lemma.
+    * Fails if the useCase was verified already.
+    *
+    * @param l The lemma used to attempt to verify the useCase.
+    * @return True, if the useCase could be verified.
+    */
   def verifyUseCase(l: Lemma): Boolean = verifyUseCase(l, true)
 
+  /**
+    * Tries to verify the useCase with the provided lemma.
+    * The lemma is stored in the contract, if successfull.
+    * Only fails if the useCase was verified already and check was true.
+    *
+    * @param l     The lemma used to attempt to verify the useCase.
+    * @param check If check is false, it will not be checked if the useCase was already verified.
+    * @return True, if the useCase could be verified.
+    */
   private def verifyUseCase(l: Lemma, check: Boolean): Boolean = {
     require(!check || !isUseCaseVerified(), "use case already verified")
     if (TactixLibrary.proveBy(useCaseProofGoal(), by(l)).isProved) {
@@ -100,8 +183,24 @@ abstract class Contract(
     }
   }
 
+  /**
+    * Tries to verify the step with the provided lemma.
+    * Fails if the step was verified already.
+    *
+    * @param l The lemma used to attempt to verify the step.
+    * @return True, if the step could be verified.
+    */
   def verifyStep(l: Lemma): Boolean = verifyStep(l, true)
 
+  /**
+    * Tries to verify the step with the provided lemma.
+    * The lemma is stored in the contract, if successfull.
+    * Only fails if the step was verified already and check was true.
+    *
+    * @param l     The lemma used to attempt to verify the step.
+    * @param check If check is false, it will not be checked if the step was already verified.
+    * @return True, if the step could be verified.
+    */
   private def verifyStep(l: Lemma, check: Boolean): Boolean = {
     require(!check || !isStepVerified(), "step already verified")
     if (TactixLibrary.proveBy(stepProofGoal(), by(l)).isProved) {
@@ -114,6 +213,13 @@ abstract class Contract(
     }
   }
 
+  /**
+    * Loads the given lemma and calls [[verifyBaseCase()]] with the resulting lemma.
+    *
+    * @param id The ID of the lemma used to verify the baseCase.
+    * @return True, if the baseCase could be verified using the lemma.
+    *         False, if not or if the lemma was not found.
+    */
   def verifyBaseCase(id: LemmaID): Boolean = {
     loadLemma(id) match {
       case Some(l: Lemma) => verifyBaseCase(l)
@@ -121,6 +227,13 @@ abstract class Contract(
     }
   }
 
+  /**
+    * Loads the given lemma and calls [[verifyUseCase()]] with the resulting lemma.
+    *
+    * @param id The ID of the lemma used to verify the useCase.
+    * @return True, if the useCase could be verified using the lemma.
+    *         False, if not or if the lemma was not found.
+    */
   def verifyUseCase(id: LemmaID): Boolean = {
     loadLemma(id) match {
       case Some(l: Lemma) => verifyUseCase(l)
@@ -128,6 +241,13 @@ abstract class Contract(
     }
   }
 
+  /**
+    * Loads the given lemma and calls [[verifyStep()]] with the resulting lemma.
+    *
+    * @param id The ID of the lemma used to verify the step.
+    * @return True, if the step could be verified using the lemma.
+    *         False, if not or if the lemma was not found.
+    */
   def verifyStep(id: LemmaID): Boolean = {
     loadLemma(id) match {
       case Some(l: Lemma) => verifyStep(l)
@@ -135,11 +255,26 @@ abstract class Contract(
     }
   }
 
+  /**
+    * Postfix for the name of the lemma used to verify the baseCase
+    */
   val BC_NAME: String = "-BaseCase"
+  /**
+    * Postfix for the name of the lemma used to verify the useCase
+    */
   val UC_NAME: String = "-UseCase"
+  /**
+    * Postfix for the name of the lemma used to verify the step
+    */
   val S_NAME: String = "-Step"
 
-
+  /**
+    * Tries to verify the baseCase with the given Tactic.
+    * If successful, a lemma is created from the Tactic and [[verifyBaseCase()]] is called with it.
+    * @param t The Tactic used to verify the baseCase.
+    * @return [[Some]] lemma that was created if the verification of the baseCase was successful,
+    *         or [[None]] otherwise.
+    */
   def verifyBaseCase(t: BelleExpr): Option[Lemma] = {
     val x = verify(baseCaseProofGoal(), t, Some(component.name + BC_NAME))
     x match {
@@ -149,6 +284,13 @@ abstract class Contract(
     x
   }
 
+  /**
+    * Tries to verify the useCase with the given Tactic.
+    * If successful, a lemma is created from the Tactic and [[verifyUseCase()]] is called with it.
+    * @param t The Tactic used to verify the baseCase.
+    * @return [[Some]] lemma that was created if the verification of the useCase was successful,
+    *         or [[None]] otherwise.
+    */
   def verifyUseCase(t: BelleExpr): Option[Lemma] = {
     val x = verify(useCaseProofGoal(), t, Some(component.name + UC_NAME))
     x match {
@@ -158,6 +300,13 @@ abstract class Contract(
     x
   }
 
+  /**
+    * Tries to verify the step with the given Tactic.
+    * If successful, a lemma is created from the Tactic and [[verifyStep()]] is called with it.
+    * @param t The Tactic used to verify the baseCase.
+    * @return [[Some]] lemma that was created if the verification of the step was successful,
+    *         or [[None]] otherwise.
+    */
   def verifyStep(t: BelleExpr): Option[Lemma] = {
     val x = verify(stepProofGoal(), t, Some(component.name + S_NAME))
     x match {
@@ -167,23 +316,67 @@ abstract class Contract(
     x
   }
 
+  /**
+    * Creates the actual contract of the component interface pair as [[Formula]].
+    * @return The contract.
+    */
   def contract(): Formula
 
+  /**
+    * Checks if all proof goals (i.e., baseCase, useCase and step) are verified.
+    * @return True, if the contract is verified.
+    */
   def isVerified() = isBaseCaseVerified() && isUseCaseVerified() && isStepVerified()
 
+  /**
+    * Creates the side condition used in Theorem1 for composing the current component
+    * with the given component, using the given mapping.
+    * @param ctr2 The second contract (i.e., component), composed with the current one.
+    * @param X The port mapping.
+    * @return A [[Formula]] representing the side condition.
+    */
   def sideCondition(ctr2: Contract, X: Map[Variable, Variable]): Formula
 
+  /**
+    * Creates the compatibility proof obligations for all connected ports
+    * between this contract and ctr2, according to X
+    * @param ctr2 The second contract (i.e., component), composed with the current one.
+    * @param X The port mapping.
+    * @return A map, where each connected port tuple is assigned a compatibility proof obligation.
+    */
   def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula]
 
+  /**
+    * Returns the current contracts precondition, depending on the type of contract.
+    * @return A [[Formula]] representing the precondition.
+    */
   def contractPre(): Formula
 
-  def contractPlant(): ODESystem
+  /**
+    * Returns the current contracts plant, depending on the type of contract.
+    * @return An [[ODESystem]] representing the plant.
+    */
+  def contractPlant(): ODESystem = {
+    contractPlant(component.plant)
+  }
 
+  /**
+    * Returns the contract plant, depending on the type of contract, but using the given plant.
+    * @return A [[Formula]] representing the plant.
+    */
   def contractPlant(thePlant: ODESystem): ODESystem
 
+  /**
+    * Returns the current contracts postcondition, depending on the type of contract.
+    * @return A [[Formula]] representing the postcondition.
+    */
   def contractPost(): Formula
 }
 
+/**
+  * A serializable version of [[Contract]] that can be used to save and load oontracts.
+  * @param ctr The contract that should be serialized.
+  */
 private class SerializableContract(ctr: Contract@transient) extends Serializable {
   PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
   val _component: SerializableComponent = new SerializableComponent(ctr.component)
@@ -235,16 +428,22 @@ private class SerializableContract(ctr: Contract@transient) extends Serializable
   }
 }
 
+/**
+  * DelayContract according to my thesis.
+  * @param component The component.
+  * @param interface The interface.
+  * @param pre The contracts precondition.
+  * @param post The contracts postcondition.
+  * @param invariant The invariant used to verify the contract.
+  * @param baseCaseLemma The lemma used to verify the baseCase. Can be [[None]].
+  * @param useCaseLemma The lemma used to verify the useCase. Can be [[None]].
+  * @param stepLemma The lemma used to verify the step. Can be [[None]].
+  */
 class DelayContract(component: Component, interface: Interface, pre: Formula, post: Formula, invariant: Formula, baseCaseLemma: Option[Lemma] = None, useCaseLemma: Option[Lemma] = None, stepLemma: Option[Lemma] = None)
   extends Contract(component, interface, pre, post, invariant, baseCaseLemma, useCaseLemma, stepLemma) {
 
-  override def contractPlant(): ODESystem = {
-    contractPlant(component.plant)
-  }
-
   override def contractPlant(thePlant: ODESystem): ODESystem =
     ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), And(thePlant.constraint, Globals.consT))
-
 
   override def contract(): Formula = Imply(
     contractPre(),
@@ -259,15 +458,15 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   override def proofGoals(): IndexedSeq[Sequent] = _proofGoals
 
   /**
-    * Extracts the proof goals that need to be closed in order to verify the delay contract.
+    * Lazily extracts the proof goals that need to be closed in order to verify the delay contract.
     */
   lazy val _proofGoals: IndexedSeq[Sequent] = {
     val t: BelleExpr = implyR('R) & loop(invariant)('R) < ( //& andL('L) *@ TheType()
-      andLi *@ TheType() & cut(contractPre()) <
+      (andLi *) & cut(contractPre()) <
         (hideL(-1) & implyRi partial, hideR(1) & QE) partial, //& print("Base case")
-      andLi *@ TheType() & cut(invariant) <
+      (andLi *) & cut(invariant) <
         (hideL(-1) & implyRi partial, hideR(1) & QE) partial, //& print("Use Case")
-      andLi *@ TheType() & cut(invariant) <
+      (andLi *) & cut(invariant) <
         (hideL(-1) & implyRi partial, hideR(1) & QE) partial //& print("Step")
       )
     val p = proveBy(contract(), t)
@@ -297,13 +496,12 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
     )
   )
 
-
   override def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula] = {
     //useless and just to avoid errors
     val ctr1 = this
     var s = Map.empty[(Variable, Variable), Formula]
 
-    require(X.keySet.subsetOf(ctr1.interface.vIn ++ ctr2.interface.vIn) || !X.values.toSet.subsetOf(ctr1.interface.vOut ++ ctr2.interface.vOut),
+    require(X.keySet.subsetOf(ctr1.interface.vIn.toSet ++ ctr2.interface.vIn.toSet) || !X.values.toSet.subsetOf(ctr1.interface.vOut.toSet ++ ctr2.interface.vOut.toSet),
       "invalid port mapping X")
     s ++= X.filter { case (in, out) => ctr1.interface.vIn.contains(in) }.map { case (in, out) => {
       val pre = {
@@ -339,14 +537,27 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   override def contractPre(): Formula = Globals.appendGlobalPropertyToFormula(And(Globals.initT, pre))
 }
 
+/**
+  * Helper functions used in contracts.
+  */
 object Contract {
 
+  /**
+    * Saves the given contract as [[SerializableContract]] using the given filename.
+    * @param ctr The contract to be saved.
+    * @param fName The target filename.
+    */
   def save(ctr: Contract, fName: String) = {
     val stream = new ObjectOutputStream(new FileOutputStream(new File(fName)))
     stream.writeObject(new SerializableContract(ctr))
     stream.close()
   }
 
+  /**
+    * Loads the contract from the given filename.
+    * @param fName The source filename.
+    * @return The loaded contract.
+    */
   def load(fName: String): Contract = {
     val stream = new ObjectInputStream(new FileInputStream(new File(fName)))
     val ret = stream.readObject().asInstanceOf[SerializableContract].contract()
@@ -354,13 +565,27 @@ object Contract {
     return ret
   }
 
+  /**
+    * Check if the interface is admissible for the component.
+    * @param component The component.
+    * @param interface The interface.
+    * @return True, if the interface is admissible for the component.
+    */
   def admissible(component: Component, interface: Interface): Boolean = {
     bv(component.ctrl).intersect(interface.vDelta).isEmpty &&
       (bv(component.ctrl) ++ bv(component.plant) ++ bv(component.ports)).intersect(interface.vInit).isEmpty &&
       (bv(component.ctrl) ++ bv(component.plant)).intersect(interface.vIn).isEmpty
   }
 
-  //TODO check before use
+  /**
+    * Create the Change contract for the given parameters.
+    * TODO: CHECK BEFORE USE!
+    * @param component The component.
+    * @param interface The interface.
+    * @param pre The precondition.
+    * @param post The postcondition.
+    * @return The change contract.
+    */
   def changeContract(component: Component, interface: Interface, pre: Formula, post: Formula): Formula = {
     Imply(
       Globals.appendGlobalPropertyToFormula(pre),
@@ -369,11 +594,9 @@ object Contract {
     )
   }
 
-  private val preTactic = andLi *@ TheType() & implyRi
-
   /**
     * Extracts the proof goals that need to be closed in order to verify the change contract.
-    *
+    * TODO: MOVE TO CLASS CHANGECONTRACT UPON CREATION!
     * @param component The component.
     * @param interface The admissible interface.
     * @param pre       The initial condition.
@@ -382,6 +605,7 @@ object Contract {
     * @return Three proof goals: base case, use case, step.
     */
   def changeProofGoals(component: Component, interface: Interface, pre: Formula, post: Formula, inv: Formula): IndexedSeq[Sequent] = {
+    val preTactic = (andLi *) & implyRi
     val t: BelleExpr = implyR('R) & loop(inv)('R) < ( //& andL('L) *@ TheType()
       preTactic partial, //& print("Base case")
       preTactic partial, //& print("Use Case")
@@ -391,6 +615,20 @@ object Contract {
     p.subgoals
   }
 
+  /**
+    * Composes two contracts with port mapping X.
+    * The composite component is then verified utilizing the provided tactics
+    * for verifying the compatibility proof obligations and the side conditions for
+    * both components.
+    * @param ctr1 The first contract.
+    * @param ctr2 The second contract.
+    * @param X The port mapping.
+    * @param cpoT The tactics to verify the compatibility proof obligations.
+    * @param side1T The tactic to verify the side condition for the first component.
+    * @param side2T The tactic to verify the side condition for the second component.
+    * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
+    * @return The verified composit contract.
+    */
   def compose[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable], cpoT: Map[(Variable, Variable), BelleExpr], side1T: BelleExpr, side2T: BelleExpr): C = {
     //Initial checks
     require(ctr1.getClass.equals(ctr2.getClass), "only contracts of the same type can be composed")
@@ -501,19 +739,20 @@ object Contract {
     //      )
     //    )
 
-    ctr3.verifyStep(implyR('R) & splitb('R) & andR('R) < (
-      splitb('R) & andR('R) < (
+    ctr3.verifyStep(implyR('R) & boxAnd('R) & andR('R) < (
+      boxAnd('R) & andR('R) < (
         //inv1
-        composeb('R) * (5) & choiceb(1, List(1)) & splitb('R) & andR('R) < (
+        composeb('R) * (5) & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
           print("C1;C2") &
-          cut(ctr2.sideCondition(ctr1,X)) <(
+            cut(ctr2.sideCondition(ctr1, X)) < (
               //use cut
-              print("use cut") partial
-            ,
-              //show cut
 
+              print("use cut") partial
+              ,
+              //show cut
+              //TODO Lemma 2
               print("show cut") partial
-            )
+              )
           ,
           print("C2;C1") partial
           ) partial
@@ -532,6 +771,12 @@ object Contract {
     return ctr3
   }
 
+  /**
+    * Create the ports part for the composit contract.
+    * @param X The port mapping.
+    * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
+    * @return The ports part of the composit.
+    */
   def composePorts[C <: Contract](X: Map[Variable, Variable]): Program = {
     X.map(x => Assign(x._1, x._2).asInstanceOf[Program]) match {
       case ass if ass.nonEmpty => ass.reduce((a1, a2) => Compose(a1, a2))
@@ -539,19 +784,49 @@ object Contract {
     }
   }
 
+  /**
+    * Create the invariant for the composit contract.
+    * @param ctr1 The first contract.
+    * @param ctr2 The second contract.
+    * @param X The port mapping.
+    * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
+    * @return The invariant of the composit.
+    */
   private def composeInvariant[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
     And(And(ctr1.invariant, ctr2.invariant), preDelta(X))
   }
 
+  /**
+    * Create the postcondition for the composit contract.
+    * @param ctr1 The first contract.
+    * @param ctr2 The second contract.
+    * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
+    * @return The postcondition of the composit.
+    */
   private def composePost[C <: Contract](ctr1: C, ctr2: C): And = {
     And(ctr1.post, ctr2.post)
   }
 
-  protected def composePre[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
+  /**
+    * Create the precondition for the composit contract.
+    * @param ctr1 The first contract.
+    * @param ctr2 The second contract.
+    * @param X The port mapping.
+    * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
+    * @return The precondition of the composit.
+    */
+  private def composePre[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
     And(And(ctr1.pre, ctr2.pre), preDelta(X))
   }
 
-  def preDelta[C <: Contract](X: Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
+  /**
+    * Create the preDelta part for the composit contract.
+    * i.e., X(v) = v , for all v in the mapping
+    * @param X The port mapping.
+    * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
+    * @return The preDelta of the composit.
+    */
+  private def preDelta[C <: Contract](X: Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
     X.map { case (in, out) => Equal(in, out) }.reduce((a: Formula, b: Formula) => And(a, b))
   }
 }
