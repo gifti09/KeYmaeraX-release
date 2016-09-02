@@ -2,18 +2,18 @@ package cbcps
 
 import java.io._
 
-import edu.cmu.cs.ls.keymaerax.core.{And, AtomicODE, Choice, Compose, DifferentialProduct, ODESystem, PrettyPrinter, Program}
+import edu.cmu.cs.ls.keymaerax.core.{And, AtomicODE, Choice, Compose, DifferentialProduct, ODESystem, PrettyPrinter, Program, Variable}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import Utility._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 
-import scala.collection.mutable._
+import scala.collection.immutable._
+import scala.collection.mutable.LinkedHashMap
 
 /**
   * Created by Andreas on 11.11.2015.
   */
 class Component(val name: String = "C", val ctrl: Program = "?true;".asProgram, val plant: ODESystem = null, val ports: Program = "?true;".asProgram) {
-
   require(bv(ctrl).intersect(Globals.globalVars).isEmpty
     && bv(plant).intersect(Globals.globalVars).isEmpty
     && bv(ports).intersect(Globals.globalVars).isEmpty,
@@ -21,6 +21,8 @@ class Component(val name: String = "C", val ctrl: Program = "?true;".asProgram, 
 
   //  How to check ctrl does not contain DGL?
   //  assert(,"")
+
+  def variables():Set[Variable] = (v(ctrl) ++ v(plant) ++ v(ports)).toSet
 
   override def toString = s"Component(name=$name,\nctrl=${ctrl.prettyString},\nplant=${plant.prettyString},\nports=${ports.prettyString})"
 }

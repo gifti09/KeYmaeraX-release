@@ -28,8 +28,8 @@ object Tester {
 
     //    test()
 
-    /*
 
+/*
     //Component 1
     val c1: Component = {
       new Component("C1", //Name
@@ -90,7 +90,7 @@ object Tester {
     //Everything Verified?
     println("Contract(C1,I1) verified? " + ctr1.isVerified())
     println("Contract(C2,I2) verified? " + ctr2.isVerified())
-    */
+*/
 
     val lc1 = Contract.load("contract1.cbcps")
     val lc2 = Contract.load("contract2.cbcps")

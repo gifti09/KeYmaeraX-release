@@ -7,7 +7,9 @@ import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 
+import scala.collection.immutable._
 import scala.collection.mutable.LinkedHashMap
+
 
 /**
   * The interface of a component.
@@ -26,7 +28,6 @@ class Interface(
                  //                vInit: Set[Variable] = Set.empty,
                  val pre: LinkedHashMap[Variable, Variable] = LinkedHashMap.empty[Variable, Variable]
                ) {
-
   require(vIn.forall(x => (v(x).intersect(vIn ++ vOut).toSet - x).isEmpty),
     "No input formula can mention other input/output variables!")
   require(vIn.intersect(vOut).isEmpty, "" +
@@ -41,13 +42,13 @@ class Interface(
     && Globals.globalVars.intersect(vDelta).isEmpty,
     "Global variables must be pairwise disjoint with input-, output-, delta- and initial variables")
 
-  def vIn: Seq[Variable] = piIn.keys.toSeq
+  def vIn: Seq[Variable] = Seq(piIn.keys.toSeq:_*)
 
-  def vOut: Seq[Variable] = piOut.keys.toSeq
+  def vOut: Seq[Variable] = Seq(piOut.keys.toSeq:_*)
 
-  def vDelta: Seq[Variable] = pre.keys.toSeq
+  def vDelta: Seq[Variable] = Seq(pre.keys.toSeq:_*)
 
-  def vInit: Seq[Variable] = pre.values.toSeq
+  def vInit: Seq[Variable] = Seq(pre.values.toSeq:_*)
 
   def piOutAll: Formula = if (piOut.isEmpty) return "true".asFormula else piOut.values.reduce((a, b) => And(a, b))
 
@@ -72,6 +73,8 @@ class Interface(
       piIn.map { case (v, p) => Compose(AssignAny(v), Test(p)) }.reduce((a: Program, b: Program) => Compose(a, b))
     }
   }
+
+  def variables() = vIn ++ vOut ++ vDelta ++ vInit
 }
 
 private class SerializableInterface(i: Interface@transient) extends Serializable {
@@ -117,9 +120,9 @@ object Interface {
       "delta inputs must be connected to delta outputs")
 
 
-    val piIn = LinkedHashMap((i1.piIn ++ i2.piIn).toSeq:_*).filter(a => !X.keySet.contains(a._1))
-    val piOut = LinkedHashMap((i1.piOut ++ i2.piOut).toSeq:_*).filter(a => !X.values.toSet.contains(a._1))
-    val pre = LinkedHashMap((i1.pre ++ i2.pre).toSeq:_*)
+    val piIn = LinkedHashMap((i1.piIn ++ i2.piIn).toSeq: _*).filter(a => !X.keySet.contains(a._1))
+    val piOut = LinkedHashMap((i1.piOut ++ i2.piOut).toSeq: _*).filter(a => !X.values.toSet.contains(a._1))
+    val pre = LinkedHashMap((i1.pre ++ i2.pre).toSeq: _*)
 
     new Interface(piIn, piOut, pre)
   }

@@ -15,8 +15,8 @@ import edu.cmu.cs.ls.keymaerax.btactics.TreeForm.Var
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import ProofHelper._
 
-import scala.collection.immutable.ListMap
-import scala.util.Try
+import scala.collection.immutable._
+import scala.collection.mutable.LinkedHashMap
 
 /**
   * The contract of a component and its interface.
@@ -400,6 +400,10 @@ abstract class Contract(
     * @return A [[Formula]] representing the postcondition.
     */
   def contractPost(): Formula
+
+  def variables(): Set[Variable] = {
+    component.variables() ++ interface.variables()
+  }
 }
 
 /**
@@ -789,8 +793,7 @@ object Contract {
               print("use cut") partial
               ,
               //show cut
-              //TODO Lemma 2
-              print("show cut") partial
+              hideAllButLastSucc & implyR('R) & print("show cut before") & Lemmas.lemma2_DC(Seq(ctr2.variables().toSeq: _*))('R) &print("show cut after")  partial
               )
           ,
           print("C2;C1") partial
@@ -801,7 +804,7 @@ object Contract {
         ) partial,
       //pre delta
       //TODO does this master() always close, or should I try to reduce the thing further? (how??)
-      hideL(-1) & composeb('R) & G & master()
+      hideL(-1) & composeb('R) & G('R) & master() & print("pre delta closed?")
       )
       & print("todo") partial
     )
