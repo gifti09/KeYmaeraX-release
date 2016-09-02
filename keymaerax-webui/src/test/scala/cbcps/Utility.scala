@@ -184,54 +184,66 @@ object Lemmas {
   //  val t1ab = implyR('R) & lemma1AB('R) & prop
 
   //L2 - TODO!
-  def lemma2(elim: Seq[Variable]): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
-    case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
-      var t: BelleExpr = null
-      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos)
-      t = t & Lemma2Stuff.rotateAndEliminateUntilTime(elim)(pos)
-      //      t=useAt("DCi", PosInExpr(1 :: Nil))(pos)
-      //      t = useAt(DerivedAxioms.domainCommute)(pos) & t
-      //      t = t & (introduceForAllFromDG(pos) & useAt("DGi inverse differential ghost", PosInExpr(1 :: Nil))(pos))
-      //      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos)
+  //TODO: REMEMBER! This only works, if the DGs that must be removed are in the right order, such that
+  // the first variable only appears in the first DG, the second variable only appears in the first and second DG, and so on
+  // This restriction is due to the fact that DG inverse does not handle vectors, but single variables!
+  def lemma2_DC(elim: Seq[Variable]): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    case Some(Box(ODESystem(ode, And(And(d1: Formula, d2: Formula), _)), f: Formula)) => {
+      var t: BelleExpr = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & useAt("DCi", PosInExpr(1 :: Nil))(pos) & print("domain done")
+      //Remove Evolution Domain
+      if (v(d2).intersect(elim).nonEmpty) {
+        t = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & t & useAt(domainCommute)(pos)
+      }
+
+      //Remove Differential Equations
+      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) & print("commuted")
+      t = t & Lemma2Stuff.rotateOrEliminateAll(elim)(pos)
       t
     }
   })
 
   private object Lemma2Stuff {
-    def rotateAndEliminateUntilTime(elim: Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+    def removeOrRotate(elim: Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
       case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
+        var t: BelleExpr = null
         val v = nextVariable(ode)
-        cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
-          allL(v, v)(SeqPos(sequent.ante.length - 1)) & prop, hide(pos))
+        if (elim.contains(v)) {
+          t = print("in! " + v) & cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
+            allL(v, v)(-sequent.ante.length - 1) & prop & print("closed?"), hide(pos)
+            ) & print("here we go...") & useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
+        }
+        else {
+          t = useAt(", commute", PosInExpr(1 :: Nil))(pos)
+        }
+        t
       }
     })
 
-    def removeOrRotate() : DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+    def rotateOrEliminateAll(elim: Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
       case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
-        null
+        var t: BelleExpr = removeOrRotate(elim)(pos) & print("remove 1")
+        (1 to countDiff(ode) - 2) foreach (x => t = t & removeOrRotate(elim)(pos) & print("remove " + (x + 1)))
+        t
       }
     })
 
-//    val introduceForAllFromDG: DependentPositionTactic = "Introduce For-All from DG" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
-//      case Some(Box(b, f)) => {
-//        val v = nextVariable(sequent.succ(pos.top.getPos - 1))
-//        cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
-//          allL(v, v)(SeqPos(sequent.ante.length - 1)) & prop, hide(pos))
-//      }
-//    })
+    def countDiff(dp: DifferentialProgram): Integer = dp match {
+      case a: AtomicODE => 1
+      case DifferentialProduct(dp1, dp2) => countDiff(dp1) + countDiff(dp2)
+    }
 
-    private def nextVariable(dg:DifferentialProgram): Variable = {
-      dg match {
-          case AtomicODE(s, _) => println("a: " + s.x);
-            s.x
-          case DifferentialProduct(a: AtomicODE, _) => println("d: " + a.xp.x);
-            a.xp.x
+    private def nextVariable(dp: DifferentialProgram): Variable = {
+      dp match {
+        case AtomicODE(s, _) => println("a: " + s.x);
+          s.x
+        case DifferentialProduct(a: AtomicODE, _) => println("d: " + a.xp.x);
+          a.xp.x
       }
     }
   }
 
-  val f2 = ("[{t'=1,x1'=c1(x1,x2,x3,T),x2'=c2(x1,x2,x3,T),x3'=c3(x1,x2,x3,T)&H1(x1,x2,x3,T)}]A(x1,x2,x3,T)" +
-    "->[{t'=1,x1'=c1(x1,x2,x3,T),x2'=c2(x1,x2,x3,T),x3'=c3(x1,x2,x3,T),y1'=d1(y1,y2,y3,y4,T),y2'=d2(y1,y2,y3,y4,T),y3'=d3(y1,y2,y3,y4,T),y4'=d4(y1,y2,y3,y4,T)&H1(x1,x2,x3,T)&G1(y1,y2,y3,y4,T)}]A(x1,x2,x3,T)").asFormula
+  val f2 = ("[{t'=1,x1'=c1(x1,x2,x3,T),x2'=c2(x1,x2,x3,T),x3'=c3(x1,x2,x3,T)&H1(x1,x2,x3,T)&T>0}]A(x1,x2,x3,T)" +
+    "->[{t'=1,x1'=c1(x1,x2,x3,T),x2'=c2(x1,x2,x3,T),x3'=c3(x1,x2,x3,T),y1'=d1(y1,y2,y3,y4,T),y2'=d2(y2,y3,y4,T),y3'=d3(y3,y4,T),y4'=d4(y4,T)& (H1(x1,x2,x3,T)&G1(y1,y2,y3,y4,T))&T>0}]A(x1,x2,x3,T)").asFormula
   val n2 = "Proof of Lemma2 - Drop Plant"
   //  val t2 = implyR('R) & lemma2(1, 3, 4, false) & prop
   //NOT possible because we cannot proof this as lemma
@@ -611,7 +623,14 @@ object Lemmas {
     //    println("Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;b:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & composeb(1, 1 :: Nil) & lemma1AB(1) & assignb('R) & testb('R) & prop).isProved)
 
-    println("Test Lemma 1AB - proved? " + TactixLibrary.proveBy(f2, lemma2("y1".asVariable :: "y2".asVariable :: "y3".asVariable :: "y4".asVariable :: Nil)).isProved)
+//    println("Test Lemma 1AB - proved? " + TactixLibrary.proveBy(f2,
+//      implyR('R) & print("x") &
+//        lemma2_DC("y1".asVariable :: "y2".asVariable :: "y3".asVariable :: "y4".asVariable :: Nil)('R) & print("y")
+//    ).isProved)
+        println("Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
+          implyR('R) & composeb('R) &
+            lemma2_DC("b".asVariable :: Nil)(1) & print("y")
+        ).isProved)
 
     //    println("Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & useAt(lemma3, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)

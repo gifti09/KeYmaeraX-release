@@ -39,7 +39,7 @@ private class SerializableComponent(c: Component@transient) extends Serializable
 
 object Component {
 
-  def save(c: Component, fName: String)= {
+  def save(c: Component, fName: String) = {
     val stream = new ObjectOutputStream(new FileOutputStream(new File(fName)))
     stream.writeObject(new SerializableComponent(c))
     stream.close()
@@ -47,7 +47,7 @@ object Component {
 
   def load(fName: String): Component = {
     val stream = new ObjectInputStream(new FileInputStream(new File(fName)))
-    val ret=stream.readObject().asInstanceOf[SerializableComponent].component()
+    val ret = stream.readObject().asInstanceOf[SerializableComponent].component()
     stream.close()
     return ret
   }
@@ -63,10 +63,12 @@ object Component {
   def compose(c1: Component, c2: Component, ports: Program): Component = {
     new Component(c1.name + "-" + c2.name,
       Choice(Compose(c1.ctrl, c2.ctrl), Compose(c2.ctrl, c1.ctrl)),
-      ODESystem(DifferentialProduct(c1.plant.ode, c2.plant.ode), And(c1.plant.constraint, c2.plant.constraint)),
+      ODESystem(DifferentialProduct(c1.plant.ode, c2.plant.ode), composeDomain(c1, c2)),
       Compose(Compose(c1.ports, c2.ports), ports)
     )
   }
+
+  def composeDomain(c1: Component, c2: Component) = And(c1.plant.constraint, c2.plant.constraint)
 
   def main(args: Array[String]): Unit = {
     PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)

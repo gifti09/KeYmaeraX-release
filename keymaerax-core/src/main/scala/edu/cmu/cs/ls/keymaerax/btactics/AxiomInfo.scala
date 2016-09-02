@@ -73,6 +73,7 @@ object DerivationInfo {
     */
   private [btactics] val allInfo: List[DerivationInfo] = convert(Provable.rules) ++ List(
     // [a] modalities and <a> modalities
+    new CoreAxiomInfo("DCi","DCi","DCi",{case () => HilbertCalculus.useAt("DCi")}),
     new CoreAxiomInfo("<> diamond"
       , AxiomDisplayInfo(("〈·〉", "<.>"), "〈a〉P ↔ ¬[a]¬P")
       , "diamond", {case () => HilbertCalculus.diamond}),
