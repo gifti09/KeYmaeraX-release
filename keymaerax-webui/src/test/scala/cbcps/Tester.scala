@@ -14,7 +14,7 @@ import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter
 import testHelper.ParserFactory._
 
 import scala.collection.mutable._
-import scala.collection.immutable
+import scala.collection.{immutable, mutable}
 
 /**
   * Created by Andreas on 19.11.2015.
@@ -24,77 +24,79 @@ object Tester {
 
   def main(args: Array[String]) {
 
+
+//    test()
+
+
     ProofHelper.initProver
+    /*
+        //Component 1
+        val c1: Component = {
+          new Component("C1", //Name
+            "a:=a+y;".asProgram, //Control
+            "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
+        }
+        //Interface 1
+        val i1: Interface = {
+          new Interface(
+            LinkedHashMap("y".asVariable -> "y>=0".asFormula), //In
+            LinkedHashMap(//Out
+              "out1".asVariable -> "out1=42".asFormula
+            )
+          )
+        }
+        //Contract 1
+        val ctr1: Contract = new DelayContract(c1, i1,
+          "a=0&y>=0&out1=42".asFormula, //Pre
+          "a>=0".asFormula, //Post
+          "a>=0&y>=0&out1=42".asFormula) //Invariant
+        println("Contract(C1,I1): " + ctr1.contract())
+        //Verify Contract 1 from scratch
+        verifyContract1(ctr1)
+        //Verify Contract 1 from Lemmas
+        //        verifyContract1Lemma(ctr1)
+        //Save Contract 1
+        Contract.save(ctr1, "contract1.cbcps")
 
-    //    test()
+        //Component 2
+        val c2: Component = {
+          new Component("C2", //Name
+            "{{x:=1;}++{x:=3;}}".asProgram, //Control
+            "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
+        }
+        //Interface 2
+        val i2: Interface = {
+          new Interface(
+            LinkedHashMap("in2".asVariable -> "in2=42".asFormula), //In
+            LinkedHashMap(//Out
+              "x".asVariable -> "x>=1".asFormula
+              //                    ,"out2".asVariable -> "true".asFormula
+            )
+          )
+        }
+        //Contract 2
+        val ctr2: Contract = new DelayContract(c2, i2,
+          "x=2&in2=42".asFormula, //Pre
+          "true".asFormula, //Post
+          "x<=3&x>=1&in2=42".asFormula) //Invariant
+        println("Contract(C2,I2): " + ctr2.contract())
+        //Verify Contract 2 from scratch
+        verifyContract2(ctr2)
+        //Verify Contract 2 from Lemmas
+        //        verifyContract2Lemma(ctr2)
+        //Save Contract 2
+        Contract.save(ctr2, "contract2.cbcps")
 
-
-/*
-    //Component 1
-    val c1: Component = {
-      new Component("C1", //Name
-        "a:=a+y;".asProgram, //Control
-        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
-    }
-    //Interface 1
-    val i1: Interface = {
-      new Interface(
-        LinkedHashMap("y".asVariable -> "y>=0".asFormula), //In
-        LinkedHashMap(//Out
-          "out1".asVariable -> "out1=42".asFormula
-        )
-      )
-    }
-    //Contract 1
-    val ctr1: Contract = new DelayContract(c1, i1,
-      "a=0&y>=0&out1=42".asFormula, //Pre
-      "a>=0".asFormula, //Post
-      "a>=0&y>=0&out1=42".asFormula) //Invariant
-    println("Contract(C1,I1): " + ctr1.contract())
-    //Verify Contract 1 from scratch
-    verifyContract1(ctr1)
-    //Verify Contract 1 from Lemmas
-    //        verifyContract1Lemma(ctr1)
-    //Save Contract 1
-    Contract.save(ctr1, "contract1.cbcps")
-
-    //Component 2
-    val c2: Component = {
-      new Component("C2", //Name
-        "{{x:=1;}++{x:=3;}}".asProgram, //Control
-        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
-    }
-    //Interface 2
-    val i2: Interface = {
-      new Interface(
-        LinkedHashMap("in2".asVariable -> "in2=42".asFormula), //In
-        LinkedHashMap(//Out
-          "x".asVariable -> "x>=1".asFormula
-          //                    ,"out2".asVariable -> "true".asFormula
-        )
-      )
-    }
-    //Contract 2
-    val ctr2: Contract = new DelayContract(c2, i2,
-      "x=2&in2=42".asFormula, //Pre
-      "true".asFormula, //Post
-      "x<=3&x>=1&in2=42".asFormula) //Invariant
-    println("Contract(C2,I2): " + ctr2.contract())
-    //Verify Contract 2 from scratch
-    verifyContract2(ctr2)
-    //Verify Contract 2 from Lemmas
-    //        verifyContract2Lemma(ctr2)
-    //Save Contract 2
-    Contract.save(ctr2, "contract2.cbcps")
-
-    //Everything Verified?
-    println("Contract(C1,I1) verified? " + ctr1.isVerified())
-    println("Contract(C2,I2) verified? " + ctr2.isVerified())
-*/
+        //Everything Verified?
+        println("Contract(C1,I1) verified? " + ctr1.isVerified())
+        println("Contract(C2,I2) verified? " + ctr2.isVerified())
+    */
 
     val lc1 = Contract.load("contract1.cbcps")
     val lc2 = Contract.load("contract2.cbcps")
+    println("Contract(C1,I1) = " + lc1.contract())
     println("Loaded Contract(C1,I1) verified? " + lc1.isVerified())
+    println("Contract(C2,I2) = " + lc2.contract())
     println("Loaded Contract(C2,I2) verified? " + lc2.isVerified())
 
     val X = immutable.Map(
@@ -103,17 +105,20 @@ object Tester {
 
     var cpoT: immutable.Map[(Variable, Variable), BelleExpr] = immutable.Map.empty
     cpoT += ("y".asVariable, "x".asVariable) -> (implyR('R) & assignb('R) & implyR('R) & QE)
-    println("CPO verified? " + cpoT.forall { case (m, t) => TactixLibrary.proveBy(lc1.cpo(lc2, X)(m), t).isProved })
+    //    println("CPO verified? " + cpoT.forall { case (m, t) => TactixLibrary.proveBy(lc1.cpo(lc2, X)(m), t).isProved })
 
-    val sc1T = master()
-    val sc1 = TactixLibrary.proveBy(lc1.sideCondition(lc2, X), sc1T)
-    println("SC1 verified? " + sc1.isProved)
-    val sc2T = master()
-    val sc2 = TactixLibrary.proveBy(lc2.sideCondition(lc1, X), sc2T)
-    println("SC2 verified? " + sc2.isProved)
+    val sc1 = lc1.sideConditions()
+    val sc1T: mutable.Map[Variable, BelleExpr] = sc1.map((e) => (e._1, master()))
+    println("sc1: " + sc1)
+    //    println("SC1 verified? " + TactixLibrary.proveBy(lc1.sideCondition(), sc1T).isProved)
+
+    val sc2 = lc2.sideConditions()
+    val sc2T: mutable.Map[Variable, BelleExpr] = sc2.map((e) => (e._1, master()))
+    println("sc2: " + sc2)
+    //    println("SC2 verified? " + TactixLibrary.proveBy(lc2.sideCondition(), sc2T).isProved)
 
     println("Composing...")
-    val ctr3 = Contract.compose(lc1, lc2, X, cpoT, sc1T, sc2T)
+    val ctr3 = Contract.composeWithSideTactics(lc1, lc2, X, cpoT, sc1T, sc2T)
     println("Contract(C1,I1)=\n\t" + lc1.contract())
     println("Contract(C2,I2)=\n\t" + lc2.contract())
     println("Contract( (C1,I1)||(C2,I2) )=\n\t" + ctr3.contract())
@@ -132,6 +137,7 @@ object Tester {
   // --- HELPER METHODS ---
 
   def test() = {
+    ProofHelper.initProver
     //Match Test
     //    matchTest("x,x>0&x<10,y,y=0")
     //(Free/Bound) Variable Test
@@ -154,9 +160,36 @@ object Tester {
     //    positionTest()
     //Diff-Match-Test
     //    diffTest()
-    dci()
+    //Diff Cut Test
+    //    dci()
+    //piOutAll Test
+    //    piOutAllTest()
+    //In Test
+    inTest()
 
+    ProofHelper.shutdownProver
     System.exit(0)
+  }
+
+  def inTest() = {
+    val i = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula))
+    println("i.in=" + i.in)
+
+    TactixLibrary.proveBy(Imply("d>0".asFormula, Box(i.in, "d>0".asFormula)), implyR('R) & composeb('R) * (countBinary[Compose](i.in.asInstanceOf[Compose])/2) & print("a"))
+  }
+
+  def countBinary[C <: BinaryComposite](c: C): Integer = c match {
+    case Compose(c1: C, c2: C) => countBinary(c1) + countBinary(c2) + 1
+    case Compose(c1: C, _) => countBinary(c1) + 1
+    case Compose(_, c2: C) => countBinary(c2) + 1
+    case Compose(_, _) => 1
+  }
+
+  def piOutAllTest() = {
+    val i = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula))
+    println("i.piOutAll=" + i.piOutAll)
+
+    TactixLibrary.proveBy(Imply("d>0&c>0&b>0".asFormula, i.piOutAll), implyR('R) & (andL('L) *) & (andR('R) & print("x") < (skip, closeId) & print("y")) * 2)
   }
 
   def dci() = {

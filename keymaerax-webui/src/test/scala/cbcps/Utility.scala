@@ -190,13 +190,16 @@ object Lemmas {
   //TODO: REMEMBER! This only works, if the DGs that must be removed are in the right order, such that
   // the first variable only appears in the first DG, the second variable only appears in the first and second DG, and so on
   // This restriction is due to the fact that DG inverse does not handle vectors, but single variables!
-  def t2_DC(elim: Seq[Variable]): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+  def t2_DC(elim: Seq[Variable], elimDomain: Formula): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
     case Some(Box(ODESystem(ode, And(And(d1: Formula, d2: Formula), _)), f: Formula)) => {
       var t: BelleExpr = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & useAt("DCi", PosInExpr(1 :: Nil))(pos) & print("domain done")
       //Remove Evolution Domain
-      if (v(d2).intersect(elim).nonEmpty) {
+      if (d2.equals(elimDomain)) {
         t = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & t & useAt(domainCommute)(pos)
+        println("removing domain 2")
       }
+      else println("removing domain 1")
+
 
       //Remove Differential Equations
       t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) & print("commuted")
@@ -205,10 +208,17 @@ object Lemmas {
     }
   })
 
-  def lemma2_DC(elim: Seq[Variable]): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+  def lemma2_DC(elim: Seq[Variable], elimDomain: Formula): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
     case Some(Box(p, Box(ODESystem(ode: DifferentialProgram, And(And(d1: Formula, d2: Formula), dt: Formula)), f: Formula))) => {
       //TODO This assumes that the evolution domain reasons about the components variables. If none of the domains does, the second one will just be removed!
-      val d = if (v(d1).intersect(elim).isEmpty) d1 else d2
+      val d = if (d1.equals(elimDomain)) {
+        println("using domain 2 in cut because elimdomain (" + elimDomain + ") is d1 (" + d1 + ")")
+        d2
+      }
+      else {
+        println("using domain 1 in cut because elimdomain (" + elimDomain + ") is d2 (" + d2 + ")")
+        d1
+      }
       cut(Imply(Box(p, Box(ODESystem(Lemma2Stuff.removeODEs(ode, elim), And(d, dt)), f: Formula)), Box(p, Box(ODESystem(ode, And(And(d1, d2), dt)), f)))) < (
         //use
         implyL(-seq.ante.size - 1) < (
@@ -218,8 +228,8 @@ object Lemmas {
           )
         ,
         //show
-        cohide(seq.succ.size + 1) & implyR('R) & monb & t2_DC(elim)('R) & prop
-        )
+        cohide(seq.succ.size + 1) & implyR('R) & monb & t2_DC(elim, elimDomain)('R) & prop
+        ) & print("lemma 2 done!")
     }
   })
 
@@ -244,12 +254,12 @@ object Lemmas {
         var t: BelleExpr = null
         val v = nextVariable(ode)
         if (elim.contains(v)) {
-          t = print("in! " + v) & cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
-            allL(v, v)(-sequent.ante.length - 1) & prop & print("closed?"), hide(pos.top)
-            ) & print("here we go...") & useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
+          t = print("elim " + v) & cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
+            allL(v, v)(-sequent.ante.length - 1) & prop, hide(pos.top)
+            ) & useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
         }
         else {
-          t = useAt(", commute", PosInExpr(1 :: Nil))(pos)
+          t = print("rotate " + v) & useAt(", commute", PosInExpr(1 :: Nil))(pos)
         }
         t
       }
@@ -258,8 +268,8 @@ object Lemmas {
     def rotateOrEliminateAll(elim: Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
       case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
         var t: BelleExpr = rotateOrEliminate(elim)(pos) & print("remove 1")
-        (1 to countDiff(ode) - 2) foreach (x => t = t & rotateOrEliminate(elim)(pos) & print("remove " + (x + 1)))
-        t
+        (1 to countDiff(ode) - 2) foreach (i => t = t & rotateOrEliminate(elim)(pos) & print("remove " + (i + 1)))
+        t & print("done rotateOrEliminateAll")
       }
     })
 
@@ -297,21 +307,30 @@ object Lemmas {
   //L4 - DONE
   val f4_1 = "[x_:=a_; y_:=b_;]A_(x_,y_) <-> [y_:=b_; x_:=a_;]A_(x_,y_)".asFormula
   //  val n4_1 = "Proof of Lemma4 - Reorder Programs 1"
-  val t4_1 = equivR(1) < (
-    // ->
-    composeb('R) & composeb('L) & assignb('R) * 2 & assignb('L) * 2 & prop,
-    // <-
-    composeb('R) & composeb('L) & assignb('R) & assignb('R) & assignb('L) & assignb('L) & prop
-    )
+  //  val t4_1 = equivR(1) < (
+  //    // ->
+  //    composeb('R) & composeb('L) & assignb('R) * 2 & assignb('L) * 2 & prop,
+  //    // <-
+  //    composeb('R) & composeb('L) & assignb('R) & assignb('R) & assignb('L) & assignb('L) & prop
+  //    )
+  val t4_1 = implyR('R) &
+    (
+      // ->
+      (composeb('R) & composeb('L) & assignb('R) * 2 & assignb('L) * 2 & prop) |
+        // <-
+        (composeb('R) & composeb('L) & assignb('R) & assignb('R) & assignb('L) & assignb('L) & prop)
+      )
   lazy val lemma4_1T: DependentPositionTactic = "Apply Lemma4_1" by ((pos: Position, seq: Sequent) => {
     seq.sub(pos) match {
       case Some(Box(Compose(Assign(x, a), Assign(y, b)), f)) =>
-        cut(Equiv(Box(Compose(Assign(x, a), Assign(y, b)), f), Box(Compose(Assign(y, b), Assign(x, a)), f))) < (
+        cutAt(Box(Compose(Assign(y, b), Assign(x, a)), f))(pos) < (
+          //        cutAt(Equiv(Box(Compose(Assign(x, a), Assign(y, b)), f), Box(Compose(Assign(y, b), Assign(x, a)), f)))(pos) < (
           //use
-          equivRewriting(Position(-seq.ante.size - 1), pos) & hide(Position(-seq.ante.size - 1))
+          //            &equivRewriting(Position(-seq.ante.size - 1), pos) & hide(Position(-seq.ante.size - 1))
           ,
           //show
-          cohide(seq.succ.size + 1) & t4_1
+          print("show")
+             & cohide(pos.top) & CMon(pos.inExpr)& t4_1
           )
     }
   })
@@ -662,8 +681,8 @@ object Lemmas {
     //    ).isProved)
     //    println("Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & useAt(lemma3, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
-    //    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[a:=a1;b:=b1;]a>0 -> [b:=b1;a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_1T('R) & closeId).isProved)
+    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[a:=a1;b:=b1;]a>0 -> [?a>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
+      implyR('R) & lemma4_1T(1,1::1::Nil) & print("hihi")).isProved)
     //    println("Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[a:=*;b:=*;]a>0 -> [b:=*;a:=*;]a>0".asFormula,
     //      implyR('R) & lemma4_2T('R) & closeId).isProved)
     //    println("Test Lemma 4_3 - proved? " + TactixLibrary.proveBy("[a:=*;b:=b1;]a>0 -> [b:=b1;a:=*;](a>0)".asFormula,

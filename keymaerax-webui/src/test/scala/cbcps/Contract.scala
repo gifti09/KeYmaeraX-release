@@ -1,10 +1,13 @@
 package cbcps
 
 import java.io._
+
+import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
+import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 import java.text.Normalizer.Form
 
 import Utility._
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, TheType}
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
@@ -14,8 +17,10 @@ import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary
 import edu.cmu.cs.ls.keymaerax.btactics.TreeForm.Var
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import ProofHelper._
+import sun.misc.FloatingDecimal.BinaryToASCIIConverter
 
 import scala.collection.immutable._
+import scala.collection.mutable
 import scala.collection.mutable.LinkedHashMap
 
 /**
@@ -335,14 +340,13 @@ abstract class Contract(
   def isVerified() = isBaseCaseVerified() && isUseCaseVerified() && isStepVerified()
 
   /**
-    * Creates the side condition used in Theorem1 for composing the current component
-    * with the given component, using the given mapping.
+    * Creates the side condition as used in Theorem 1.
+    * For the sake of the implementation, the side condition is split into one formula
+    * per output variable.
     *
-    * @param ctr2 The second contract (i.e., component), composed with the current one.
-    * @param X    The port mapping.
-    * @return A [[Formula]] representing the side condition.
+    * @return A [[LinkedHashMap]] with one side condition for each output variable
     */
-  def sideCondition(ctr2: Contract, X: Map[Variable, Variable]): Formula
+  def sideConditions(): LinkedHashMap[Variable, Formula]
 
   /**
     * Creates the compatibility proof obligations for all connected ports
@@ -520,18 +524,25 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   //      )
   //  }
 
-  // \varphi -> [delta-part][ctrl][t0:=t][{t'=1,plant & t-t0<=\varepsilon}] \Pi_out
-  override def sideCondition(ctr2: Contract, X: Map[Variable, Variable]): Formula = Imply(
-    this.invariant,
-    Box(
-      Interface.compose(this.interface, ctr2.interface, X).deltaPart,
-      Box(Component.compose(this.component, ctr2.component, Contract.composePorts(X)).ctrl,
-        Box(Globals.oldT,
-          Box(this.contractPlant(Component.compose(this.component, ctr2.component, Contract.composePorts(X)).plant), this.interface.piOutAll)
+  override def sideConditions(): LinkedHashMap[Variable, Formula] = {
+    var ret: LinkedHashMap[Variable, Formula] = LinkedHashMap.empty
+    ret = this.interface.piOut.map((e) => (e._1,
+      Imply(
+        this.invariant,
+        Box(
+          this.interface.deltaPart,
+          Box(this.component.ctrl,
+            Box(Globals.oldT,
+              Box(this.contractPlant(), e._2)
+            )
+          )
         )
+      ).asInstanceOf[Formula]
       )
+
     )
-  )
+    ret
+  }
 
   override def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula] = {
     //useless and just to avoid errors
@@ -578,6 +589,44 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   * Helper functions used in contracts.
   */
 object Contract {
+
+  /**
+    * Creates the side condition F used in the proof of Theorem1 (for delay contracts!)
+    * for composing the two components, using the given mapping.
+    *
+    * @param ctr1 The first contract (i.e., component) to be composed.
+    * @param ctr2 The second contract (i.e., component) to be composed.
+    * @param X    The port mapping.
+    * @return A [[Seq]] containing two [[Formula]] representing the side conditions.
+    */
+  def sideConditionsProofDelay(ctr1: Contract, ctr2: Contract, X: Map[Variable, Variable]): Seq[Formula] = {
+    Seq(
+      Imply(
+        ctr1.invariant,
+        Box(
+          Interface.compose(ctr1.interface, ctr2.interface, X).deltaPart,
+          Box(Compose(ctr2.component.ctrl, ctr1.component.ctrl),
+            Box(Globals.oldT,
+              Box(ctr1.contractPlant(Component.compose(ctr1.component, ctr2.component, Contract.composedPorts(X)).plant), ctr1.interface.piOutAll)
+            )
+          )
+        )
+      ),
+      Imply(
+        ctr2.invariant,
+        Box(
+          Interface.compose(ctr1.interface, ctr2.interface, X).deltaPart,
+          Box(Compose(ctr1.component.ctrl, ctr2.component.ctrl),
+            Box(Globals.oldT,
+              Box(ctr1.contractPlant(Component.compose(ctr1.component, ctr2.component, Contract.composedPorts(X)).plant), ctr2.interface.piOutAll)
+            )
+          )
+        )
+      )
+
+    )
+  }
+
 
   /**
     * Saves the given contract as [[SerializableContract]] using the given filename.
@@ -657,33 +706,41 @@ object Contract {
     p.subgoals
   }
 
+  def composeWithSideTactics[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable], cpoT: Map[(Variable, Variable), BelleExpr], side1T: mutable.Map[Variable, BelleExpr], side2T: mutable.Map[Variable, BelleExpr]): C = {
+    val side1 = side1T.map((e) => (e._1, TactixLibrary.proveBy(ctr1.sideConditions()(e._1), e._2)))
+    val side2 = side2T.map((e) => (e._1, TactixLibrary.proveBy(ctr2.sideConditions()(e._1), e._2)))
+    require(side1.forall((e) => e._2.isProved), "sideT1 must proof all side condition of ctr1")
+    require(side2.forall((e) => e._2.isProved), "sideT2 must proof all side condition of ctr2")
+    compose(ctr1, ctr2, X, cpoT, side1, side2)
+  }
+
   /**
     * Composes two contracts with port mapping X.
-    * The composite component is then verified utilizing the provided tactics
+    * The composite component is then verified utilizing the provided tactics/provables
     * for verifying the compatibility proof obligations and the side conditions for
     * both components.
     *
-    * @param ctr1   The first contract.
-    * @param ctr2   The second contract.
-    * @param X      The port mapping.
-    * @param cpoT   The tactics to verify the compatibility proof obligations.
-    * @param side1T The tactic to verify the side condition for the first component.
-    * @param side2T The tactic to verify the side condition for the second component.
+    * @param ctr1  The first contract.
+    * @param ctr2  The second contract.
+    * @param X     The port mapping.
+    * @param cpoT  The tactics to verify the compatibility proof obligations.
+    * @param side1 A provable verifying the side condition for the first component.
+    * @param side2 A provable verifying the side condition for the second component.
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The verified composit contract.
     */
-  def compose[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable], cpoT: Map[(Variable, Variable), BelleExpr], side1T: BelleExpr, side2T: BelleExpr): C = {
+  def compose[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable], cpoT: Map[(Variable, Variable), BelleExpr], side1: mutable.Map[Variable, Provable], side2: mutable.Map[Variable, Provable]): C = {
     //Initial checks
     require(ctr1.getClass.equals(ctr2.getClass), "only contracts of the same type can be composed")
     require(ctr1.isVerified() && ctr2.isVerified(), "only verified contracts can be composed")
 
     //Compose all parts of the contract
-    val ports: Program = composePorts(X)
+    val ports: Program = composedPorts(X)
     val i3 = Interface.compose(ctr1.interface, ctr2.interface, X)
     val c3 = Component.compose(ctr1.component, ctr2.component, ports)
-    val pre3 = composePre(ctr1, ctr2, X)
-    val post3 = composePost(ctr1, ctr2)
-    val inv3 = composeInvariant(ctr1, ctr2, X)
+    val pre3 = composedPre(ctr1, ctr2, X)
+    val post3 = composedPost(ctr1, ctr2)
+    val inv3 = composedInvariant(ctr1, ctr2, X)
 
     //Construct a new contract
     val constructor = ctr1.getClass.getConstructors()(0)
@@ -704,7 +761,7 @@ object Contract {
     //      //... |- inv2
     //    andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-2) & andLi *@ TheType() & implyRi & by(ctr2.baseCaseLemma.get)
     //      ),
-    //      //... |- preDelta
+    //      //... |- composedPreDelta
     //      andL('L) & andL('L) & hideL(-2) & hideL(-1) & andLi *@ TheType() & close(-1, 1) //implyRi & by(ctr2.baseCaseLemma.get)
     //      )
     //    )
@@ -785,15 +842,40 @@ object Contract {
     ctr3.verifyStep(implyR('R) & boxAnd('R) & andR('R) < (
       boxAnd('R) & andR('R) < (
         //inv1
-        composeb('R) * (5) & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
+        composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
           print("C1;C2") &
-            cut(ctr2.sideCondition(ctr1, X)) < (
+            //cf. 1 - cut F2out
+            cut(sideConditionsProofDelay(ctr1, ctr2, X)(1)) < (
               //use cut
-
-              print("use cut") partial
+              andL('L) & andL('L) & implyL(-1) < (close(-3, 2),
+                //cf. 3 - drop ports2
+                useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
+                  //                  //cf. 3.5 - if in1 was empty, we need to remove ?true
+                  //                  & (
+                  //                  if ((ctr1.interface.vIn.toSet -- X.keys.toSet).isEmpty) composeb(1) & Lemmas.lemma1AB('R)
+                  //                  else skip
+                  //                  )
+                  //cf. 4 - drop in2
+                  //TODO test this stuff with multiple ports in in1 and in2
+                  & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
+                  & ComposeProofStuff.dropIn(ctr2.interface.vIn)('R)
+                  //cf. 5-9 - introduce, move and weaken test, weaken assignment
+                  & print("use cut before")
+                  & ComposeProofStuff.introduceTestsForAll(ctr2.interface.piOut.filter((e) => X.values.toSet.contains(e._1)))('R)
+                  & print("use cut after")) partial
               ,
-              //show cut
-              hideAllButLastSucc & implyR('R) & print("show cut before") & Lemmas.lemma2_DC(Seq(ctr2.variables().toSeq: _*))('R) &print("show cut after")  partial
+              //show cut - DONE
+              print("show cut!") & hideAllButLastSucc & implyR('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)('R)
+                & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1AB('R)
+                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.size, true)('R)
+                //TODO test this cases! all three (0,1,n) of them!
+                & (
+                if (ctr2.interface.piOut.size == 0) closeT
+                else (andR('R) < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
+                //                else if(ctr2.interface.piOut.size==1) print("before useat") & useAt(side2(ctr2.interface.vOut(0)),PosInExpr(1::Nil))('R) & closeId
+                //                else ( andR('R) <(skip,ComposeProofStuff.closeSide(side2)('R) & prop) ) * (ctr2.interface.piOut.size-1) & ComposeProofStuff.closeSide(side2)('R) & prop
+                )
               )
           ,
           print("C2;C1") partial
@@ -802,15 +884,148 @@ object Contract {
         //inv2
         print("inv2") partial
         ) partial,
-      //pre delta
+      //pre delta - DONE
       //TODO does this master() always close, or should I try to reduce the thing further? (how??)
-      hideL(-1) & composeb('R) & G('R) & master() & print("pre delta closed?")
+      hideL(-1) & composeb('R) & G('R) & master() //& print("pre delta closed?")
       )
       & print("todo") partial
     )
 
     //Return verified composite contract
     return ctr3
+  }
+
+  private object ComposeProofStuff {
+    def dropIn(vIn: Seq[Variable]): DependentPositionTactic = "Drop Input Ports" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(_, Box(in3: Compose, _))) =>
+        var n = countBinary[Compose](in3.asInstanceOf[Compose])
+        var t: BelleExpr = skip
+        if (n > 1) t = t & composeb(pos.top.getPos, 1 :: Nil) * (n / 2)
+        if (n == 1) n = 1
+        else n = n / 2
+        t = t & (dropOrMerge(vIn)(pos.top.getPos) * n)
+        t
+      //TODO test the case with the test!
+      case Some(Box(_, Box(in3: Test, _))) => Lemmas.lemma1AB(pos.top.getPos)
+    })
+
+    def dropOrMerge(vIn: Seq[Variable]): DependentPositionTactic = "Drop Or Merge" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(_, Box(b, _))) =>
+        if (v(b).intersect(vIn).nonEmpty) {
+          Lemmas.lemma1AB(pos.top.getPos)
+        }
+        else {
+          useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos)
+        }
+    })
+
+    def closeSide(side: mutable.Map[Variable, Provable]): DependentPositionTactic = "Close With Sidecondition" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(dp, Box(ctrl, Box(told, Box(plant, out))))) =>
+        useAt(side(side.keySet.intersect(v(out).toSet).toSeq(0)), PosInExpr(1 :: Nil))('R) & closeId
+    })
+
+    def introduceTestsForAll(vt: mutable.LinkedHashMap[Variable, Formula]): DependentPositionTactic = "Introduce Tests For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(p, Box(in3, Box(ports1, _)))) =>
+        var t: BelleExpr = skip
+        vt.foreach((e) => t = t & ComposeProofStuff.introduceTestFor(e._1, e._2)(pos))
+        t
+    })
+
+    def introduceTestFor(v: Variable, t: Formula): DependentPositionTactic = "Introduce Test For" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(p, Box(in3, Box(ports1, _)))) =>
+        //introduce test using lemma 5
+        Lemmas.lemma5T(t)(pos) < (skip, hide(-2) * 3 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop) &
+          //split t from p - [p][t][in3][ports1]A
+          composeb(pos) &
+          //split in3, if necessary and commute t and all of in3
+          (
+            if (in3.isInstanceOf[Compose]) {
+              composeb(pos.top.getPos, 2 :: Nil) * (ComposeProofStuff.countBinary[Compose](in3.asInstanceOf[Compose])) &
+                print("need to commute a lot")
+            } else {
+              skip
+            }
+            )
+        //merge p and in3
+        print("before merge") &
+          useAt("[;] compose", PosInExpr(1 :: Nil))(pos)
+      //split ports 1
+
+      //locate v in ports1
+      //merge ports 1
+    })
+
+    def removeDeltaParts(cnt: Int, left: Boolean): DependentPositionTactic = "Remove DeltaParts" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(dp, f: Formula)) =>
+        var t: BelleExpr = print("removeDP!")
+        //        println("compose # " + countCompose(dp.asInstanceOf[Compose]))
+        if (dp.isInstanceOf[Test]) {
+          println("[removeDeltaParts]: Just a test, so nothing to do here.")
+        }
+        else if (dp.isInstanceOf[Assign]) {
+          println("[removeDeltaParts]: Just a single assignment...")
+          if (cnt == 1) {
+            t = t & Lemmas.lemma1BA(pos)
+            t = t & introduceEmptyTest(pos, seq, f)
+          }
+        }
+        else {
+          val nr = countBinary[Compose](dp.asInstanceOf[Compose])
+          println("[removeDeltaParts]: Multiple (nr=" + (nr + 1) + ") assignments...")
+          if (cnt == 0) {
+            println("[removeDeltaParts]: Nothing to do, since cnt=" + cnt + "...")
+          }
+          else {
+            if (cnt == nr + 1) {
+              t = t & Lemmas.lemma1BA(pos.top.getPos)
+              t = t & introduceEmptyTest(pos, seq, f)
+            }
+            else {
+              val newCnt = if (!left)
+                nr + 1 - cnt
+              else
+                cnt
+              var s: List[Int] = Nil
+              (0 until newCnt) foreach (i => {
+                t = t & composeb(pos.top.getPos, s)
+                if (left) t = t & Lemmas.lemma1BA(pos.top)
+                else s = List(1) ++ s
+              })
+              if (!left) {
+                (0 until newCnt - 1) foreach (i => {
+                  t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos)
+                })
+                if (newCnt != 0) t = t & Lemmas.lemma1AB(pos.top.getPos)
+                else t = t & Lemmas.lemma1BA(pos.top.getPos)
+              }
+            }
+          }
+        }
+        t = t & print("done!")
+        t
+    })
+
+    def introduceEmptyTest(pos: Position, seq: Sequent, f: Formula): BelleExpr = cut(Box(Test("true".asFormula), f)) < (
+      //use cut
+      testb(seq.ante.size - 1) & implyL(seq.ante.size - 1) < (close, closeId)
+      ,
+      //show cut
+      hide(pos.top)
+      )
+
+    def countBinary[C <: BinaryComposite](c: C): Integer = c match {
+      case Compose(c1: C, c2: C) => countBinary(c1) + countBinary(c2) + 1
+      case Compose(c1: C, _) => countBinary(c1) + 1
+      case Compose(_, c2: C) => countBinary(c2) + 1
+      case Compose(_, _) => 1
+    }
+  }
+
+  def main(args: Array[String]): Unit = {
+    ProofHelper.initProver
+    //    TactixLibrary.proveBy("[a:=a1;b:=b1;c:=c1;d:=d1;]true".asFormula, ComposeProofStuff.removeDeltaParts(0, false)('R) & print("a"))
+    TactixLibrary.proveBy("[a:=a1;b:=b1;]b>0".asFormula, print("a") & ComposeProofStuff.removeDeltaParts(0, false)('R))
+    ProofHelper.shutdownProver
   }
 
   /**
@@ -820,7 +1035,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The ports part of the composit.
     */
-  def composePorts[C <: Contract](X: Map[Variable, Variable]): Program = {
+  def composedPorts[C <: Contract](X: Map[Variable, Variable]): Program = {
     X.map(x => Assign(x._1, x._2).asInstanceOf[Program]) match {
       case ass if ass.nonEmpty => ass.reduce((a1, a2) => Compose(a1, a2))
       case _ => Test(True)
@@ -836,8 +1051,8 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The invariant of the composit.
     */
-  private def composeInvariant[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
-    And(And(ctr1.invariant, ctr2.invariant), preDelta(X))
+  private def composedInvariant[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
+    And(And(ctr1.invariant, ctr2.invariant), composedPreDelta(X))
   }
 
   /**
@@ -848,7 +1063,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The postcondition of the composit.
     */
-  private def composePost[C <: Contract](ctr1: C, ctr2: C): And = {
+  private def composedPost[C <: Contract](ctr1: C, ctr2: C): And = {
     And(ctr1.post, ctr2.post)
   }
 
@@ -861,8 +1076,8 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The precondition of the composit.
     */
-  private def composePre[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
-    And(And(ctr1.pre, ctr2.pre), preDelta(X))
+  private def composedPre[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
+    And(And(ctr1.pre, ctr2.pre), composedPreDelta(X))
   }
 
   /**
@@ -873,7 +1088,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The preDelta of the composit.
     */
-  private def preDelta[C <: Contract](X: Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
+  private def composedPreDelta[C <: Contract](X: Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
     X.map { case (in, out) => Equal(in, out) }.reduce((a: Formula, b: Formula) => And(a, b))
   }
 }

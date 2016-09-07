@@ -195,7 +195,7 @@ object TacticFactory {
         if (name != "ANON" && DerivationInfo.ofCodeName(name).codeName.toLowerCase() != name.toLowerCase())
           println("WARNING: codeName should be changed to a consistent name: " + name + " vs. " + DerivationInfo.ofCodeName(name).codeName)
       } catch {
-        case _: IllegalArgumentException => println("WARNING: codeName not found: " + name)
+        case _: IllegalArgumentException => //println("WARNING: codeName not found: " + name)
       }
     }
 
