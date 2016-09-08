@@ -356,7 +356,7 @@ abstract class Contract(
     * @param X    The port mapping.
     * @return A map, where each connected port tuple is assigned a compatibility proof obligation.
     */
-  def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula]
+  def cpo(ctr2: Contract, X: mutable.Map[Variable, Variable]): mutable.Map[(Variable, Variable), Formula]
 
   /**
     * Returns the current contracts precondition, depending on the type of contract.
@@ -544,10 +544,10 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
     ret
   }
 
-  override def cpo(ctr2: Contract, X: Map[Variable, Variable]): Map[(Variable, Variable), Formula] = {
+  override def cpo(ctr2: Contract, X: mutable.Map[Variable, Variable]): mutable.Map[(Variable, Variable), Formula] = {
     //useless and just to avoid errors
     val ctr1 = this
-    var s = Map.empty[(Variable, Variable), Formula]
+    var s = mutable.Map.empty[(Variable, Variable), Formula]
 
     require(X.keySet.subsetOf(ctr1.interface.vIn.toSet ++ ctr2.interface.vIn.toSet) || !X.values.toSet.subsetOf(ctr1.interface.vOut.toSet ++ ctr2.interface.vOut.toSet),
       "invalid port mapping X")
@@ -599,7 +599,7 @@ object Contract {
     * @param X    The port mapping.
     * @return A [[Seq]] containing two [[Formula]] representing the side conditions.
     */
-  def sideConditionsProofDelay(ctr1: Contract, ctr2: Contract, X: Map[Variable, Variable]): Seq[Formula] = {
+  def sideConditionsProofDelay(ctr1: Contract, ctr2: Contract, X: mutable.Map[Variable, Variable]): Seq[Formula] = {
     Seq(
       Imply(
         ctr1.invariant,
@@ -706,12 +706,19 @@ object Contract {
     p.subgoals
   }
 
-  def composeWithSideTactics[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable], cpoT: Map[(Variable, Variable), BelleExpr], side1T: mutable.Map[Variable, BelleExpr], side2T: mutable.Map[Variable, BelleExpr]): C = {
+  def composeWithLemmas[C <: Contract](ctr1: C, ctr2: C, X: mutable.Map[Variable, Variable], cpoT: mutable.Map[(Variable, Variable), Lemma], side1T: mutable.Map[Variable, Lemma], side2T: mutable.Map[Variable, Lemma], verify: Boolean = true): C = {
+    compose(ctr1, ctr2, X, cpoT.map { case (k, v) => k -> v.fact }, side1T.map { case (k, v) => k -> v.fact }, side2T.map { case (k, v) => k -> v.fact }, verify)
+  }
+
+  //TODO untested!
+  def composeWithSideTactics[C <: Contract](ctr1: C, ctr2: C, X: mutable.Map[Variable, Variable], cpoT: mutable.Map[(Variable, Variable), BelleExpr], side1T: mutable.Map[Variable, BelleExpr], side2T: mutable.Map[Variable, BelleExpr]): C = {
     val side1 = side1T.map((e) => (e._1, TactixLibrary.proveBy(ctr1.sideConditions()(e._1), e._2)))
     val side2 = side2T.map((e) => (e._1, TactixLibrary.proveBy(ctr2.sideConditions()(e._1), e._2)))
+    val cpo = cpoT.map((e) => (e._1, TactixLibrary.proveBy((ctr1.cpo(ctr2, X) ++ ctr2.cpo(ctr1, X)) (e._1), e._2)))
     require(side1.forall((e) => e._2.isProved), "sideT1 must proof all side condition of ctr1")
     require(side2.forall((e) => e._2.isProved), "sideT2 must proof all side condition of ctr2")
-    compose(ctr1, ctr2, X, cpoT, side1, side2)
+    require(cpo.forall((e) => e._2.isProved), "cpoT must proof all compatibility proof obligations")
+    compose(ctr1, ctr2, X, cpo, side1, side2)
   }
 
   /**
@@ -729,10 +736,10 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The verified composit contract.
     */
-  def compose[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable], cpoT: Map[(Variable, Variable), BelleExpr], side1: mutable.Map[Variable, Provable], side2: mutable.Map[Variable, Provable]): C = {
+  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.Map[Variable, Variable], cpoT: mutable.Map[(Variable, Variable), Provable], side1: mutable.Map[Variable, Provable], side2: mutable.Map[Variable, Provable], verify: Boolean = true): C = {
     //Initial checks
     require(ctr1.getClass.equals(ctr2.getClass), "only contracts of the same type can be composed")
-    require(ctr1.isVerified() && ctr2.isVerified(), "only verified contracts can be composed")
+    require(!verify || (ctr1.isVerified() && ctr2.isVerified()), "only verified contracts can be composed and verified")
 
     //Compose all parts of the contract
     val ports: Program = composedPorts(X)
@@ -745,6 +752,8 @@ object Contract {
     //Construct a new contract
     val constructor = ctr1.getClass.getConstructors()(0)
     val ctr3 = constructor.newInstance(c3, i3, pre3, post3, inv3, None, None, None).asInstanceOf[C]
+
+    if (!verify) return ctr3
 
     //Automatically verify new contract, following theorem from my thesis
     // Verify CPO
@@ -761,7 +770,7 @@ object Contract {
     //      //... |- inv2
     //    andL('L) & andL('L) & hideL(-3) & andL('L) & hideL(-2) & andLi *@ TheType() & implyRi & by(ctr2.baseCaseLemma.get)
     //      ),
-    //      //... |- composedPreDelta
+    //      //... |- composedBootstrap
     //      andL('L) & andL('L) & hideL(-2) & hideL(-1) & andLi *@ TheType() & close(-1, 1) //implyRi & by(ctr2.baseCaseLemma.get)
     //      )
     //    )
@@ -839,15 +848,20 @@ object Contract {
     //      )
     //    )
 
-    ctr3.verifyStep(implyR('R) & boxAnd('R) & andR('R) < (
+    ctr3.verifyStep(implyR('R)
+      //
+      & boxAnd('R) & andR('R) < (
       boxAnd('R) & andR('R) < (
-        //inv1
-        composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
-          print("C1;C2") &
-            //cf. 1 - cut F2out
-            cut(sideConditionsProofDelay(ctr1, ctr2, X)(1)) < (
+        boxAnd('R) & andR('R) < (
+          //inv1
+          print("inv1")
+            & composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
+            print("C1;C2")
+              //cf. 1 - cut F2out
+              & cut(sideConditionsProofDelay(ctr1, ctr2, X)(1)) < (
               //use cut
-              andL('L) & andL('L) & implyL(-1) < (close(-3, 2),
+              andL('L) & andL('L) & andL('L) & implyL(-1) // -1 global, -2 bootstrap, -3 inv1, -4 inv2
+                < (close(-4, 2),
                 //cf. 3 - drop ports2
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
                   //                  //cf. 3.5 - if in1 was empty, we need to remove ?true
@@ -877,16 +891,19 @@ object Contract {
                 //                else ( andR('R) <(skip,ComposeProofStuff.closeSide(side2)('R) & prop) ) * (ctr2.interface.piOut.size-1) & ComposeProofStuff.closeSide(side2)('R) & prop
                 )
               )
+            ,
+            print("C2;C1") partial
+            ) partial
           ,
-          print("C2;C1") partial
-          ) partial
-        ,
-        //inv2
-        print("inv2") partial
+          //inv2
+          print("inv2") partial
+          ) partial,
+        //pre boot - DONE
+        //TODO does this master() always close, or should I try to reduce the thing further? (how??)
+        print("boot") & hideL(-1) & composeb('R) & G('R) & master() //& print("boot closed?")
         ) partial,
-      //pre delta - DONE
-      //TODO does this master() always close, or should I try to reduce the thing further? (how??)
-      hideL(-1) & composeb('R) & G('R) & master() //& print("pre delta closed?")
+      //global - DONE
+      V('R) & prop //& print("global closed?") partial
       )
       & print("todo") partial
     )
@@ -895,7 +912,7 @@ object Contract {
     return ctr3
   }
 
-  private object ComposeProofStuff {
+  object ComposeProofStuff {
     def dropIn(vIn: Seq[Variable]): DependentPositionTactic = "Drop Input Ports" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(_, Box(in3: Compose, _))) =>
         var n = countBinary[Compose](in3.asInstanceOf[Compose])
@@ -927,6 +944,7 @@ object Contract {
     def introduceTestsForAll(vt: mutable.LinkedHashMap[Variable, Formula]): DependentPositionTactic = "Introduce Tests For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in3, Box(ports1, _)))) =>
         var t: BelleExpr = skip
+        println("vt: " + vt)
         vt.foreach((e) => t = t & ComposeProofStuff.introduceTestFor(e._1, e._2)(pos))
         t
     })
@@ -940,14 +958,19 @@ object Contract {
           //split in3, if necessary and commute t and all of in3
           (
             if (in3.isInstanceOf[Compose]) {
+              //in3 is not empty -> commute a lot
               composeb(pos.top.getPos, 2 :: Nil) * (ComposeProofStuff.countBinary[Compose](in3.asInstanceOf[Compose])) &
                 print("need to commute a lot")
             } else {
-              skip
+              //in3 is empty -> just commute the ?true
+              print("need to commute a bit") &
+                useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, 1 :: Nil) &
+                Lemmas.lemma4_6T(pos.top.getPos, 1 :: Nil) &
+                composeb(pos.top.getPos, 1 :: Nil)
             }
-            )
-        //merge p and in3
-        print("before merge") &
+            ) &
+          //merge p and in3
+          print("before merge") &
           useAt("[;] compose", PosInExpr(1 :: Nil))(pos)
       //split ports 1
 
@@ -1035,7 +1058,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The ports part of the composit.
     */
-  def composedPorts[C <: Contract](X: Map[Variable, Variable]): Program = {
+  def composedPorts[C <: Contract](X: mutable.Map[Variable, Variable]): Program = {
     X.map(x => Assign(x._1, x._2).asInstanceOf[Program]) match {
       case ass if ass.nonEmpty => ass.reduce((a1, a2) => Compose(a1, a2))
       case _ => Test(True)
@@ -1051,8 +1074,8 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The invariant of the composit.
     */
-  private def composedInvariant[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
-    And(And(ctr1.invariant, ctr2.invariant), composedPreDelta(X))
+  private def composedInvariant[C <: Contract](ctr1: C, ctr2: C, X: mutable.Map[Variable, Variable]): And = {
+    Globals.appendGlobalPropertyToFormula(And(And(ctr1.invariant, ctr2.invariant), composedBootstrap(X)))
   }
 
   /**
@@ -1076,19 +1099,19 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The precondition of the composit.
     */
-  private def composedPre[C <: Contract](ctr1: C, ctr2: C, X: Map[Variable, Variable]): And = {
-    And(And(ctr1.pre, ctr2.pre), composedPreDelta(X))
+  private def composedPre[C <: Contract](ctr1: C, ctr2: C, X: mutable.Map[Variable, Variable]): And = {
+    And(And(ctr1.pre, ctr2.pre), composedBootstrap(X))
   }
 
   /**
-    * Create the preDelta part for the composit contract.
+    * Create the bootstrapping part for the composit contract.
     * i.e., X(v) = v , for all v in the mapping
     *
     * @param X The port mapping.
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
-    * @return The preDelta of the composit.
+    * @return The bootstrapping of the composit.
     */
-  private def composedPreDelta[C <: Contract](X: Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
+  private def composedBootstrap[C <: Contract](X: mutable.Map[Variable, Variable]): BinaryComposite with Formula with Product with Serializable = {
     X.map { case (in, out) => Equal(in, out) }.reduce((a: Formula, b: Formula) => And(a, b))
   }
 }

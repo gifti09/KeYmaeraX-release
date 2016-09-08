@@ -8,6 +8,7 @@ import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 
 import scala.collection.immutable._
+import scala.collection.mutable
 import scala.collection.mutable.LinkedHashMap
 
 
@@ -105,7 +106,7 @@ object Interface {
   }
 
 
-  def compose(i1: Interface, i2: Interface, X: Map[Variable, Variable]) = {
+  def compose(i1: Interface, i2: Interface, X: mutable.Map[Variable, Variable]) = {
     require((X.keySet -- i1.vIn -- i2.vIn).isEmpty
       && (X.values.toSet -- i1.vOut -- i2.vOut).isEmpty,
       "invalid port mappings in X")

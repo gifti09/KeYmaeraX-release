@@ -9,10 +9,11 @@ import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core.{DifferentialProgram, ODESystem, Program}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{print, printIndexed}
+import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics._
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import testHelper.ParserFactory._
 
+import scala.collection.immutable.{List, Map}
 import scala.collection.mutable._
 import scala.collection.{immutable, mutable}
 
@@ -25,7 +26,7 @@ object Tester {
   def main(args: Array[String]) {
 
 
-//    test()
+    test()
 
 
     ProofHelper.initProver
@@ -99,11 +100,11 @@ object Tester {
     println("Contract(C2,I2) = " + lc2.contract())
     println("Loaded Contract(C2,I2) verified? " + lc2.isVerified())
 
-    val X = immutable.Map(
+    val X = mutable.Map(
       "y".asVariable -> "x".asVariable
     )
 
-    var cpoT: immutable.Map[(Variable, Variable), BelleExpr] = immutable.Map.empty
+    var cpoT: mutable.Map[(Variable, Variable), BelleExpr] = mutable.Map.empty
     cpoT += ("y".asVariable, "x".asVariable) -> (implyR('R) & assignb('R) & implyR('R) & QE)
     //    println("CPO verified? " + cpoT.forall { case (m, t) => TactixLibrary.proveBy(lc1.cpo(lc2, X)(m), t).isProved })
 
@@ -165,17 +166,107 @@ object Tester {
     //piOutAll Test
     //    piOutAllTest()
     //In Test
-    inTest()
+    //    inTest()
+    bigTest()
 
     ProofHelper.shutdownProver
     System.exit(0)
   }
 
+  def bigTest() = {
+    val initialize = false
+    if (initialize) {
+      val c1 = new Component("B1", "?ctr1>0;".asProgram, ODESystem("p1'=1".asDifferentialProgram, "p1<1".asFormula))
+      val c2 = new Component("B2", "?ctr2>0;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))
+      val i1 = new Interface(mutable.LinkedHashMap("r".asVariable -> "r>0".asFormula, "i1i1".asVariable -> "i1i1>0".asFormula, "s".asVariable -> "s>0".asFormula, "i1i2".asVariable -> "i1i2>0".asFormula), mutable.LinkedHashMap("a_".asVariable -> "a_>0".asFormula, "i1o1".asVariable -> "i1o1>0".asFormula, "b_".asVariable -> "b_>0".asFormula, "i1o2".asVariable -> "i1o2>0".asFormula))
+      val i2 = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "i2i1".asVariable -> "i2i1>0".asFormula, "b".asVariable -> "b>0".asFormula, "i2i2".asVariable -> "i2i2>0".asFormula), mutable.LinkedHashMap("r_".asVariable -> "r_>0".asFormula, "i2o1".asVariable -> "i2o1>0".asFormula, "s_".asVariable -> "s_>0".asFormula, "i2o2".asVariable -> "i2o2>0".asFormula))
+      val ctr1 = new DelayContract(c1, i1, "a_=1 & b_=1 & i1o1=1 & i1o2=1".asFormula, "true".asFormula, "a_=1 & b_=1 & i1o1=1 & i1o2=1".asFormula)
+      val ctr2 = new DelayContract(c2, i2, "r_=1 & s_=1 & i2o1=1 & i2o2=1".asFormula, "true".asFormula, "r_=1 & s_=1 & i2o1=1 & i2o2=1".asFormula)
+      println("Ctr1: " + ctr1.contract())
+      println("Ctr2: " + ctr2.contract())
+
+      ctr1.verifyBaseCase(QE)
+      ctr1.verifyUseCase(QE)
+      ctr1.verifyStep(master())
+      ctr2.verifyBaseCase(QE)
+      ctr2.verifyUseCase(QE)
+      ctr2.verifyStep(master())
+      println("Ctr1 verified? " + ctr1.isVerified())
+      println("Ctr2 verified? " + ctr2.isVerified())
+
+      Contract.save(ctr1, "big1.cbcps")
+      Contract.save(ctr2, "big2.cbcps")
+      println("Saved both contracts!")
+    }
+    val lctr1 = Contract.load("big1.cbcps")
+    println("Loaded ctr2! verified? " + lctr1.isVerified())
+    println("LCtr1: " + lctr1.contract())
+    val lctr2 = Contract.load("big2.cbcps")
+    println("Loaded ctr2! verified? " + lctr2.isVerified())
+    println("LCtr2: " + lctr2.contract())
+
+    if (initialize) {
+      //Verify lemmas for side conditions
+      lctr1.sideConditions().foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some("side1-" + v))
+      }
+      }
+      lctr2.sideConditions().foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some("side2-" + v))
+      }
+      }
+    }
+    //Reuse previously verified lemmas for side contision
+    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("side1-" + v).get
+    }
+    }.toSeq: _*)
+    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("side2-" + v).get
+    }
+    }.toSeq: _*)
+
+    val X = mutable.Map(
+      "r".asVariable -> "r_".asVariable,
+      "s".asVariable -> "s_".asVariable,
+      "a".asVariable -> "a_".asVariable,
+      "b".asVariable -> "b_".asVariable
+    )
+
+    if (initialize) {
+      //Verify lemmas for cpo
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some("cpo1-2-" + v))
+      }
+      }
+      lctr2.cpo(lctr1, X).foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some("cpo2-1-" + v))
+      }
+      }
+    }
+
+    //Reuse previously verified lemmas for cpo
+    var cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("cpo1-2-" + v).get
+    }
+    }.toSeq: _*) ++
+      mutable.Map[(Variable, Variable), Lemma](lctr2.cpo(lctr1, X).map { case (v, f: Formula) => {
+        v -> Utility.loadLemma("cpo2-1-" + v).get
+      }
+      }.toSeq: _*)
+
+
+    var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, false)
+    println("Ctr3: " + ctr3.contract())
+    ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+  }
+
+
   def inTest() = {
     val i = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula))
     println("i.in=" + i.in)
 
-    TactixLibrary.proveBy(Imply("d>0".asFormula, Box(i.in, "d>0".asFormula)), implyR('R) & composeb('R) * (countBinary[Compose](i.in.asInstanceOf[Compose])/2) & print("a"))
+    TactixLibrary.proveBy(Imply("d>0".asFormula, Box(i.in, "d>0".asFormula)), implyR('R) & composeb('R) * (countBinary[Compose](i.in.asInstanceOf[Compose]) / 2) & print("a"))
   }
 
   def countBinary[C <: BinaryComposite](c: C): Integer = c match {

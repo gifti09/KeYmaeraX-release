@@ -59,10 +59,10 @@ object Globals {
 
   def consT: Formula = LessEqual(t, eps)
 
-  def appendGlobalPropertyToFormula(p: Formula): Formula = {
+  def appendGlobalPropertyToFormula(p: Formula): And = {
     _prop match {
       case Some(gp) => return And(p, gp)
-      case _ => return p
+      case _ => return And(p, "true".asFormula)
     }
   }
 
