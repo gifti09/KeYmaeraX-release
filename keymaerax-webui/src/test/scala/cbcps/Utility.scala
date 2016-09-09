@@ -192,17 +192,17 @@ object Lemmas {
   // This restriction is due to the fact that DG inverse does not handle vectors, but single variables!
   def t2_DC(elim: Seq[Variable], elimDomain: Formula): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
     case Some(Box(ODESystem(ode, And(And(d1: Formula, d2: Formula), _)), f: Formula)) => {
-      var t: BelleExpr = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & useAt("DCi", PosInExpr(1 :: Nil))(pos) & print("domain done")
+      var t: BelleExpr = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & useAt("DCi", PosInExpr(1 :: Nil))(pos) //& print("domain done")
       //Remove Evolution Domain
       if (d2.equals(elimDomain)) {
         t = useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil)) & useAt(domainCommute)(pos) & t & useAt(domainCommute)(pos)
-        println("removing domain 2")
+        //        println("removing domain 2")
       }
-      else println("removing domain 1")
+      //      else println("removing domain 1")
 
 
       //Remove Differential Equations
-      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) & print("commuted")
+      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) //& print("commuted")
       t = t & Lemma2Stuff.rotateOrEliminateAll(elim)(pos)
       t
     }
@@ -210,13 +210,12 @@ object Lemmas {
 
   def lemma2_DC(elim: Seq[Variable], elimDomain: Formula): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
     case Some(Box(p, Box(ODESystem(ode: DifferentialProgram, And(And(d1: Formula, d2: Formula), dt: Formula)), f: Formula))) => {
-      //TODO This assumes that the evolution domain reasons about the components variables. If none of the domains does, the second one will just be removed!
       val d = if (d1.equals(elimDomain)) {
-        println("using domain 2 in cut because elimdomain (" + elimDomain + ") is d1 (" + d1 + ")")
+        //        println("using domain 2 in cut because elimdomain (" + elimDomain + ") is d1 (" + d1 + ")")
         d2
       }
       else {
-        println("using domain 1 in cut because elimdomain (" + elimDomain + ") is d2 (" + d2 + ")")
+        //        println("using domain 1 in cut because elimdomain (" + elimDomain + ") is d2 (" + d2 + ")")
         d1
       }
       cut(Imply(Box(p, Box(ODESystem(Lemma2Stuff.removeODEs(ode, elim), And(d, dt)), f: Formula)), Box(p, Box(ODESystem(ode, And(And(d1, d2), dt)), f)))) < (
@@ -229,7 +228,7 @@ object Lemmas {
         ,
         //show
         cohide(seq.succ.size + 1) & implyR('R) & monb & t2_DC(elim, elimDomain)('R) & prop
-        ) & print("lemma 2 done!")
+        ) //& print("lemma 2 done!")
     }
   })
 
@@ -254,12 +253,14 @@ object Lemmas {
         var t: BelleExpr = null
         val v = nextVariable(ode)
         if (elim.contains(v)) {
-          t = print("elim " + v) & cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
-            allL(v, v)(-sequent.ante.length - 1) & prop, hide(pos.top)
-            ) & useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
+          t = //print("elim " + v) &
+            cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
+              allL(v, v)(-sequent.ante.length - 1) & prop, hide(pos.top)
+              ) & useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
         }
         else {
-          t = print("rotate " + v) & useAt(", commute", PosInExpr(1 :: Nil))(pos)
+          t = //print("rotate " + v) &
+            useAt(", commute", PosInExpr(1 :: Nil))(pos)
         }
         t
       }
@@ -267,9 +268,9 @@ object Lemmas {
 
     def rotateOrEliminateAll(elim: Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
       case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
-        var t: BelleExpr = rotateOrEliminate(elim)(pos) & print("remove 1")
-        (1 to countDiff(ode) - 2) foreach (i => t = t & rotateOrEliminate(elim)(pos) & print("remove " + (i + 1)))
-        t & print("done rotateOrEliminateAll")
+        var t: BelleExpr = rotateOrEliminate(elim)(pos) //& print("remove 1")
+        (1 to countDiff(ode) - 2) foreach (i => t = t & rotateOrEliminate(elim)(pos)) //& print("remove " + (i + 1)))
+        t //& print("done rotateOrEliminateAll")
       }
     })
 
@@ -279,9 +280,9 @@ object Lemmas {
     }
 
     private def nextVariable(dp: DifferentialProgram): Variable = dp match {
-      case AtomicODE(s, _) => println("a: " + s.x);
+      case AtomicODE(s, _) => //println("a: " + s.x);
         s.x
-      case DifferentialProduct(a: AtomicODE, _) => println("d: " + a.xp.x);
+      case DifferentialProduct(a: AtomicODE, _) => //println("d: " + a.xp.x);
         a.xp.x
     }
   }
@@ -474,6 +475,16 @@ object Lemmas {
           //show
           cohide(pos.top) & CMon(pos.inExpr) & t4_6
           )
+      case Some(Box(Test(a), Box(Test(b), f))) =>
+        cutAt(Box(Test(b), Box(Test(a), f)))(pos) < (
+          //use
+          skip
+          ,
+          //show
+          cohide(pos.top) & CMon(pos.inExpr) & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 0 :: Nil) & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) & t4_6
+          )
+
+
     }
   })
 
@@ -680,24 +691,29 @@ object Lemmas {
     //    ).isProved)
     //    println("Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & useAt(lemma3, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
-    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
-      implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=*;]a>0".asFormula,
-      implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_3 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=*;](a>0)".asFormula,
-      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_3 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=a1;](a>0)".asFormula,
-      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_4 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=*;](a>0)".asFormula,
-      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_4 - '<-' proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;?(b>0);](a>0)".asFormula,
-      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_5 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=a1;](a>0)".asFormula,
-      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_5 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;?(b>0);](a>0)".asFormula,
-      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & closeId).isProved)
-    println("Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);?(a>0);](a>0)".asFormula,
+    //    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
+    //      implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=*;]a>0".asFormula,
+    //      implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_3 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=*;](a>0)".asFormula,
+    //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_3 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=a1;](a>0)".asFormula,
+    //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_4 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=*;](a>0)".asFormula,
+    //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_4 - '<-' proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;?(b>0);](a>0)".asFormula,
+    //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_5 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=a1;](a>0)".asFormula,
+    //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_5 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;?(b>0);](a>0)".asFormula,
+    //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & closeId).isProved)
+    //    println("Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);?(a>0);](a>0)".asFormula,
+    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi") & closeId).isProved)
+
+    println("Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][?(a>0);](a>0)".asFormula,
       implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi") & closeId).isProved)
+
+
     //    println("Test Lemma 5 - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
     //      implyR('R) & lemma5T("a>5".asFormula)('R) < (
     //        //use test

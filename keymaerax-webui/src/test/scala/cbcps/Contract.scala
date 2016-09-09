@@ -861,49 +861,62 @@ object Contract {
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(1)) < (
               //use cut
               andL('L) & andL('L) & andL('L) & implyL(-1) // -1 global, -2 bootstrap, -3 inv1, -4 inv2
-                < (close(-4, 2),
+                < (
+                //the left side of implyL closes immediately, since we know inv2 holds
+                close(-4, 2)
+                ,
                 //cf. 3 - drop ports2
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
-                  //                  //cf. 3.5 - if in1 was empty, we need to remove ?true
-                  //                  & (
-                  //                  if ((ctr1.interface.vIn.toSet -- X.keys.toSet).isEmpty) composeb(1) & Lemmas.lemma1AB('R)
-                  //                  else skip
-                  //                  )
                   //cf. 4 - drop in2
                   //TODO test this stuff with multiple ports in in1 and in2
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
                   & ComposeProofStuff.dropIn(ctr2.interface.vIn)('R)
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in1][ports1][ports3]inv1
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
-                  & print("use cut before")
+                  //  first split all parts of in1 from the rest
+                  & composeb('R) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+                  //  and merge all parts of in1
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1][ports1][ports3]inv1
+                  & print("before")
                   & ComposeProofStuff.introduceTestsForAll(ctr2.interface.piOut.filter((e) => X.values.toSet.contains(e._1)))('R)
-                  & print("use cut after")) partial
+                  & print("after")) partial
               ,
               //show cut - DONE
-              print("show cut!") & hideAllButLastSucc & implyR('R)
+              //(1) remove all but the show-cut part
+              hideAllButLastSucc
+                //(2) --> r
+                & implyR('R)
+                //vaphi2 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout2
+                //(3) cf. 1 - Lemma 2 to remove plant1
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)('R)
+                //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
+                //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1AB('R)
+                //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
+                //(5) cf. 2 - Lemma 1 to remove dp1
                 & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.size, true)('R)
-                //TODO test this cases! all three (0,1,n) of them!
-                & (
+                //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
+                //(6) cf. 3 - close all branches with sideconditions for each part of piout2
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
                 if (ctr2.interface.piOut.size == 0) closeT
-                else (andR('R) < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
-                //                else if(ctr2.interface.piOut.size==1) print("before useat") & useAt(side2(ctr2.interface.vOut(0)),PosInExpr(1::Nil))('R) & closeId
-                //                else ( andR('R) <(skip,ComposeProofStuff.closeSide(side2)('R) & prop) ) * (ctr2.interface.piOut.size-1) & ComposeProofStuff.closeSide(side2)('R) & prop
-                )
+                else (boxAnd('R) & andR('R)
+                  < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
+                ) //closed!
               )
             ,
-            print("C2;C1") partial
+            print("C2;C1 - TODO") partial
             ) partial
           ,
           //inv2
-          print("inv2") partial
+          print("inv2 - TODO") partial
           ) partial,
         //pre boot - DONE
         //TODO does this master() always close, or should I try to reduce the thing further? (how??)
-        print("boot") & hideL(-1) & composeb('R) & G('R) & master() //& print("boot closed?")
+        hideL(-1) & composeb('R) & G('R) & master() //& print("boot closed?")
         ) partial,
       //global - DONE
-      V('R) & prop //& print("global closed?") partial
+      V('R) & prop //& print("global closed?")
       )
       & print("todo") partial
     )
@@ -917,10 +930,14 @@ object Contract {
       case Some(Box(_, Box(in3: Compose, _))) =>
         var n = countBinary[Compose](in3.asInstanceOf[Compose])
         var t: BelleExpr = skip
-        if (n > 1) t = t & composeb(pos.top.getPos, 1 :: Nil) * (n / 2)
-        if (n == 1) n = 1
-        else n = n / 2
-        t = t & (dropOrMerge(vIn)(pos.top.getPos) * n)
+        if (n > 1) {
+          n = n / 2
+          t = t & composeb(pos.top.getPos, 1 :: Nil) * n
+          t = t & (dropOrMerge(vIn)(pos.top.getPos) * (n + 1))
+        }
+        else {
+          t = t & (dropOrMerge(vIn)(pos.top.getPos) * n)
+        }
         t
       //TODO test the case with the test!
       case Some(Box(_, Box(in3: Test, _))) => Lemmas.lemma1AB(pos.top.getPos)
@@ -937,12 +954,12 @@ object Contract {
     })
 
     def closeSide(side: mutable.Map[Variable, Provable]): DependentPositionTactic = "Close With Sidecondition" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
-      case Some(Box(dp, Box(ctrl, Box(told, Box(plant, out))))) =>
-        useAt(side(side.keySet.intersect(v(out).toSet).toSeq(0)), PosInExpr(1 :: Nil))('R) & closeId
+      case Some(Box(Compose(Compose(Compose(dp, ctrl), told), plant), out)) =>
+        composeb('R) * 3 & useAt(side(side.keySet.intersect(v(out).toSet).toSeq(0)), PosInExpr(1 :: Nil))('R) & closeId
     })
 
     def introduceTestsForAll(vt: mutable.LinkedHashMap[Variable, Formula]): DependentPositionTactic = "Introduce Tests For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
-      case Some(Box(p, Box(in3, Box(ports1, _)))) =>
+      case Some(Box(p, Box(in1, Box(ports1, Box(ports3, _))))) =>
         var t: BelleExpr = skip
         println("vt: " + vt)
         vt.foreach((e) => t = t & ComposeProofStuff.introduceTestFor(e._1, e._2)(pos))
@@ -950,24 +967,27 @@ object Contract {
     })
 
     def introduceTestFor(v: Variable, t: Formula): DependentPositionTactic = "Introduce Test For" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
-      case Some(Box(p, Box(in3, Box(ports1, _)))) =>
+      case Some(Box(p, Box(in1, Box(ports1, Box(ports3, _))))) =>
         //introduce test using lemma 5
-        Lemmas.lemma5T(t)(pos) < (skip, hide(-2) * 3 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop) &
-          //split t from p - [p][t][in3][ports1]A
+        Lemmas.lemma5T(t)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop) &
+          //split t from p to get: [p][t][in3][ports1]A
           composeb(pos) &
           //split in3, if necessary and commute t and all of in3
           (
-            if (in3.isInstanceOf[Compose]) {
-              //in3 is not empty -> commute a lot
-              composeb(pos.top.getPos, 2 :: Nil) * (ComposeProofStuff.countBinary[Compose](in3.asInstanceOf[Compose])) &
-                print("need to commute a lot")
-            } else {
-              //in3 is empty -> just commute the ?true
-              print("need to commute a bit") &
-                useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, 1 :: Nil) &
-                Lemmas.lemma4_6T(pos.top.getPos, 1 :: Nil) &
-                composeb(pos.top.getPos, 1 :: Nil)
-            }
+            //            if (in1.isInstanceOf[Compose]) {
+            //              //in1 is not empty -> commute a lot
+            //              composeb(pos.top.getPos, 2 :: Nil) * (ComposeProofStuff.countBinary[Compose](in1.asInstanceOf[Compose])) &
+            //                print("need to commute a lot")
+            //            } else {
+            //in1 is empty -> just commute the ?true
+            print("need to commute a bit") &
+              useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, 1 :: Nil) & print("a") &
+              Lemmas.lemma4_4T(pos.top.getPos, 1 :: Nil) & print("b") &
+              composeb(pos.top.getPos, 1 :: Nil) & print("c") &
+              useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, 1 :: Nil) & print("d") &
+              Lemmas.lemma4_6T(pos.top.getPos, 1 :: 1 :: Nil) & print("e") &
+              composeb(pos.top.getPos, 1 :: 1 :: Nil) & print("f")
+            //            }
             ) &
           //merge p and in3
           print("before merge") &
@@ -980,13 +1000,13 @@ object Contract {
 
     def removeDeltaParts(cnt: Int, left: Boolean): DependentPositionTactic = "Remove DeltaParts" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(dp, f: Formula)) =>
-        var t: BelleExpr = print("removeDP!")
+        var t: BelleExpr = skip //print("removeDP!")
         //        println("compose # " + countCompose(dp.asInstanceOf[Compose]))
         if (dp.isInstanceOf[Test]) {
-          println("[removeDeltaParts]: Just a test, so nothing to do here.")
+          //          println("[removeDeltaParts]: Just a test, so nothing to do here.")
         }
         else if (dp.isInstanceOf[Assign]) {
-          println("[removeDeltaParts]: Just a single assignment...")
+          //          println("[removeDeltaParts]: Just a single assignment...")
           if (cnt == 1) {
             t = t & Lemmas.lemma1BA(pos)
             t = t & introduceEmptyTest(pos, seq, f)
@@ -994,9 +1014,9 @@ object Contract {
         }
         else {
           val nr = countBinary[Compose](dp.asInstanceOf[Compose])
-          println("[removeDeltaParts]: Multiple (nr=" + (nr + 1) + ") assignments...")
+          //          println("[removeDeltaParts]: Multiple (nr=" + (nr + 1) + ") assignments...")
           if (cnt == 0) {
-            println("[removeDeltaParts]: Nothing to do, since cnt=" + cnt + "...")
+            //            println("[removeDeltaParts]: Nothing to do, since cnt=" + cnt + "...")
           }
           else {
             if (cnt == nr + 1) {
@@ -1024,7 +1044,7 @@ object Contract {
             }
           }
         }
-        t = t & print("done!")
+        //        t = t & print("done!")
         t
     })
 
