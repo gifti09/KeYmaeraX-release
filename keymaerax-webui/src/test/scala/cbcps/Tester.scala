@@ -100,7 +100,7 @@ object Tester {
     println("Contract(C2,I2) = " + lc2.contract())
     println("Loaded Contract(C2,I2) verified? " + lc2.isVerified())
 
-    val X = mutable.Map(
+    val X = mutable.LinkedHashMap(
       "y".asVariable -> "x".asVariable
     )
 
@@ -167,10 +167,31 @@ object Tester {
     //    piOutAllTest()
     //In Test
     //    inTest()
-    bigTest()
+    //Position search test
+    //    posTest()
+    //TacticTest
+//    tacticTest()
+
+        bigTest()
 
     ProofHelper.shutdownProver
     System.exit(0)
+  }
+
+  def tacticTest() = {
+    val t = (((composeb('R) | skip)
+      & (assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
+    println("proved? " + TactixLibrary.proveBy("[a:=5;b:=2;?true;c:=d;?true;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[a:=5;b:=2;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[c:=d;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[?true;c:=d;?true;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[?true;?true;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[?true;]true".asFormula, t & closeT).isProved)
+  }
+
+  def posTest(): Unit = {
+    val f = "[?a>0;][b:=c;][a:=42;]true".asFormula
+    println("pos: " + Contract.ComposeProofStuff.posOfAssign(f.asInstanceOf[Box], "a".asVariable))
   }
 
   def bigTest() = {
@@ -226,7 +247,7 @@ object Tester {
     }
     }.toSeq: _*)
 
-    val X = mutable.Map(
+    val X = mutable.LinkedHashMap(
       "r".asVariable -> "r_".asVariable,
       "s".asVariable -> "s_".asVariable,
       "a".asVariable -> "a_".asVariable,

@@ -22,7 +22,7 @@ class Component(val name: String = "C", val ctrl: Program = "?true;".asProgram, 
   //  How to check ctrl does not contain DGL?
   //  assert(,"")
 
-  def variables():Set[Variable] = (v(ctrl) ++ v(plant) ++ v(ports)).toSet
+  def variables(): Set[Variable] = (v(ctrl) ++ v(plant) ++ v(ports)).toSet -- Globals.globalVars
 
   override def toString = s"Component(name=$name,\nctrl=${ctrl.prettyString},\nplant=${plant.prettyString},\nports=${ports.prettyString})"
 }

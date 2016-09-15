@@ -44,7 +44,7 @@ object Globals {
     case _ => true
   }
 
-  def globalVars = _vars ++ Seq(t)
+  def globalVars = _vars ++ Seq(t) ++ Seq(t0)
 
   def globalProp = _prop match {
     case Some(gp) => gp
