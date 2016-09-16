@@ -170,35 +170,20 @@ object Tester {
     //Position search test
     //    posTest()
     //TacticTest
-//    tacticTest()
+    //    tacticTest()
 
-        bigTest()
+    bigTest()
 
     ProofHelper.shutdownProver
     System.exit(0)
   }
 
-  def tacticTest() = {
-    val t = (((composeb('R) | skip)
-      & (assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
-    println("proved? " + TactixLibrary.proveBy("[a:=5;b:=2;?true;c:=d;?true;]true".asFormula, t & closeT).isProved)
-    println("proved? " + TactixLibrary.proveBy("[a:=5;b:=2;]true".asFormula, t & closeT).isProved)
-    println("proved? " + TactixLibrary.proveBy("[c:=d;]true".asFormula, t & closeT).isProved)
-    println("proved? " + TactixLibrary.proveBy("[?true;c:=d;?true;]true".asFormula, t & closeT).isProved)
-    println("proved? " + TactixLibrary.proveBy("[?true;?true;]true".asFormula, t & closeT).isProved)
-    println("proved? " + TactixLibrary.proveBy("[?true;]true".asFormula, t & closeT).isProved)
-  }
-
-  def posTest(): Unit = {
-    val f = "[?a>0;][b:=c;][a:=42;]true".asFormula
-    println("pos: " + Contract.ComposeProofStuff.posOfAssign(f.asInstanceOf[Box], "a".asVariable))
-  }
 
   def bigTest() = {
     val initialize = false
     if (initialize) {
       val c1 = new Component("B1", "?ctr1>0;".asProgram, ODESystem("p1'=1".asDifferentialProgram, "p1<1".asFormula))
-      val c2 = new Component("B2", "?ctr2>0;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))
+      val c2 = new Component("B2", "?ctr2<42;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))
       val i1 = new Interface(mutable.LinkedHashMap("r".asVariable -> "r>0".asFormula, "i1i1".asVariable -> "i1i1>0".asFormula, "s".asVariable -> "s>0".asFormula, "i1i2".asVariable -> "i1i2>0".asFormula), mutable.LinkedHashMap("a_".asVariable -> "a_>0".asFormula, "i1o1".asVariable -> "i1o1>0".asFormula, "b_".asVariable -> "b_>0".asFormula, "i1o2".asVariable -> "i1o2>0".asFormula))
       val i2 = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "i2i1".asVariable -> "i2i1>0".asFormula, "b".asVariable -> "b>0".asFormula, "i2i2".asVariable -> "i2i2>0".asFormula), mutable.LinkedHashMap("r_".asVariable -> "r_>0".asFormula, "i2o1".asVariable -> "i2o1>0".asFormula, "s_".asVariable -> "s_>0".asFormula, "i2o2".asVariable -> "i2o2>0".asFormula))
       val ctr1 = new DelayContract(c1, i1, "a_=1 & b_=1 & i1o1=1 & i1o2=1".asFormula, "true".asFormula, "a_=1 & b_=1 & i1o1=1 & i1o2=1".asFormula)
@@ -282,6 +267,21 @@ object Tester {
     ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
   }
 
+  def tacticTest() = {
+    val t = (((composeb('R) | skip)
+      & (assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
+    println("proved? " + TactixLibrary.proveBy("[a:=5;b:=2;?true;c:=d;?true;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[a:=5;b:=2;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[c:=d;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[?true;c:=d;?true;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[?true;?true;]true".asFormula, t & closeT).isProved)
+    println("proved? " + TactixLibrary.proveBy("[?true;]true".asFormula, t & closeT).isProved)
+  }
+
+  def posTest(): Unit = {
+    val f = "[?a>0;][b:=c;][a:=42;]true".asFormula
+    println("pos: " + Contract.ComposeProofStuff.posOfAssign(f.asInstanceOf[Box], "a".asVariable))
+  }
 
   def inTest() = {
     val i = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula))
