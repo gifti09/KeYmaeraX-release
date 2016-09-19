@@ -776,89 +776,114 @@ object Contract {
 
     if (!verify) return ctr3
 
-    //Automatically verify new contract, following theorem from my thesis
     // Verify CPO
+    require(ctr1.cpo(ctr2, X).forall { case ((vi: Variable,vo: Variable), f: Formula) => {
+      TactixLibrary.proveBy(f, byUS(cpoT(vi,vo))).isProved
+    }
+    }, "cpoT must proof cpo")
 
     // Verify side condition
+    require(ctr1.sideConditions().forall { case (v: Variable, f: Formula) => {
+      TactixLibrary.proveBy(f, byUS(side1(v))).isProved
+    }
+    }, "side1 must proof sideconditions of ctr1")
+    require(ctr2.sideConditions().forall { case (v: Variable, f: Formula) => {
+      TactixLibrary.proveBy(f, byUS(side2(v))).isProved
+    }
+    }, "side2 must proof sideconditions of ctr2")
 
-    // Verify composite contract
-    //    ctr3.verifyBaseCase(
-    //      implyR('R) & andR('R) < (andR('R) < (andR('R) < (
-    //        //... |- inv1
-    //        andL('L) * 3 & hide(-4) & andL(-3) & hideL(-4) &
-    //          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
-    //          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
-    //          implyRi & by(ctr1.baseCaseLemma.get)
-    //        ,
-    //        //... |- inv2
-    //        andL('L) * 3 & hide(-4) & andL(-3) & hideL(-3) &
-    //          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
-    //          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
-    //          implyRi & by(ctr2.baseCaseLemma.get)
-    //        ),
-    //        //... |- composedBootstrap
-    //        andL('L) * 3 & hide(-1) * 3 & close(-1, 1)
-    //        ),
-    //        //... |- globalProperty
-    //        andL('L) * 3 & hide(-2) * 3 & close(-1, 1)
-    //        )
-    //    )
+    //Automatically verify composite contract, following theorem from my thesis using CPO, side conditions and component proofs
+    ctr3.verifyBaseCase(
+      implyR('R) & andR('R) < (andR('R) < (andR('R) < (
+        //... |- inv1
+        andL('L) * 3 & hide(-4) & andL(-3) & hideL(-4) &
+          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
+          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
+          implyRi & by(ctr1.baseCaseLemma.get)
+        ,
+        //... |- inv2
+        andL('L) * 3 & hide(-4) & andL(-3) & hideL(-3) &
+          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
+          andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
+          implyRi & by(ctr2.baseCaseLemma.get)
+        ),
+        //... |- composedBootstrap
+        andL('L) * 3 & hide(-1) * 3 & close(-1, 1)
+        ),
+        //... |- globalProperty
+        andL('L) * 3 & hide(-2) * 3 & close(-1, 1)
+        )
+        & print("base case done?")
+    )
 
-
-    val outTactic = {
-      if (ctr1.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
-        if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
-          println("both have out ports!")
-          (andR('R) < (
-            //... |- out1
-            hideL(-3) & hideL(-1) & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
-              //use cut
-              prop,
-              //show cut
-              hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
-              )
-            ,
-            //... |- out2
-            hideL(-2) & hideL(-1) & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+    //Tactic for the output-port conditions of useCase
+    var outTactic = skip
+    if (ctr1.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
+      if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
+        outTactic = print("both have out ports!")
+        (0 until ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).size) foreach (i => {
+          outTactic = outTactic & andR('R) < (
+            //remaining ports
+            skip,
+            //handle next port of out2
+            hideL(-1) * 3 & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
               //use cut
               prop,
               //show cut
               hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
               )
             )
+        })
+
+        (0 until ctr1.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).size - 1) foreach (i => {
+          outTactic = outTactic & andR('R) < (
+            //remaining ports
+            skip,
+            //handle next port of out1
+            hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+              //use cut
+              prop,
+              //show cut
+              hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
+              )
             )
-        }
-        else {
-          println("only c1 has out ports!")
-          //... |- out1
-          hideL(-3) & hideL(-1) & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
-            //use cut
-            prop,
-            //show cut
-            hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
-            )
-        }
+        })
+        //handle last port of out1
+        outTactic = outTactic & hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+          //use cut
+          prop,
+          //show cut
+          hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
+          )
       }
       else {
-        if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
-          println("only c2 has out ports!")
-          //... |- out2
-          hideL(-2) & hideL(-1) & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
-            //use cut
-            prop,
-            //show cut
-            hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
-            )
-        }
-        else {
-          println("none has out ports!")
-          prop
-        }
+        //... |- out1
+        outTactic = print("only c1 has out ports!") & hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+          //use cut
+          prop,
+          //show cut
+          hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
+          )
       }
     }
-    ctr3.verifyUseCase(implyR('R) & andL('L) & andL('L) & andR('R) < (andR('R) < (
+    else {
+      if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
+        //... |- out2
+        outTactic = print("only c2 has out ports!") & hideL(-1) * 3 & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+          //use cut
+          prop,
+          //show cut
+          hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
+          )
+      }
+      else {
+        outTactic = print("none has out ports!") & prop
+      }
+    }
+
+    ctr3.verifyUseCase(print("usecase") & implyR('R) & andL('L) * 3 & andR('R) < (andR('R) < (
       //... |- post1
-      hideL(-3) & hideL(-1) & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+      hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
         //use cut
         prop,
         //show cut
@@ -866,19 +891,20 @@ object Contract {
         )
       ,
       //... |- post2
-      hideL(-2) & hideL(-1) & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+      hideL(-1) * 3 & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
         //use cut
-        prop
-          & print("use") partial,
+        prop,
         //show cut
         hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
-          & print("show") partial
-        ) partial
-      ), outTactic
+        )
+      ),
+      // ...|- out
+      outTactic
       )
+      & print("use case done?")
     )
 
-    return null.asInstanceOf[C]
+    //    return null.asInstanceOf[C]
 
     val nIn1: Int = if (ctr1.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.interface.in.asInstanceOf[Compose]) else 0
     val nPorts1: Int = if (ctr1.component.ports.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.component.ports.asInstanceOf[Compose]) else 0
@@ -1284,7 +1310,7 @@ object Contract {
       //global - DONE
       V('R) & prop //& print("global closed?")
       )
-      & print("DONE")
+      & print("step done?")
     )
 
     //Return verified composite contract

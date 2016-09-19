@@ -252,7 +252,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    var cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma("cpo1-2-" + v).get
     }
     }.toSeq: _*) ++
@@ -265,6 +265,7 @@ object Tester {
     var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, false)
     println("Ctr3: " + ctr3.contract())
     ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+    println("Ctr3 verified? " + ctr3.isVerified())
   }
 
   def tacticTest() = {
