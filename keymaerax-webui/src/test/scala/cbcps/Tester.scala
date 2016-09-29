@@ -26,11 +26,11 @@ object Tester {
   def main(args: Array[String]) {
 
 
-    test()
+//    test()
 
 
     ProofHelper.initProver
-    /*
+
         //Component 1
         val c1: Component = {
           new Component("C1", //Name
@@ -91,7 +91,7 @@ object Tester {
         //Everything Verified?
         println("Contract(C1,I1) verified? " + ctr1.isVerified())
         println("Contract(C2,I2) verified? " + ctr2.isVerified())
-    */
+
 
     val lc1 = Contract.load("contract1.cbcps")
     val lc2 = Contract.load("contract2.cbcps")
@@ -180,7 +180,7 @@ object Tester {
 
 
   def bigTest() = {
-    val initialize = false
+    val initialize = true
     if (initialize) {
       val c1 = new Component("B1", "?ctr1>0;".asProgram, ODESystem("p1'=1".asDifferentialProgram, "p1<1".asFormula))
       val c2 = new Component("B2", "?ctr2<42;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))

@@ -489,7 +489,18 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   override def contract(): Formula = Imply(
     contractPre(),
     Box(Loop(
-      Compose(Compose(Compose(Compose(Compose(interface.deltaPart, component.ctrl), Globals.oldT), contractPlant()), interface.in), component.ports)), contractPost())
+      Compose(
+        Compose(
+          Compose(
+            Compose(
+              Compose(
+                interface.deltaPart, component.ctrl
+              ), Globals.oldT
+            ), contractPlant()
+          ), interface.in
+        ), component.ports
+      )
+    ), contractPost())
   )
 
   override def contractPost(): Formula = {
@@ -777,8 +788,8 @@ object Contract {
     if (!verify) return ctr3
 
     // Verify CPO
-    require(ctr1.cpo(ctr2, X).forall { case ((vi: Variable,vo: Variable), f: Formula) => {
-      TactixLibrary.proveBy(f, byUS(cpoT(vi,vo))).isProved
+    require(ctr1.cpo(ctr2, X).forall { case ((vi: Variable, vo: Variable), f: Formula) => {
+      TactixLibrary.proveBy(f, byUS(cpoT(vi, vo))).isProved
     }
     }, "cpoT must proof cpo")
 
@@ -791,6 +802,8 @@ object Contract {
       TactixLibrary.proveBy(f, byUS(side2(v))).isProved
     }
     }, "side2 must proof sideconditions of ctr2")
+
+    /*
 
     //Automatically verify composite contract, following theorem from my thesis using CPO, side conditions and component proofs
     ctr3.verifyBaseCase(
@@ -904,6 +917,8 @@ object Contract {
       & print("use case done?")
     )
 
+    */
+
     //    return null.asInstanceOf[C]
 
     val nIn1: Int = if (ctr1.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.interface.in.asInstanceOf[Compose]) else 0
@@ -920,7 +935,7 @@ object Contract {
           print("inv1")
             & composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
             //inv1-C1;C2 - DONE
-            print("C1;C2")
+            print("inv1-C1;C2")
               //cf. 1 - cut F2out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(1)) < (
               //use cut
@@ -931,15 +946,19 @@ object Contract {
                 ,
                 //cf. 3 - drop ports2
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*;in2*;ports1][ports3]inv1
                   //cf. 4 - drop in2
-                  //TODO test this stuff with multiple ports in in1 and in2
+                  //TODO test this stuff with multiple ports in in1 and in2 AND with NO in1/in2
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
-                  & ComposeProofStuff.dropIn(ctr2.interface.vIn)('R)
+//                  & ComposeProofStuff.dropIn(ctr2.interface.vIn)('R)
+                  & ComposeProofStuff.dropIn(mutable.Seq((ctr2.interface.vIn.toSet--X.keySet).toSeq:_*))('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in1*][ports1][ports3]inv1
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts of in1 from the rest
-                  & composeb('R) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+                  & print("HERE A: "+(ctr1.interface.vIn.toSet--X.keySet).size)
+                  & composeb('R) * (Math.max((ctr1.interface.vIn.toSet--X.keySet).size,1))
                   //  and merge all parts of in1
+                  &print("HERE B")
                   & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*][ports1][ports3]inv1
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
@@ -1014,7 +1033,7 @@ object Contract {
               ) & print("C1;C2 done!")
             ,
             //inv1-C2;C1 - DONE
-            print("C2;C1 - DONE")
+            print("inv1-C2;C1")
               //cf. 1 - cut F2out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(0)) < (
               //use cut
@@ -1028,11 +1047,13 @@ object Contract {
                   //cf. 4 - drop in2
                   //TODO test this stuff with multiple ports in in1 and in2
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
-                  & ComposeProofStuff.dropIn(ctr2.interface.vIn)('R)
+//                  & ComposeProofStuff.dropIn(ctr2.interface.vIn)('R)
+                  & ComposeProofStuff.dropIn(mutable.Seq((ctr2.interface.vIn.toSet--X.keySet).toSeq:_*))('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in1*][ports1][ports3]inv1
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts of in1 from the rest
-                  & composeb('R) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+//                  & composeb('R) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+                  & composeb('R) * (Math.max((ctr1.interface.vIn.toSet--X.keySet).size,1))
                   //  and merge all parts of in1
                   & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*][ports1][ports3]inv1
@@ -1110,10 +1131,10 @@ object Contract {
             )
           ,
           //inv2 - DONE
-          print("inv2 - DONE")
+          print("inv2 ")
             & composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
             //inv2-C1;C2 - DONE
-            print("C1;C2 - DONE")
+            print("inv2-C1;C2")
               //cf. 1 - cut F1out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(3)) < (
               //use cut
@@ -1126,15 +1147,19 @@ object Contract {
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & Lemmas.lemma1(1, 1 :: Nil) & useAt("[;] compose", PosInExpr(1 :: Nil))(1)
                   //cf. 4 - drop in1
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
-                  & ComposeProofStuff.dropIn(ctr1.interface.vIn)('R)
+                  & ComposeProofStuff.dropIn(mutable.Seq((ctr1.interface.vIn.toSet--X.keySet).toSeq:_*))('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in2*][ports2][ports3]inv2
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts (i.e., all the [...=*; ?...;]) of in2 from the rest
-                  & composeb('R) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+                  & print("HERE -1: "+ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+//                  & composeb('R) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+                  & composeb('R) * ((ctr2.interface.vIn.toSet--X.keySet).size)
+                  & print("HERE -2")
                   //  and merge all parts of in2
                   & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in2*][ports2][ports3]inv2
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
+                  & print("HERE 0")
                   & ComposeProofStuff.introduceAndWeakenForAll(ctr2.interface.piIn, ctr1.interface.piOut, X, cpoT)('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in2][ports2][ports3*]inv2
                   //cf. 3 - drop remaining parts of ports3 (which are part of component 1)
@@ -1156,7 +1181,7 @@ object Contract {
                     if (ctr2.interface.vDelta.isEmpty) {
                       //empty dp2, so drop dp3 and introduce ?true;
                       //TODO UNTESTED!
-                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
+                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, boxTrue(1))
                     }
                     else {
                       //there is something in dp2 too, so we have to check what to remove
@@ -1207,7 +1232,7 @@ object Contract {
               ) & print("C1;C2 done!")
             ,
             //inv2-C2;C1 - DONE
-            print("C2;C1 - DONE")
+            print("inv2-C2;C1")
               //cf. 1 - cut F1out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(2)) < (
               //use cut
@@ -1220,11 +1245,12 @@ object Contract {
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & Lemmas.lemma1(1, 1 :: Nil) & useAt("[;] compose", PosInExpr(1 :: Nil))(1)
                   //cf. 4 - drop in1
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
-                  & ComposeProofStuff.dropIn(ctr1.interface.vIn)('R)
+//                  & ComposeProofStuff.dropIn(ctr1.interface.vIn)('R)
+                  & ComposeProofStuff.dropIn(mutable.Seq((ctr1.interface.vIn.toSet--X.keySet).toSeq:_*))('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in2*][ports2][ports3]inv2
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts (i.e., all the [...=*; ?...;]) of in2 from the rest
-                  & composeb('R) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
+                  & composeb('R) * ((ctr2.interface.vIn.toSet--X.keySet).size)
                   //  and merge all parts of in2
                   & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in2*][ports2][ports3]inv2
@@ -1338,24 +1364,26 @@ object Contract {
         t
     })
 
-    def dropIn(vIn: Seq[Variable]): DependentPositionTactic = "Drop Input Ports" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def dropIn(vIn: mutable.Seq[Variable]): DependentPositionTactic = "Drop Input Ports" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(_, Box(in3: Compose, _))) =>
-        var n = countBinary[Compose](in3.asInstanceOf[Compose])
+        val n = countBinary[Compose](in3.asInstanceOf[Compose])
         var t: BelleExpr = skip
         if (n > 1) {
-          n = n / 2
-          t = t & composeb(pos.top.getPos, 1 :: Nil) * n
-          t = t & (dropOrMerge(vIn)(pos.top.getPos) * (n + 1))
+          t = t & composeb(pos.top.getPos, 1 :: Nil) * (n / 2)
+          t = t & (dropOrMerge(vIn)(pos.top.getPos) * ((n / 2) + 1))
         }
         else {
           t = t & (dropOrMerge(vIn)(pos.top.getPos) * n)
         }
+        if (n == vIn.size && vIn.nonEmpty) {
+          t = t &print("introduceEmptyTest in dropIn, n="+n+", vIn.size="+vIn.size+", vIn="+vIn) & Lemmas.lemma5T("true".asFormula)(pos.top) < (skip, boxTrue(1))
+        }
         t
-      //TODO test the case with the test!
-      case Some(Box(_, Box(in3: Test, _))) => Lemmas.lemma1AB(pos.top.getPos)
+      //TODO test the case with the test! --> no inputs --> let the test stay there
+      case Some(Box(_, Box(in3: Test, _))) => skip //Lemmas.lemma1AB(pos.top.getPos)
     })
 
-    def dropOrMerge(vIn: Seq[Variable]): DependentPositionTactic = "Drop Or Merge" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def dropOrMerge(vIn: mutable.Seq[Variable]): DependentPositionTactic = "Drop Or Merge" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(_, Box(b, _))) =>
         if (v(b).intersect(vIn).nonEmpty) {
           Lemmas.lemma1AB(pos.top.getPos)
@@ -1449,36 +1477,64 @@ object Contract {
       case Some(Box(p, _)) =>
         //Initially we have:
         //[p][random-in-1][test-in-1]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
-        val cntIn = if (nIn == 0) 1 else nIn * 2
+        val cntIn = if (nIn == 0) 0 else nIn * 2
         val cntPorts = if (nPorts == 0) 1 else nPorts
         val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
 
         var h = 1 :: 1 :: Nil
         //introduce test using lemma 5
-        var t: BelleExpr = print("start introduceTestFor: " + vIn + " --> " + tIn) & Lemmas.lemma5T(tOut)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop)
+        var t: BelleExpr = print("start introduceTestFor: " + vIn + " --> " + tIn + " @pos=" + pos)
+        //if nIn is zero, we have just a ?true test as in3 -> remove this test, it will be replaced with actual ports
+        if (nIn == 0) {
+          t = t & print("remove empty in3") & Lemmas.lemma1(1, 1 :: Nil)
+        }
+        t = t & Lemmas.lemma5T(tOut)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop)
         //split test from p to get: [p][test][in...][ports...][ports3...]A
         t = t & composeb(pos)
         //commute test through in3
-        t = t & print("commute through in3")
+        t = t & print("commute through in3, nIn=" + nIn + ", cntIn=" + cntIn)
 
         h = 1 :: Nil
-        (0 until nIn) foreach (i => {
-          t = t & print("a") & Lemmas.lemma4_4T(pos.top.getPos, h)
-          h = 1 :: h
-          t = t & print("b") & Lemmas.lemma4_6T(pos.top.getPos, h) & print("c")
-          h = 1 :: h
-        })
+        if (nIn != 0) {
+          //there are some ports in in3, so we commute randomb;testb;...
+          (0 until nIn) foreach (i => {
+            t = t & print("a") & Lemmas.lemma4_4T(pos.top.getPos, h)
+            h = 1 :: h
+            t = t & print("b") & Lemmas.lemma4_6T(pos.top.getPos, h) & print("c")
+            h = 1 :: h
+          })
+        }
+        else {
+          //there is no port in in3, so we just commute the ?true;
+          //          t = t & print("d") & Lemmas.lemma4_6T(pos.top.getPos, h)
+        }
         t = t & print("done with in3")
 
         //commute test with ports
-        //TODO WE ASSUME THAT PORTS IS ALWAYS ?TRUE --> if we want to use composition of composites, this is NOT the case! --> so far only atomic components can be composed
+        //TODO test case with actual portsX!
         require(nPorts == 0, "so far only atomic components can be composed")
-        t = t & print("commute through ports1") & Lemmas.lemma4_6T(pos.top.getPos, oneList(1 + cntIn))
-        t = t & print("done with ports1")
+        t = t & print("commute through portsX, nPortsX=" + nPorts + ", cntPortsX=" + cntPorts)
+        h = oneList(1 + cntIn)
+        if (nPorts != 0) {
+          //there are some ports in portsX, so we commute randomb;testb;...
+          (0 until nPorts3) foreach (i => {
+            t = t & print("a") & Lemmas.lemma4_4T(pos.top.getPos, h)
+            h = 1 :: h
+            t = t & print("b") & Lemmas.lemma4_6T(pos.top.getPos, h) & print("c")
+            h = 1 :: h
+          })
+        }
+        else {
+          //TODO beware! if there have been multiple compositions, we might have multiple ?true tests mixed with actual connections --> DROP ?true test from contract on composition?
+          //there is no port in portsX, so we just commute the ?true;
+          t = t & print("d") & Lemmas.lemma4_6T(pos.top.getPos, h)
+        }
+        t = t & print("done with portsX")
 
         //locate v in ports and move test there
-        t = t & print("commute to position in ports3")
-        val assPos = posOfAssign(seq.sub(pos).get.asInstanceOf[Box], vIn)
+        t = t & print("commute to position in ports3, nPorts3=" + nPorts3 + ", cntPorts3=" + cntPorts3)
+        //position of assignment --> if in3 was just an empty test, this test has been removed --> reduce by 1
+        val assPos = posOfAssign(seq.sub(pos).get.asInstanceOf[Box], vIn) - (if (nIn == 0) 1 else 0)
         println("assPos: " + assPos)
         h = oneList(1 + cntIn + cntPorts)
         (1 + cntIn + cntPorts until assPos) foreach (i => {
@@ -1517,13 +1573,22 @@ object Contract {
         (cntIn + cntPorts + portPos).until(cntIn + cntPorts, -1) foreach (i => {
           t = t & Lemmas.lemma4_3T(1, oneList(i))
         })
-        //  2) commute non-det assign with ports
-        //  TODO WE ASSUME THAT PORTS IS ALWAYS ?TRUE --> if we want to use composition of composites, this is NOT the case! --> so far only atomic components can be composed
-        t = t & Lemmas.lemma4_4T(1, oneList(cntIn + cntPorts))
-        //  3) commute non-det assign with in
-        if (nIn == 0) {
+        //  2) commute non-det assign with portsX
+        //  TODO test case with actual portsX!
+        if (nPorts == 0) {
           //its just a test
           t = t & Lemmas.lemma4_4T(1, oneList(cntIn + cntPorts))
+        }
+        else {
+          //there are actual ports in portsX
+          (cntIn + cntPorts).until(inPos, -1) foreach (i => {
+            t = t & Lemmas.lemma4_3T(1, oneList(i))
+          })
+        }
+        //  3) commute non-det assign with in
+        if (nIn == 0) {
+          //nothing there!
+          //          t = t & Lemmas.lemma4_4T(1, oneList(cntIn + cntPorts))
         }
         else {
           //there are actual open ports
@@ -1538,12 +1603,21 @@ object Contract {
           t = t & Lemmas.lemma4_5T(1, oneList(i))
         })
         //  2) commute test with ports
-        //  TODO WE ASSUME THAT PORTS IS ALWAYS ?TRUE --> if we want to use composition of composites, this is NOT the case! --> so far only atomic components can be composed
-        t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + 1))
-        //  3) commute test with in
-        if (nIn == 0) {
+        //  TODO test case with actual portsX!
+        if (nPorts == 0) {
           //its just a test
           t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + 1))
+        }
+        else {
+          //there are actual ports in portsX
+          (cntIn + cntPorts + 1).until(inPos + 1, -1) foreach (i => {
+            t = t & Lemmas.lemma4_5T(1, oneList(i))
+          })
+        }
+        //  3) commute test with in
+        if (nIn == 0) {
+          //nothing there!
+          //          t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + 1))
         }
         else {
           //there are actual open ports
