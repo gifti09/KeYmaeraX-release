@@ -803,8 +803,6 @@ object Contract {
     }
     }, "side2 must proof sideconditions of ctr2")
 
-    /*
-
     //Automatically verify composite contract, following theorem from my thesis using CPO, side conditions and component proofs
     ctr3.verifyBaseCase(
       implyR('R) & andR('R) < (andR('R) < (andR('R) < (
@@ -917,8 +915,6 @@ object Contract {
       & print("use case done?")
     )
 
-    */
-
     //    return null.asInstanceOf[C]
 
     val nIn1: Int = if (ctr1.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.interface.in.asInstanceOf[Compose]) else 0
@@ -946,7 +942,7 @@ object Contract {
                 ,
                 //cf. 3 - drop ports2
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
-                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*;in2*;ports1][ports3]inv1
+                  //TODO check! F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*;in2*;ports1][ports3]inv1
                   //cf. 4 - drop in2
                   //TODO test this stuff with multiple ports in in1 and in2 AND with NO in1/in2
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
@@ -955,11 +951,10 @@ object Contract {
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in1*][ports1][ports3]inv1
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts of in1 from the rest
-                  & print("HERE A: "+(ctr1.interface.vIn.toSet--X.keySet).size)
                   & composeb('R) * (Math.max((ctr1.interface.vIn.toSet--X.keySet).size,1))
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}[in1*]...[in1*][ports1][ports3]inv1
                   //  and merge all parts of in1
-                  &print("HERE B")
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * ((ctr1.interface.vIn.toSet--X.keySet).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*][ports1][ports3]inv1
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
                   & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT)('R)
@@ -1026,7 +1021,7 @@ object Contract {
                 //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
-                if (ctr2.interface.piOut.size == 0) closeT
+                if (ctr2.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
@@ -1055,7 +1050,7 @@ object Contract {
 //                  & composeb('R) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
                   & composeb('R) * (Math.max((ctr1.interface.vIn.toSet--X.keySet).size,1))
                   //  and merge all parts of in1
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr1.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * ((ctr1.interface.vIn.toSet--X.keySet).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in1*][ports1][ports3]inv1
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
                   & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT)('R)
@@ -1123,7 +1118,7 @@ object Contract {
                 //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
-                if (ctr2.interface.piOut.size == 0) closeT
+                if (ctr2.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
@@ -1153,10 +1148,10 @@ object Contract {
                   //  first split all parts (i.e., all the [...=*; ?...;]) of in2 from the rest
                   & print("HERE -1: "+ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
 //                  & composeb('R) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size)
-                  & composeb('R) * ((ctr2.interface.vIn.toSet--X.keySet).size)
+                  & composeb('R) * (Math.max((ctr2.interface.vIn.toSet--X.keySet).size,1))
                   & print("HERE -2")
                   //  and merge all parts of in2
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * ((ctr2.interface.vIn.toSet--X.keySet).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in2*][ports2][ports3]inv2
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
                   & print("HERE 0")
@@ -1224,7 +1219,7 @@ object Contract {
                 //vaphi1 ==> [dp1][ctrl1][told][{plant1}]piout1
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout1
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
-                if (ctr1.interface.piOut.size == 0) closeT
+                if (ctr1.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
@@ -1250,9 +1245,9 @@ object Contract {
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in2*][ports2][ports3]inv2
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts (i.e., all the [...=*; ?...;]) of in2 from the rest
-                  & composeb('R) * ((ctr2.interface.vIn.toSet--X.keySet).size)
+                  & composeb('R) * (Math.max((ctr2.interface.vIn.toSet--X.keySet).size,1))
                   //  and merge all parts of in2
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (ctr2.interface.piOut.filter((e) => !X.values.toSet.contains(e._1)).size / 2)
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * ((ctr2.interface.vIn.toSet--X.keySet).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][in2*][ports2][ports3]inv2
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
                   & ComposeProofStuff.introduceAndWeakenForAll(ctr2.interface.piIn, ctr1.interface.piOut, X, cpoT)('R)
@@ -1320,7 +1315,7 @@ object Contract {
                 //vaphi1 ==> [dp1][ctrl1][told][{plant1}]piout1
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout1
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
-                if (ctr1.interface.piOut.size == 0) closeT
+                if (ctr1.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
@@ -1380,7 +1375,7 @@ object Contract {
         }
         t
       //TODO test the case with the test! --> no inputs --> let the test stay there
-      case Some(Box(_, Box(in3: Test, _))) => skip //Lemmas.lemma1AB(pos.top.getPos)
+      case Some(Box(_, Box(in3: Test, _))) => useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top) //Lemmas.lemma1AB(pos.top.getPos)
     })
 
     def dropOrMerge(vIn: mutable.Seq[Variable]): DependentPositionTactic = "Drop Or Merge" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
