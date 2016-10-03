@@ -64,76 +64,86 @@ object Tester {
     //TacticTest
     //    tacticTest()
 
-    //    test1()
-    //    bigTest()
-    test2(true)
+    val t1=test1()
+    val bt=bigTest(true)
+    val t2=test2(true)
+    val t3=test3(false)
+
+    println("--- SUMMARY ---")
+    println("===============")
+    println("test1 done? "+t1)
+    println("bigTest done? "+bt)
+    println("test2 done? "+t2)
+    println("test3 done? "+t3)
 
     ProofHelper.shutdownProver
     System.exit(0)
   }
 
-  def test1() = {
-    //Component 1
-    val c1: Component = {
-      new Component("C1", //Name
-        "a:=a+y;".asProgram, //Control
-        "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
-    }
-    //Interface 1
-    val i1: Interface = {
-      new Interface(
-        LinkedHashMap("y".asVariable -> "y>=0".asFormula), //In
-        LinkedHashMap(//Out
-          "out1".asVariable -> "out1=42".asFormula
+  def test1(initialize: Boolean = true): Boolean = {
+
+    if (initialize) {
+      //Component 1
+      val c1: Component = {
+        new Component("C1", //Name
+          "a:=a+y;".asProgram, //Control
+          "a'=0".asProgram.asInstanceOf[ODESystem]) //Plant
+      }
+      //Interface 1
+      val i1: Interface = {
+        new Interface(
+          LinkedHashMap("y".asVariable -> "y>=0".asFormula), //In
+          LinkedHashMap(//Out
+            "out1".asVariable -> "out1=42".asFormula
+          )
         )
-      )
-    }
-    //Contract 1
-    val ctr1: Contract = new DelayContract(c1, i1,
-      "a=0&y>=0&out1=42".asFormula, //Pre
-      "a>=0".asFormula, //Post
-      "a>=0&y>=0&out1=42".asFormula) //Invariant
-    println("Contract(C1,I1): " + ctr1.contract())
-    //Verify Contract 1 from scratch
-    verifyContract1(ctr1)
-    //Verify Contract 1 from Lemmas
-    //        verifyContract1Lemma(ctr1)
-    //Save Contract 1
-    Contract.save(ctr1, "contract1.cbcps")
+      }
+      //Contract 1
+      val ctr1: Contract = new DelayContract(c1, i1,
+        "a=0&y>=0&out1=42".asFormula, //Pre
+        "a>=0".asFormula, //Post
+        "a>=0&y>=0&out1=42".asFormula) //Invariant
+      println("Contract(C1,I1): " + ctr1.contract())
+      //Verify Contract 1 from scratch
+      verifyContract1(ctr1)
+      //Verify Contract 1 from Lemmas
+      //        verifyContract1Lemma(ctr1)
+      //Save Contract 1
+      Contract.save(ctr1, "contract1.cbcps")
 
-    //Component 2
-    val c2: Component = {
-      new Component("C2", //Name
-        "{{x:=1;}++{x:=3;}}".asProgram, //Control
-        "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
-    }
-    //Interface 2
-    val i2: Interface = {
-      new Interface(
-        LinkedHashMap("in2".asVariable -> "in2=42".asFormula), //In
-        LinkedHashMap(//Out
-          "x".asVariable -> "x>=1".asFormula
-          //                    ,"out2".asVariable -> "true".asFormula
+      //Component 2
+      val c2: Component = {
+        new Component("C2", //Name
+          "{{x:=1;}++{x:=3;}}".asProgram, //Control
+          "x'=1&x<=2".asProgram.asInstanceOf[ODESystem]) //Plant
+      }
+      //Interface 2
+      val i2: Interface = {
+        new Interface(
+          LinkedHashMap("in2".asVariable -> "in2=42".asFormula), //In
+          LinkedHashMap(//Out
+            "x".asVariable -> "x>=1".asFormula
+            //                    ,"out2".asVariable -> "true".asFormula
+          )
         )
-      )
+      }
+      //Contract 2
+      val ctr2: Contract = new DelayContract(c2, i2,
+        "x=2&in2=42".asFormula, //Pre
+        "true".asFormula, //Post
+        "x<=3&x>=1&in2=42".asFormula) //Invariant
+      println("Contract(C2,I2): " + ctr2.contract())
+      //Verify Contract 2 from scratch
+      verifyContract2(ctr2)
+      //Verify Contract 2 from Lemmas
+      //        verifyContract2Lemma(ctr2)
+      //Save Contract 2
+      Contract.save(ctr2, "contract2.cbcps")
+
+      //Everything Verified?
+      println("Contract(C1,I1) verified? " + ctr1.isVerified())
+      println("Contract(C2,I2) verified? " + ctr2.isVerified())
     }
-    //Contract 2
-    val ctr2: Contract = new DelayContract(c2, i2,
-      "x=2&in2=42".asFormula, //Pre
-      "true".asFormula, //Post
-      "x<=3&x>=1&in2=42".asFormula) //Invariant
-    println("Contract(C2,I2): " + ctr2.contract())
-    //Verify Contract 2 from scratch
-    verifyContract2(ctr2)
-    //Verify Contract 2 from Lemmas
-    //        verifyContract2Lemma(ctr2)
-    //Save Contract 2
-    Contract.save(ctr2, "contract2.cbcps")
-
-    //Everything Verified?
-    println("Contract(C1,I1) verified? " + ctr1.isVerified())
-    println("Contract(C2,I2) verified? " + ctr2.isVerified())
-
 
     val lc1 = Contract.load("contract1.cbcps")
     val lc2 = Contract.load("contract2.cbcps")
@@ -167,13 +177,13 @@ object Tester {
     println("Contract( (C1,I1)||(C2,I2) )=\n\t" + ctr3.contract())
     println("Contract (C3,I3) verified? " + ctr3.isVerified())
 
+    return ctr3.isVerified()
   }
 
-
-  def test2(initialize: Boolean = true,name:String="test2") = {
+  def test3(initialize: Boolean = true, name: String = "test3"): Boolean = {
     if (initialize) {
-      val c1 = new Component(name+"-D1", "?x>0;a:=42;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
-      val c2 = new Component(name+"-D2", "u:=-1;?y<42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
+      val c1 = new Component(name + "-C1", "?x>0;a:=42;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
+      val c2 = new Component(name + "-C2", "u:=-1;?y<42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
       val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula))
       val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula))
       val ctr1 = new DelayContract(c1, i1, "a=6 & b=0 & x>42".asFormula, "b<a".asFormula, "a>5 & b<1".asFormula)
@@ -215,21 +225,119 @@ object Tester {
     if (initialize) {
       //Verify lemmas for side conditions
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name+"side1-" + v))
+        v -> ProofHelper.verify(f, master(), Some(name + "side1-" + v))
       }
       }
       lctr2.sideConditions().foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name+"side2-" + v))
+        v -> ProofHelper.verify(f, master(), Some(name + "side2-" + v))
       }
       }
     }
     //Reuse previously verified lemmas for side condition
     val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name+"side1-" + v).get
+      v -> Utility.loadLemma(name + "side1-" + v).get
     }
     }.toSeq: _*)
     val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name+"side2-" + v).get
+      v -> Utility.loadLemma(name + "side2-" + v).get
+    }
+    }.toSeq: _*)
+
+    val X = mutable.LinkedHashMap[Variable, Variable](
+      //      "y".asVariable -> "a".asVariable
+    )
+
+    if (initialize) {
+      //Verify lemmas for cpo
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "cpo1-2-" + v))
+      }
+      }
+      lctr2.cpo(lctr1, X).foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "cpo2-1-" + v))
+      }
+      }
+    }
+
+    //Reuse previously verified lemmas for cpo
+    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "cpo1-2-" + v).get
+    }
+    }.toSeq: _*) ++
+      mutable.Map[(Variable, Variable), Lemma](lctr2.cpo(lctr1, X).map { case (v, f: Formula) => {
+        v -> Utility.loadLemma(name + "cpo2-1-" + v).get
+      }
+      }.toSeq: _*)
+
+
+    var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, false)
+    println("Ctr3: " + ctr3.contract())
+    ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+    println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
+  }
+
+  def test2(initialize: Boolean = true, name: String = "test2"): Boolean = {
+    if (initialize) {
+      val c1 = new Component(name + "-D1", "?x>0;a:=42;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
+      val c2 = new Component(name + "-D2", "u:=-1;?y<42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
+      val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula))
+      val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula))
+      val ctr1 = new DelayContract(c1, i1, "a=6 & b=0 & x>42".asFormula, "b<a".asFormula, "a>5 & b<1".asFormula)
+      val ctr2 = new DelayContract(c2, i2, "true".asFormula, "true".asFormula, "true".asFormula)
+      println("Ctr1: " + ctr1.contract())
+      println("Ctr2: " + ctr2.contract())
+
+      if (ctr1.verifyBaseCase(QE).isEmpty)
+        println("ctr1-baseCase NOT verified!")
+      if (ctr1.verifyUseCase(QE).isEmpty)
+        println("ctr1-useCase NOT verified!")
+      if (ctr1.verifyStep(master()).isEmpty)
+        println("ctr1-step NOT verified!")
+      if (ctr2.verifyBaseCase(QE).isEmpty)
+        println("ctr2-baseCase NOT verified!")
+      if (ctr2.verifyUseCase(QE).isEmpty)
+        println("ctr2-useCase NOT verified!")
+      if (ctr2.verifyStep(master()).isEmpty)
+        println("ctr2-step NOT verified!")
+
+      println("Ctr1 verified? " + ctr1.isVerified())
+      println("Ctr2 verified? " + ctr2.isVerified())
+
+      require(ctr1.isVerified(), "ctr1 must be verified!")
+      require(ctr1.isVerified(), "ctr2 must be verified!")
+
+      Contract.save(ctr1, "t2-1.cbcps")
+      Contract.save(ctr2, "t2-2.cbcps")
+      println("Saved both contracts!")
+    }
+
+    val lctr1 = Contract.load("t2-1.cbcps")
+    println("Loaded ctr2! verified? " + lctr1.isVerified())
+    println("LCtr1: " + lctr1.contract())
+    val lctr2 = Contract.load("t2-2.cbcps")
+    println("Loaded ctr2! verified? " + lctr2.isVerified())
+    println("LCtr2: " + lctr2.contract())
+
+    if (initialize) {
+      //Verify lemmas for side conditions
+      lctr1.sideConditions().foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "side1-" + v))
+      }
+      }
+      lctr2.sideConditions().foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "side2-" + v))
+      }
+      }
+    }
+    //Reuse previously verified lemmas for side condition
+    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "side1-" + v).get
+    }
+    }.toSeq: _*)
+    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "side2-" + v).get
     }
     }.toSeq: _*)
 
@@ -240,22 +348,22 @@ object Tester {
     if (initialize) {
       //Verify lemmas for cpo
       lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name+"cpo1-2-" + v))
+        v -> ProofHelper.verify(f, master(), Some(name + "cpo1-2-" + v))
       }
       }
       lctr2.cpo(lctr1, X).foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name+"cpo2-1-" + v))
+        v -> ProofHelper.verify(f, master(), Some(name + "cpo2-1-" + v))
       }
       }
     }
 
     //Reuse previously verified lemmas for cpo
     val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name+"cpo1-2-" + v).get
+      v -> Utility.loadLemma(name + "cpo1-2-" + v).get
     }
     }.toSeq: _*) ++
       mutable.Map[(Variable, Variable), Lemma](lctr2.cpo(lctr1, X).map { case (v, f: Formula) => {
-        v -> Utility.loadLemma(name+"cpo2-1-" + v).get
+        v -> Utility.loadLemma(name + "cpo2-1-" + v).get
       }
       }.toSeq: _*)
 
@@ -264,10 +372,11 @@ object Tester {
     println("Ctr3: " + ctr3.contract())
     ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
     println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
   }
 
-  def bigTest() = {
-    val initialize = true
+  def bigTest(initialize: Boolean = true): Boolean = {
     if (initialize) {
       val c1 = new Component("B1", "?ctr1>0;".asProgram, ODESystem("p1'=1".asDifferentialProgram, "p1<1".asFormula))
       val c2 = new Component("B2", "?ctr2<42;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))
@@ -353,6 +462,8 @@ object Tester {
     println("Ctr3: " + ctr3.contract())
     ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
     println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
   }
 
   def tacticTest() = {
