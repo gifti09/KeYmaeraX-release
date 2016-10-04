@@ -174,7 +174,7 @@ object Lemmas {
   //  val n1ba = "Proof of Lemma1 - Drop Control BA"
   //  val t1ba = implyR('R) & lemma1BA('R) & prop
 
-  //L1 AB - DONE
+  //L1 - DONE
   val lemma1: DependentPositionTactic = "Lemma1" by ((pos: Position, seq: Sequent) => {
     var t: BelleExpr = null
     var _t: BelleExpr = null

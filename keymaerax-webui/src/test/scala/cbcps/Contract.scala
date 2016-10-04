@@ -578,7 +578,7 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
     }
     s ++= X.filter { case (in, out) => ctr2.interface.vIn.contains(in) }.map { case (in, out) => {
       val pre = {
-        if (ctr1.interface.pre.keySet.contains(in)) {
+        if (ctr2.interface.pre.keySet.contains(in)) {
           //Delta port, thus initial values must match
           Globals.appendGlobalPropertyToFormula(Equal(ctr2.interface.pre(in), ctr1.interface.pre(out)))
         }
@@ -807,22 +807,26 @@ object Contract {
     ctr3.verifyBaseCase(
       implyR('R) & andR('R) < (andR('R) < (andR('R) < (
         //... |- inv1
-        andL('L) * 3 & hide(-4) & andL(-3) & hideL(-4) &
+        print("inv1") &
+          andL('L) * 3 & hide(-4) & andL(-3) & hideL(-4) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
           implyRi & by(ctr1.baseCaseLemma.get)
         ,
         //... |- inv2
-        andL('L) * 3 & hide(-4) & andL(-3) & hideL(-3) &
+        print("inv2") &
+          andL('L) * 3 & hide(-4) & andL(-3) & hideL(-3) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
           implyRi & by(ctr2.baseCaseLemma.get)
         ),
         //... |- composedBootstrap
-        andL('L) * 3 & hide(-1) * 3 & close(-1, 1)
+        print("bootstrap") &
+          andL('L) * 3 & hide(-1) * 3 & close(-1, 1)
         ),
         //... |- globalProperty
-        andL('L) * 3 & hide(-2) * 3 & close(-1, 1)
+        print("global") &
+          andL('L) * 3 & hide(-2) * 3 & close(-1, 1)
         )
         & print("base case done?")
     )
@@ -944,7 +948,6 @@ object Contract {
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in1*;in2*;ports1][ports3]inv1
                   //cf. 4 - drop in2
-                  //TODO test this stuff with multiple ports in in1 and in2 AND with NO in1/in2
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in1*;in2*][ports1][ports3]inv1
                   & ComposeProofStuff.dropIn(mutable.Seq((ctr2.interface.vIn.toSet -- X.keySet).toSeq: _*))('R)
@@ -969,26 +972,27 @@ object Contract {
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
+                  //F,global,boot,inv1,inv2 ==> [dp1;dp2][ctrl1][told][plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop dp2
-                  & (
-                  if (ctr2.interface.vDelta.isEmpty) {
-                    //empty dp2, nothing to remove
-                    skip
-                  }
-                  else {
-                    //there is something in dp2, so remove it
-                    if (ctr1.interface.vDelta.isEmpty) {
-                      //empty dp1, so drop dp3 and introduce ?true;
-                      //TODO UNTESTED!
-                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
-                    }
-                    else {
-                      //there is something in dp1 too, so we have to check what to remove
-                      //TODO MISSING!
-                      skip
-                    }
-                  }
-                  )
+                  //                  & (
+                  //                  if (ctr2.interface.vDelta.isEmpty) {
+                  //                    //empty dp2, nothing to remove
+                  //                    skip
+                  //                  }
+                  //                  else {
+                  //                    //there is something in dp2, so remove it
+                  //                    if (ctr1.interface.vDelta.isEmpty) {
+                  //                      //empty dp1, so drop dp3 and introduce ?true;
+                  //                      //TODO UNTESTED!
+                  //                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
+                  //                    }
+                  //                    else {
+                  //                      //there is something in dp1 too, so we have to check what to remove
+                  //                      ComposeProofStuff.dropDP(ctr2.interface.vInit)(1)
+                  //                    }
+                  //                  }
+                  //                  )
+                  & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInit)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr1.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 3 & hide(-2) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -1000,6 +1004,8 @@ object Contract {
                     & (if (nIn1 > 0) composeb(-1, 1 :: Nil) else skip)
                     //split plant1, told, ctrl1, dp1
                     & composeb(-1) * 3
+                    //split dp1
+                    & composeb(-1) * (ctr1.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr1.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1017,15 +1023,17 @@ object Contract {
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1AB('R)
-                //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
+                //vaphi2 ==> [dp2][ctrl2][told][{plant2}]piout2
                 //(5) cf. 2 - Lemma 1 to remove dp1
-                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.size, true)('R)
-                //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
+                //                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.size, true)('R)
+                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInit)(1)
+                //vaphi2 ==> [dp2][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
+                //  reconnect to one big box
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr2.interface.pre.size - 1)) & (
                 if (ctr2.interface.piOut.size == 0) boxTrue('R)
-                else (boxAnd('R) & andR('R)
-                  < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
+                else (boxAnd('R) & andR('R) < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
+                  & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
               ) & print("C1;C2 done!")
             ,
@@ -1042,7 +1050,6 @@ object Contract {
                 //cf. 3 - drop ports2
                 useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 4 & composeb(1, 1 :: Nil) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))(1) & Lemmas.lemma1AB('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2};in1*;in2*;ports1][ports3]inv1                  //cf. 4 - drop in2
-                  //TODO test this stuff with multiple ports in in1 and in2
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2};in1*;in2*][ports1][ports3]inv1
                   & ComposeProofStuff.dropIn(mutable.Seq((ctr2.interface.vIn.toSet -- X.keySet).toSeq: _*))('R)
@@ -1068,25 +1075,25 @@ object Contract {
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                   & print("dropped the right one?")
                   //cf. 13 - drop dp2
-                  & (
-                  if (ctr2.interface.vDelta.isEmpty) {
-                    //empty dp2, nothing to remove
-                    skip
-                  }
-                  else {
-                    //there is something in dp2, so remove it
-                    if (ctr1.interface.vDelta.isEmpty) {
-                      //empty dp1, so drop dp3 and introduce ?true;
-                      //TODO UNTESTED!
-                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
-                    }
-                    else {
-                      //there is something in dp1 too, so we have to check what to remove
-                      //TODO MISSING!
-                      skip
-                    }
-                  }
-                  )
+                  //                  & (
+                  //                  if (ctr2.interface.vDelta.isEmpty) {
+                  //                    //empty dp2, nothing to remove
+                  //                    skip
+                  //                  }
+                  //                  else {
+                  //                    //there is something in dp2, so remove it
+                  //                    if (ctr1.interface.vDelta.isEmpty) {
+                  //                      //empty dp1, so drop dp3 and introduce ?true;
+                  //                      //TODO UNTESTED!
+                  //                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
+                  //                    }
+                  //                    else {
+                  //                      //there is something in dp1 too, so we have to check what to remove
+                  //                      ComposeProofStuff.dropDP(ctr2.interface.vInit)(1)
+                  //                    }
+                  //                  }
+                  //                  )
+                  & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInit)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr1.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 3 & hide(-2) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -1098,6 +1105,8 @@ object Contract {
                     & (if (nIn1 > 0) composeb(-1, 1 :: Nil) else skip)
                     //split plant1, told, ctrl1, dp1
                     & composeb(-1) * 3
+                    //split dp1
+                    & composeb(-1) * (ctr1.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr1.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1117,10 +1126,10 @@ object Contract {
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                 //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
                 //(5) cf. 2 - Lemma 1 to remove dp1
-                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.size, true)('R)
+                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInit)(1)
                 //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr2.interface.pre.size - 1)) & (
                 if (ctr2.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
@@ -1168,25 +1177,25 @@ object Contract {
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                   //cf. 13 - drop dp1
-                  & (
-                  if (ctr1.interface.vDelta.isEmpty) {
-                    //empty dp1, nothing to remove
-                    skip
-                  }
-                  else {
-                    //there is something in dp1, so remove it
-                    if (ctr2.interface.vDelta.isEmpty) {
-                      //empty dp2, so drop dp3 and introduce ?true;
-                      //TODO UNTESTED!
-                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, boxTrue(1))
-                    }
-                    else {
-                      //there is something in dp2 too, so we have to check what to remove
-                      //TODO MISSING!
-                      skip
-                    }
-                  }
-                  )
+                  //                  & (
+                  //                  if (ctr1.interface.vDelta.isEmpty) {
+                  //                    //empty dp1, nothing to remove
+                  //                    skip
+                  //                  }
+                  //                  else {
+                  //                    //there is something in dp1, so remove it
+                  //                    if (ctr2.interface.vDelta.isEmpty) {
+                  //                      //empty dp2, so drop dp3 and introduce ?true;
+                  //                      //TODO UNTESTED!
+                  //                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, boxTrue(1))
+                  //                    }
+                  //                    else {
+                  //                      //there is something in dp2 too, so we have to check what to remove
+                  //                      ComposeProofStuff.dropDP(ctr1.interface.vInit)(1)
+                  //                    }
+                  //                  }
+                  //                  )
+                  & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInit)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr2.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 4 & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -1198,6 +1207,8 @@ object Contract {
                     & (if (nIn2 > 0) composeb(-1, 1 :: Nil) else skip)
                     //split plant2, told, ctrl2, dp2
                     & composeb(-1) * 3
+                    //split dp2
+                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr2.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1217,10 +1228,13 @@ object Contract {
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                 //vaphi1 ==> [dp1;dp2][ctrl1][told][{plant1}]piout1
                 //(5) cf. 2 - Lemma 1 to remove dp2
-                & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.size, true)('R)
+                & print("REMOVE DPs: " + ctr2.interface.vInit)
+                & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInit)(1)
+                & print("DONE REMOVE DPs")
+                //                & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.size, true)('R)
                 //vaphi1 ==> [dp1][ctrl1][told][{plant1}]piout1
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr1.interface.pre.size - 1)) & (
                 if (ctr1.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side1)('R) & prop
@@ -1265,25 +1279,7 @@ object Contract {
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                   //cf. 13 - drop dp1
-                  & (
-                  if (ctr1.interface.vDelta.isEmpty) {
-                    //empty dp1, nothing to remove
-                    skip
-                  }
-                  else {
-                    //there is something in dp1, so remove it
-                    if (ctr2.interface.vDelta.isEmpty) {
-                      //empty dp2, so drop dp3 and introduce ?true;
-                      //TODO UNTESTED!
-                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
-                    }
-                    else {
-                      //there is something in dp2 too, so we have to check what to remove
-                      //TODO MISSING!
-                      skip
-                    }
-                  }
-                  )
+                  & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInit)(1)
                   & print("before")
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr2.stepLemma.get.fact.conclusion.succ(0)) < (
@@ -1296,6 +1292,8 @@ object Contract {
                     & (if (nIn2 > 0) composeb(-1, 1 :: Nil) else skip)
                     //split plant2, told, ctrl2, dp2
                     & composeb(-1) * 3
+                    //split dp2
+                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr2.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1315,10 +1313,12 @@ object Contract {
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                 //vaphi1 ==> [dp1;dp2][ctrl1][told][{plant1}]piout1
                 //(5) cf. 2 - Lemma 1 to remove dp2
-                & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.size, true)('R)
+                & print("REMOVE DPs: " + ctr2.interface.vInit)
+                & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInit)(1)
+                & print("DONE REMOVE DPs")
                 //vaphi1 ==> [dp1][ctrl1][told][{plant1}]piout1
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 3 & (
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr1.interface.pre.size - 1)) & (
                 if (ctr1.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side1)('R) & prop
@@ -1343,6 +1343,48 @@ object Contract {
   }
 
   object ComposeProofStuff {
+    def removeDeltaParts(vDelta1: Boolean, vDelta2: Boolean, vInit1: Seq[Variable]): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(_, _)) =>
+        var t: BelleExpr = skip
+        //if vDelta1 --> empty dp1, nothing to remove
+        if (!vDelta1) {
+          //there is something in dp1, so remove it
+          if (vDelta2) {
+            //empty dp2, so drop dp3 and introduce ?true;
+            //TODO UNTESTED!
+            t = t & Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
+          }
+          else {
+            //there is something in dp2 too, so we have to check what to remove
+            t = t & print("dropping dp: " + vInit1) & ComposeProofStuff.dropDP(vInit1)(1)
+          }
+        }
+        t
+    })
+
+    def dropDP(vInit: Seq[Variable]): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(dp: Compose, b: Box)) =>
+        val cnt: Int = countBinary[Compose](dp)
+        var t: BelleExpr = composeb(pos) * (cnt)
+        (cnt.until(0, -1)) foreach (i => {
+          t = t & dropFromDP(vInit)(pos.top.getPos, oneList(i))
+        })
+        t = t & dropFromDP(vInit)(pos.top.getPos)
+        t
+    })
+
+
+    def dropFromDP(vInit: Seq[Variable]): DependentPositionTactic = "Drop From Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(a: Assign, _)) =>
+        if (vInit.contains(a.x)) {
+          print("removing dp '" + a.x + "'") & Lemmas.lemma1(pos) & print("done removing")
+        }
+        else {
+          print("skipping dp '" + a.x + "'") & skip
+          //          useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos)
+        }
+    })
+
     def dropRemainingPorts3(vs: Seq[Variable]): DependentPositionTactic = "Drop Remaining Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, b: Box)) =>
         var t: BelleExpr = skip
@@ -1378,7 +1420,7 @@ object Contract {
           t = t & print("introduceEmptyTest in dropIn, n=" + n + ", vIn.size=" + vIn.size + ", vIn=" + vIn) & Lemmas.lemma5T("true".asFormula)(pos.top) < (skip, boxTrue(1))
         }
         t
-      //TODO test the case with the test! --> no inputs --> let the test stay there
+      //no inputs --> let the test stay there
       case Some(Box(_, Box(in3: Test, _))) => useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top) //Lemmas.lemma1AB(pos.top.getPos)
     })
 
@@ -1394,18 +1436,21 @@ object Contract {
 
     def closeSide(side: mutable.Map[Variable, Provable]): DependentPositionTactic = "Close With Sidecondition" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(Compose(Compose(Compose(dp, ctrl), told), plant), out)) =>
-        composeb('R) * 3 & useAt(side(side.keySet.intersect(v(out).toSet).toSeq(0)), PosInExpr(1 :: Nil))('R) & closeId
+        print("CLOSE SIDE 1") & composeb('R) * 3 &
+          print("CLOSE SIDE 2 - " + side(side.keySet.intersect(v(out).toSet).toSeq(0))) & useAt(side(side.keySet.intersect(v(out).toSet).toSeq(0)), PosInExpr(1 :: Nil))('R) &
+          print("CLOSE SIDE 3") & closeId &
+          print("CLOSE SIDE 4")
     })
 
     def introduceAndWeakenForAll(piIn: LinkedHashMap[Variable, Formula], piOut: LinkedHashMap[Variable, Formula], X: mutable.LinkedHashMap[Variable, Variable], cpoT: mutable.Map[(Variable, Variable), Provable]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in, Box(ports, Box(ports3, _))))) =>
-        var t: BelleExpr = skip
+        var t: BelleExpr = skip & print("introduceAndWeakenForAll")
         val vtIn: mutable.LinkedHashMap[Variable, Formula] = piIn.filter((e) => X.keySet.contains(e._1))
         val vtOut: mutable.LinkedHashMap[Variable, Formula] = piOut.filter((e) => X.values.toSet.contains(e._1))
 
         if (X.isEmpty) {
           //no connected ports, so nothing to move -> just remove empty test
-          t=t&Lemmas.lemma1(1, 1 :: 1 :: Nil)
+          t = t & Lemmas.lemma1(1, 1 :: 1 :: Nil)
         }
 
         //[p][in1][ports1][ports3]A
@@ -1460,10 +1505,10 @@ object Contract {
             t = t & (print("goIn" + i) & composeb(pos.top.getPos, hIn)) * 2
             hIn = 1 :: 1 :: hIn
           })
-          t = t & print("go last") & composeb(pos.top.getPos, hIn) & print("go done")
+          t = t & print("go last") & composeb(pos.top.getPos, hIn) & print("go done") & print("done with introduceAndWeakenForAll")
         }
 
-        if(vtIn.nonEmpty) {
+        if (vtIn.nonEmpty) {
           //[p][random-in-1][test-in-1]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
           var donePorts = Seq.empty[Variable]
           vtIn.foreach((e) => {
@@ -1560,7 +1605,8 @@ object Contract {
             //remove all remaining parts of ports3*, and all of ports and in, and plant3, told and (ctrl1;ctr2).
             & ((composeb('R) & Lemmas.lemma1AB(1)) * (assPos + 1))
             //next, apply all assignments in dp3
-            & (((composeb('R) | skip) & (assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
+            & ((composeb('R) *) & ((assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) *))
+            //            & ((( (composeb('R)&print("composed"))  | (skip&print("skipped")) ) & ( (assignb('R)&print("assigned")) | (testb('R)&print("tested") & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
             //now QE should close the thing
             //TODO DOES IT?
             & hide(-1) & QE
@@ -1631,10 +1677,9 @@ object Contract {
             t = t & Lemmas.lemma4_6T(1, oneList(i)) & Lemmas.lemma4_4T(1, oneList(i - 1))
           })
         }
-        t = t & print("done commuting non-det assignment and test")
+        t = t & print("done commute test to designated position")
 
-
-        t
+        t & print("done with introduceTestFor")
     })
 
     def posOf[C <: Program](b: Box, t: C => Boolean): Int = {
