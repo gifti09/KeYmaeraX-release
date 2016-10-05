@@ -974,24 +974,6 @@ object Contract {
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                   //F,global,boot,inv1,inv2 ==> [dp1;dp2][ctrl1][told][plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop dp2
-                  //                  & (
-                  //                  if (ctr2.interface.vDelta.isEmpty) {
-                  //                    //empty dp2, nothing to remove
-                  //                    skip
-                  //                  }
-                  //                  else {
-                  //                    //there is something in dp2, so remove it
-                  //                    if (ctr1.interface.vDelta.isEmpty) {
-                  //                      //empty dp1, so drop dp3 and introduce ?true;
-                  //                      //TODO UNTESTED!
-                  //                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
-                  //                    }
-                  //                    else {
-                  //                      //there is something in dp1 too, so we have to check what to remove
-                  //                      ComposeProofStuff.dropDP(ctr2.interface.vInit)(1)
-                  //                    }
-                  //                  }
-                  //                  )
                   & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInit)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr1.stepLemma.get.fact.conclusion.succ(0)) < (
@@ -1030,7 +1012,8 @@ object Contract {
                 //vaphi2 ==> [dp2][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
                 //  reconnect to one big box
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr2.interface.pre.size - 1)) & (
+                &print("HERE 0")
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr2.interface.pre.size - 1)) &print("HERE 1")& (
                 if (ctr2.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R) < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side2)('R) & prop
@@ -1075,24 +1058,6 @@ object Contract {
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                   & print("dropped the right one?")
                   //cf. 13 - drop dp2
-                  //                  & (
-                  //                  if (ctr2.interface.vDelta.isEmpty) {
-                  //                    //empty dp2, nothing to remove
-                  //                    skip
-                  //                  }
-                  //                  else {
-                  //                    //there is something in dp2, so remove it
-                  //                    if (ctr1.interface.vDelta.isEmpty) {
-                  //                      //empty dp1, so drop dp3 and introduce ?true;
-                  //                      //TODO UNTESTED!
-                  //                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
-                  //                    }
-                  //                    else {
-                  //                      //there is something in dp1 too, so we have to check what to remove
-                  //                      ComposeProofStuff.dropDP(ctr2.interface.vInit)(1)
-                  //                    }
-                  //                  }
-                  //                  )
                   & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInit)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr1.stepLemma.get.fact.conclusion.succ(0)) < (
@@ -1177,24 +1142,6 @@ object Contract {
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                   //cf. 13 - drop dp1
-                  //                  & (
-                  //                  if (ctr1.interface.vDelta.isEmpty) {
-                  //                    //empty dp1, nothing to remove
-                  //                    skip
-                  //                  }
-                  //                  else {
-                  //                    //there is something in dp1, so remove it
-                  //                    if (ctr2.interface.vDelta.isEmpty) {
-                  //                      //empty dp2, so drop dp3 and introduce ?true;
-                  //                      //TODO UNTESTED!
-                  //                      Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, boxTrue(1))
-                  //                    }
-                  //                    else {
-                  //                      //there is something in dp2 too, so we have to check what to remove
-                  //                      ComposeProofStuff.dropDP(ctr1.interface.vInit)(1)
-                  //                    }
-                  //                  }
-                  //                  )
                   & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInit)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr2.stepLemma.get.fact.conclusion.succ(0)) < (
@@ -1352,7 +1299,7 @@ object Contract {
           if (vDelta2) {
             //empty dp2, so drop dp3 and introduce ?true;
             //TODO UNTESTED!
-            t = t & Lemmas.lemma1(1, 0 :: Nil) & Lemmas.lemma5T("true".asFormula) < (skip, closeT)
+            t = t &  Lemmas.lemma1(1) &print("???") & Lemmas.lemma5LT("true".asFormula)(1)&print("???") //< (skip & print("hihi1"), boxTrue(1)& print("hihi2"))
           }
           else {
             //there is something in dp2 too, so we have to check what to remove
