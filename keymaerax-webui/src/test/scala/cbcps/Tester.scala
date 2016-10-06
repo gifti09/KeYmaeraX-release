@@ -13,8 +13,8 @@ import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics._
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import testHelper.ParserFactory._
 
-import scala.collection.immutable.{List, Map}
-import scala.collection.mutable._
+import scala.collection.immutable._
+import scala.collection.mutable.LinkedHashMap
 import scala.collection.{immutable, mutable}
 
 /**
@@ -93,8 +93,8 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-C1", "?x>0;?a=6;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
       val c2 = new Component(name + "-C2", "u:=-1;?y<=42&y0<=42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
-      val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b>0".asFormula), mutable.LinkedHashMap("a".asVariable -> "a0".asVariable))
-      val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula, "z".asVariable -> "z>0".asFormula), mutable.LinkedHashMap.empty)
+      val i1 = Interface.SinglePortInterface(mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b>0".asFormula), mutable.LinkedHashMap("a".asVariable -> "a0".asVariable))
+      val i2 = Interface.SinglePortInterface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula, "z".asVariable -> "z>0".asFormula), mutable.LinkedHashMap.empty[Variable, Formula],mutable.LinkedHashMap.empty[Variable, Variable])
       val ctr1 = new DelayContract(c1, i1, "a=6 & b>0 & b<5& x>42".asFormula, "b<a".asFormula, "a>5 & b>0 & b<5".asFormula)
       val ctr2 = new DelayContract(c2, i2, "true".asFormula, "true".asFormula, "true".asFormula)
       println("Ctr1: " + ctr1.contract())
@@ -145,17 +145,17 @@ object Tester {
       }
     }
     //Reuse previously verified lemmas for side condition
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
-    val X = mutable.LinkedHashMap[Variable, Variable](
-      "y".asVariable -> "b".asVariable
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("y".asVariable) -> Seq("b".asVariable)
     )
 
     if (initialize) {
@@ -167,7 +167,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo-" + v).get
     }
     }.toSeq: _*)
@@ -184,8 +184,8 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-C1", "?x>0;?a=6;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
       val c2 = new Component(name + "-C2", "u:=-1;?y<=42&y0<=42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
-      val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula), mutable.LinkedHashMap("a".asVariable -> "a0".asVariable))
-      val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula), mutable.LinkedHashMap.empty, mutable.LinkedHashMap("y".asVariable -> "y0".asVariable))
+      val i1 = Interface.SinglePortInterface(mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula), mutable.LinkedHashMap("a".asVariable -> "a0".asVariable))
+      val i2 = Interface.SinglePortInterface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula), mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("y".asVariable -> "y0".asVariable))
       val ctr1 = new DelayContract(c1, i1, "a=6 & b<1 & x>42".asFormula, "b<a".asFormula, "a>5 & b<1".asFormula)
       val ctr2 = new DelayContract(c2, i2, "true".asFormula, "true".asFormula, "true".asFormula)
       println("Ctr1: " + ctr1.contract())
@@ -236,17 +236,17 @@ object Tester {
       }
     }
     //Reuse previously verified lemmas for side condition
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
-    val X = mutable.LinkedHashMap[Variable, Variable](
-      "y".asVariable -> "a".asVariable
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("y".asVariable) -> Seq("a".asVariable)
     )
 
     if (initialize) {
@@ -258,7 +258,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo-" + v).get
     }
     }.toSeq: _*)
@@ -276,8 +276,8 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-C1", "?x>0;?a=6;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
       val c2 = new Component(name + "-C2", "u:=-1;?y<=42&y0<=42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
-      val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula), mutable.LinkedHashMap("a".asVariable -> "a0".asVariable))
-      val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula), mutable.LinkedHashMap.empty, mutable.LinkedHashMap("y".asVariable -> "y0".asVariable))
+      val i1 = Interface.SinglePortInterface(mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula), mutable.LinkedHashMap("a".asVariable -> "a0".asVariable))
+      val i2 = Interface.SinglePortInterface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula), mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("y".asVariable -> "y0".asVariable))
       val ctr1 = new DelayContract(c1, i1, "a=6 & b=0 & x>42".asFormula, "b<a".asFormula, "a>5 & b<1".asFormula)
       val ctr2 = new DelayContract(c2, i2, "true".asFormula, "true".asFormula, "true".asFormula)
       println("Ctr1: " + ctr1.contract())
@@ -328,16 +328,16 @@ object Tester {
       }
     }
     //Reuse previously verified lemmas for side condition
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
-    val X = mutable.LinkedHashMap[Variable, Variable](
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
       //      "y".asVariable -> "a".asVariable
     )
 
@@ -350,7 +350,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo1-" + v).get
     }
     }.toSeq: _*)
@@ -375,11 +375,10 @@ object Tester {
       }
       //Interface 1
       val i1: Interface = {
-        new Interface(
+        Interface.SinglePortInterface(
           LinkedHashMap("y".asVariable -> "y>=0".asFormula), //In
-          LinkedHashMap(//Out
-            "out1".asVariable -> "out1=42".asFormula
-          )
+          LinkedHashMap("out1".asVariable -> "out1=42".asFormula), //Out
+          mutable.LinkedHashMap.empty[Variable, Variable]//Pre
         )
       }
       //Contract 1
@@ -403,12 +402,10 @@ object Tester {
       }
       //Interface 2
       val i2: Interface = {
-        new Interface(
+        Interface.SinglePortInterface(
           LinkedHashMap("in2".asVariable -> "in2=42".asFormula), //In
-          LinkedHashMap(//Out
-            "x".asVariable -> "x>=1".asFormula
-            //                    ,"out2".asVariable -> "true".asFormula
-          )
+          LinkedHashMap("x".asVariable -> "x>=1".asFormula),//Out
+          mutable.LinkedHashMap.empty[Variable, Variable]//Pre
         )
       }
       //Contract 2
@@ -437,20 +434,20 @@ object Tester {
     println("Loaded Contract(C2,I2) verified? " + lc2.isVerified())
 
     val X = mutable.LinkedHashMap(
-      "y".asVariable -> "x".asVariable
+      Seq("y".asVariable) -> Seq("x".asVariable)
     )
 
-    var cpoT: mutable.Map[(Variable, Variable), BelleExpr] = mutable.Map.empty
-    cpoT += ("y".asVariable, "x".asVariable) -> (implyR('R) & assignb('R) & implyR('R) & QE)
+    var cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), BelleExpr] = mutable.Map.empty
+    cpoT += (Seq("y".asVariable), Seq("x".asVariable)) -> (implyR('R) & assignb('R) & implyR('R) & QE)
     //    println("CPO verified? " + cpoT.forall { case (m, t) => TactixLibrary.proveBy(lc1.cpo(lc2, X)(m), t).isProved })
 
     val sc1 = lc1.sideConditions()
-    val sc1T: mutable.Map[Variable, BelleExpr] = sc1.map((e) => (e._1, master()))
+    val sc1T: mutable.Map[Seq[Variable], BelleExpr] = sc1.map((e) => (e._1, master()))
     println("sc1: " + sc1)
     //    println("SC1 verified? " + TactixLibrary.proveBy(lc1.sideCondition(), sc1T).isProved)
 
     val sc2 = lc2.sideConditions()
-    val sc2T: mutable.Map[Variable, BelleExpr] = sc2.map((e) => (e._1, master()))
+    val sc2T: mutable.Map[Seq[Variable], BelleExpr] = sc2.map((e) => (e._1, master()))
     println("sc2: " + sc2)
     //    println("SC2 verified? " + TactixLibrary.proveBy(lc2.sideCondition(), sc2T).isProved)
 
@@ -468,8 +465,8 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-C1", "?x>0;a:=42;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
       val c2 = new Component(name + "-C2", "u:=-1;?y<42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
-      val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula))
-      val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula))
+      val i1 = Interface.SinglePortInterface(mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula),mutable.LinkedHashMap.empty[Variable, Variable])
+      val i2 = Interface.SinglePortInterface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula),mutable.LinkedHashMap.empty[Variable, Formula],mutable.LinkedHashMap.empty[Variable, Variable])
       val ctr1 = new DelayContract(c1, i1, "a=6 & b=0 & x>42".asFormula, "b<a".asFormula, "a>5 & b<1".asFormula)
       val ctr2 = new DelayContract(c2, i2, "true".asFormula, "true".asFormula, "true".asFormula)
       println("Ctr1: " + ctr1.contract())
@@ -518,16 +515,16 @@ object Tester {
       }
     }
     //Reuse previously verified lemmas for side condition
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
-    val X = mutable.LinkedHashMap[Variable, Variable](
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
       //      "y".asVariable -> "a".asVariable
     )
 
@@ -540,7 +537,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo-" + v).get
     }
     }.toSeq: _*)
@@ -557,8 +554,8 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-D1", "?x>0;a:=42;".asProgram, ODESystem("b'=1".asDifferentialProgram, "b<1".asFormula))
       val c2 = new Component(name + "-D2", "u:=-1;?y<42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
-      val i1 = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula))
-      val i2 = new Interface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula))
+      val i1 = Interface.SinglePortInterface(mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("a".asVariable -> "a>5".asFormula, "b".asVariable -> "b<1".asFormula),mutable.LinkedHashMap.empty[Variable, Variable])
+      val i2 = Interface.SinglePortInterface(mutable.LinkedHashMap("y".asVariable -> "y>0".asFormula),mutable.LinkedHashMap.empty[Variable, Formula],mutable.LinkedHashMap.empty[Variable, Variable])
       val ctr1 = new DelayContract(c1, i1, "a=6 & b=0 & x>42".asFormula, "b<a".asFormula, "a>5 & b<1".asFormula)
       val ctr2 = new DelayContract(c2, i2, "true".asFormula, "true".asFormula, "true".asFormula)
       println("Ctr1: " + ctr1.contract())
@@ -607,17 +604,17 @@ object Tester {
       }
     }
     //Reuse previously verified lemmas for side condition
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
     val X = mutable.LinkedHashMap(
-      "y".asVariable -> "a".asVariable
+      Seq("y".asVariable) -> Seq("a".asVariable)
     )
 
     if (initialize) {
@@ -629,7 +626,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo-" + v).get
     }
     }.toSeq: _*)
@@ -647,12 +644,12 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-BD1", "?ctr1>0;".asProgram, ODESystem("p1'=1".asDifferentialProgram, "p1<1".asFormula))
       val c2 = new Component(name + "-BD2", "?ctr2<42;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))
-      val i1 = new Interface(
+      val i1 = Interface.SinglePortInterface(
         mutable.LinkedHashMap("r".asVariable -> "r>0".asFormula, "i1i1".asVariable -> "i1i1>0".asFormula, "s".asVariable -> "s>0".asFormula, "i1i2".asVariable -> "i1i2>0".asFormula),
         mutable.LinkedHashMap("a_".asVariable -> "a_>0".asFormula, "i1o1".asVariable -> "i1o1>0".asFormula, "b_".asVariable -> "b_>0".asFormula, "i1o2".asVariable -> "i1o2>0".asFormula),
         mutable.LinkedHashMap("r".asVariable -> "r0".asVariable, "a_".asVariable -> "a_0".asVariable, "i1i1".asVariable -> "i1i10".asVariable)
       )
-      val i2 = new Interface(
+      val i2 = Interface.SinglePortInterface(
         mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "i2i1".asVariable -> "i2i1>0".asFormula, "b".asVariable -> "b>0".asFormula, "i2i2".asVariable -> "i2i2>0".asFormula),
         mutable.LinkedHashMap("r_".asVariable -> "r_>0".asFormula, "i2o1".asVariable -> "i2o1>0".asFormula, "s_".asVariable -> "s_>0".asFormula, "i2o2".asVariable -> "i2o2>0".asFormula),
         mutable.LinkedHashMap("r_".asVariable -> "r_0".asVariable, "a".asVariable -> "a0".asVariable, "i2o2".asVariable -> "i2o20".asVariable)
@@ -685,29 +682,29 @@ object Tester {
     if (initialize) {
       //Verify lemmas for side conditions
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name + "-bd-side1-" + v))
+        v -> ProofHelper.verify(f, master(), Some(name + "-side1-" + v))
       }
       }
       lctr2.sideConditions().foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name + "-bd-side2-" + v))
+        v -> ProofHelper.verify(f, master(), Some(name + "-side2-" + v))
       }
       }
     }
     //Reuse previously verified lemmas for side contision
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-bd-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-bd-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
     val X = mutable.LinkedHashMap(
-      "r".asVariable -> "r_".asVariable,
-      "s".asVariable -> "s_".asVariable,
-      "a".asVariable -> "a_".asVariable,
-      "b".asVariable -> "b_".asVariable
+      Seq("r".asVariable) -> Seq("r_".asVariable),
+      Seq("s".asVariable) -> Seq("s_".asVariable),
+      Seq("a".asVariable) -> Seq("a_".asVariable),
+      Seq("b".asVariable) -> Seq("b_".asVariable)
     )
 
     if (initialize) {
@@ -725,7 +722,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo-" + v).get
     }
     }.toSeq: _*)
@@ -748,8 +745,8 @@ object Tester {
     if (initialize) {
       val c1 = new Component(name + "-B1", "?ctr1>0;".asProgram, ODESystem("p1'=1".asDifferentialProgram, "p1<1".asFormula))
       val c2 = new Component(name + "-B2", "?ctr2<42;".asProgram, ODESystem("p2'=1".asDifferentialProgram, "p2<1".asFormula))
-      val i1 = new Interface(mutable.LinkedHashMap("r".asVariable -> "r>0".asFormula, "i1i1".asVariable -> "i1i1>0".asFormula, "s".asVariable -> "s>0".asFormula, "i1i2".asVariable -> "i1i2>0".asFormula), mutable.LinkedHashMap("a_".asVariable -> "a_>0".asFormula, "i1o1".asVariable -> "i1o1>0".asFormula, "b_".asVariable -> "b_>0".asFormula, "i1o2".asVariable -> "i1o2>0".asFormula))
-      val i2 = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "i2i1".asVariable -> "i2i1>0".asFormula, "b".asVariable -> "b>0".asFormula, "i2i2".asVariable -> "i2i2>0".asFormula), mutable.LinkedHashMap("r_".asVariable -> "r_>0".asFormula, "i2o1".asVariable -> "i2o1>0".asFormula, "s_".asVariable -> "s_>0".asFormula, "i2o2".asVariable -> "i2o2>0".asFormula))
+      val i1 = Interface.SinglePortInterface(mutable.LinkedHashMap("r".asVariable -> "r>0".asFormula, "i1i1".asVariable -> "i1i1>0".asFormula, "s".asVariable -> "s>0".asFormula, "i1i2".asVariable -> "i1i2>0".asFormula), mutable.LinkedHashMap("a_".asVariable -> "a_>0".asFormula, "i1o1".asVariable -> "i1o1>0".asFormula, "b_".asVariable -> "b_>0".asFormula, "i1o2".asVariable -> "i1o2>0".asFormula),mutable.LinkedHashMap.empty[Variable, Variable])
+      val i2 = Interface.SinglePortInterface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "i2i1".asVariable -> "i2i1>0".asFormula, "b".asVariable -> "b>0".asFormula, "i2i2".asVariable -> "i2i2>0".asFormula), mutable.LinkedHashMap("r_".asVariable -> "r_>0".asFormula, "i2o1".asVariable -> "i2o1>0".asFormula, "s_".asVariable -> "s_>0".asFormula, "i2o2".asVariable -> "i2o2>0".asFormula),mutable.LinkedHashMap.empty[Variable, Variable])
       val ctr1 = new DelayContract(c1, i1, "a_=1 & b_=1 & i1o1=1 & i1o2=1".asFormula, "true".asFormula, "a_=1 & b_=1 & i1o1=1 & i1o2=1".asFormula)
       val ctr2 = new DelayContract(c2, i2, "r_=1 & s_=1 & i2o1=1 & i2o2=1".asFormula, "true".asFormula, "r_=1 & s_=1 & i2o1=1 & i2o2=1".asFormula)
       println("Ctr1: " + ctr1.contract())
@@ -787,20 +784,20 @@ object Tester {
       }
     }
     //Reuse previously verified lemmas for side contision
-    val sc1: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side1-" + v).get
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
     }
     }.toSeq: _*)
-    val sc2: mutable.Map[Variable, Lemma] = mutable.Map[Variable, Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
-      v -> Utility.loadLemma(name + "-side2-" + v).get
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
     }
     }.toSeq: _*)
 
     val X = mutable.LinkedHashMap(
-      "r".asVariable -> "r_".asVariable,
-      "s".asVariable -> "s_".asVariable,
-      "a".asVariable -> "a_".asVariable,
-      "b".asVariable -> "b_".asVariable
+      Seq("r".asVariable) -> Seq("r_".asVariable),
+      Seq("s".asVariable) -> Seq("s_".asVariable),
+      Seq("a".asVariable) -> Seq("a_".asVariable),
+      Seq("b".asVariable) -> Seq("b_".asVariable)
     )
 
     if (initialize) {
@@ -812,7 +809,7 @@ object Tester {
     }
 
     //Reuse previously verified lemmas for cpo
-    val cpo: mutable.Map[(Variable, Variable), Lemma] = mutable.Map[(Variable, Variable), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
       v -> Utility.loadLemma(name + "-cpo-" + v).get
     }
     }.toSeq: _*)
@@ -846,7 +843,7 @@ object Tester {
   }
 
   def inTest() = {
-    val i = new Interface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula))
+    val i = Interface.SinglePortInterface(mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula),mutable.LinkedHashMap.empty[Variable, Formula],mutable.LinkedHashMap.empty[Variable, Variable])
     println("i.in=" + i.in)
 
     TactixLibrary.proveBy(Imply("d>0".asFormula, Box(i.in, "d>0".asFormula)), implyR('R) & composeb('R) * (countBinary[Compose](i.in.asInstanceOf[Compose]) / 2) & print("a"))
@@ -860,7 +857,7 @@ object Tester {
   }
 
   def piOutAllTest() = {
-    val i = new Interface(mutable.LinkedHashMap.empty, mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula))
+    val i = Interface.SinglePortInterface(mutable.LinkedHashMap.empty[Variable, Formula], mutable.LinkedHashMap("a".asVariable -> "a>0".asFormula, "b".asVariable -> "b>0".asFormula, "c".asVariable -> "c>0".asFormula, "d".asVariable -> "d>0".asFormula),mutable.LinkedHashMap.empty[Variable, Variable])
     println("i.piOutAll=" + i.piOutAll)
 
     TactixLibrary.proveBy(Imply("d>0&c>0&b>0".asFormula, i.piOutAll), implyR('R) & (andL('L) *) & (andR('R) & print("x") < (skip, closeId) & print("y")) * 2)

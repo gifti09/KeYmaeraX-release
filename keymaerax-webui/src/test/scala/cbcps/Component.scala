@@ -88,7 +88,7 @@ object Component {
     var c = new Component("Test Component", "out:=0;a:=5;".asProgram, new ODESystem(KeYmaeraXParser.differentialProgramParser("a'=1"), "a<=A".asFormula))
     println("Component: " + c)
 
-    var i = new Interface(LinkedHashMap("in".asVariable -> "in>=0".asFormula), LinkedHashMap("out".asVariable -> "out<A".asFormula), LinkedHashMap("out".asVariable -> "outInit".asVariable))
+    var i = Interface.SinglePortInterface(LinkedHashMap("in".asVariable -> "in>=0".asFormula), LinkedHashMap("out".asVariable -> "out<A".asFormula), LinkedHashMap("out".asVariable -> "outInit".asVariable))
     println("Interface: " + i)
   }
 }
