@@ -215,4 +215,14 @@ object MultiPort {
       s.reduce((a1, a2) => Compose(a1, a2))
     }
   }
+
+  def multiportAtPosition(ports: Seq[Seq[Variable]], pos: Int): Seq[Variable] = {
+    var c = pos
+    ports.foreach((vs: Seq[Variable]) => {
+      c = c - vs.size
+      if (c <= 0)
+        return vs
+    })
+    throw new IllegalArgumentException("No multiport found in '" + ports + "' at position " + pos)
+  }
 }

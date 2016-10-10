@@ -923,9 +923,9 @@ object Contract {
 
     //    return null.asInstanceOf[C]
 
-    val nIn1: Int = if (ctr1.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.interface.in.asInstanceOf[Compose]) else 0
+    //    val nIn1: Int = if (ctr1.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.interface.in.asInstanceOf[Compose]) else 0
     val nPorts1: Int = if (ctr1.component.ports.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr1.component.ports.asInstanceOf[Compose]) else 0
-    val nIn2: Int = if (ctr2.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr2.interface.in.asInstanceOf[Compose]) else 0
+    //    val nIn2: Int = if (ctr2.interface.in.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr2.interface.in.asInstanceOf[Compose]) else 0
     val nPorts2: Int = if (ctr2.component.ports.isInstanceOf[Compose]) ComposeProofStuff.countBinary[Compose](ctr2.component.ports.asInstanceOf[Compose]) else 0
 
     ctr3.verifyStep(implyR('R)
@@ -958,20 +958,18 @@ object Contract {
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
                   //  first split all parts (i.e., all the [...=*; ?...;]) of in1 from the rest
                   //TODO Check
-                  & print("HERE A")
                   & composeb('R) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size, 1))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}[?in1*;in1*:=*]...[?in1*;in1*:=*][ports1][ports3]inv1
                   //  and merge all parts of in1
                   //TODO Check
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size-1,0))
-                  &print("HERE B")
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size - 1, 0))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in1*;in1*:=*;?in1*;in1*:=*][ports1][ports3]inv1
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
-                  & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT)('R)
+                  & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT, ctr3.interface.vIn)('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1][ports3*]...[ports3*]inv1
                   //cf. 3 - drop remaining parts of ports3 (which are part of component 2)
                   //TODO Check
-                  & ComposeProofStuff.dropRemainingPorts3(ctr2.interface.vIn)(1)
+                  & ComposeProofStuff.dropRemainingPorts3(ctr2.interface.vIn, X)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 11 - drop plant2
                   & composeb(1)
@@ -982,7 +980,7 @@ object Contract {
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                   //F,global,boot,inv1,inv2 ==> [dp1;dp2][ctrl1][told][plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop dp2
-                  & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat)(1)
+                  & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr1.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 3 & hide(-2) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -990,12 +988,13 @@ object Contract {
                     //split ports1 and split further
                     & composeb(-1) & (composeb(-1, 1 :: Nil) * nPorts1)
                     //split in1 and split further
-                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & composeb(-1, 1 :: 1 :: Nil)) * Math.max((nIn1 + 1) / 2 - 1, 0))
-                    & (if (nIn1 > 0) composeb(-1, 1 :: Nil) else skip)
+                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & (composeb(-1, 1 :: 1 :: Nil) *)) * Math.max(ctr1.interface.vIn.size - 1, 0))
+                    & (if (ctr1.interface.vIn.size > 0) (composeb(-1, 1 :: Nil) *) else skip)
                     //split plant1, told, ctrl1, dp1
                     & composeb(-1) * 3
                     //split dp1
-                    & composeb(-1) * (ctr1.interface.pre.size - 1)
+                    & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr1.interface.pre.size - 1, 0)
+                    & (if (ctr1.interface.pre.size > 0) (composeb(-1) *) else skip)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr1.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1017,13 +1016,17 @@ object Contract {
                 //(5) cf. 2 - Lemma 1 to remove dp1
                 //                & ComposeProofStuff.removeDeltaParts(ctr1.interface.vDelta.size, true)('R)
                 //TODO check
-                & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat)(1)
+                & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                 //vaphi2 ==> [dp2][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
-                //  reconnect to one big box
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr2.interface.pre.size - 1)) & (
+                //  first reconnect DP
+                & ComposeProofStuff.recomposeDP(ctr2.interface.vDelta)('R)
+                // then reconnect to one big box
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
+                & (
                 if (ctr2.interface.piOut.size == 0) boxTrue('R)
-                else (boxAnd('R) & andR('R) < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
+                else (boxAnd('R) & andR('R)
+                  < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
               ) & print("C1;C2 done!")
@@ -1052,23 +1055,23 @@ object Contract {
                   & composeb('R) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size, 1))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}[?in1*;in1*:=*]...[?in1*;in1*:=*][ports1][ports3]inv1
                   //  and merge all parts of in1
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size-1,0))
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size - 1, 0))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}][?in1*;in1*:=*;?in1*;in1*:=*][ports1][ports3]inv1
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
-                  & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT)('R)
+                  & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT, ctr3.interface.vIn)('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1][ports3*]...[ports3*]inv1
                   //cf. 3 - drop remaining parts of ports3 (which are part of component 2)
-                  & ComposeProofStuff.dropRemainingPorts3(ctr2.interface.vIn)(1)
+                  & ComposeProofStuff.dropRemainingPorts3(ctr2.interface.vIn, X)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 11 - drop plant2
-                  & composeb(1) & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), ctr2.component.plant.constraint)(1)
+                  & composeb(1)
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), ctr2.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
-                  & print("dropped the right one?")
                   //cf. 13 - drop dp2
-                  //TODO check
-                  & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat)(1)
+                  & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr1.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 3 & hide(-2) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -1076,12 +1079,14 @@ object Contract {
                     //split ports1 and split further
                     & composeb(-1) & (composeb(-1, 1 :: Nil) * nPorts1)
                     //split in1 and split further
-                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & composeb(-1, 1 :: 1 :: Nil)) * Math.max((nIn1 + 1) / 2 - 1, 0))
-                    & (if (nIn1 > 0) composeb(-1, 1 :: Nil) else skip)
+                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & (composeb(-1, 1 :: 1 :: Nil) *)) * Math.max(ctr1.interface.vIn.size - 1, 0))
+                    & (if (ctr1.interface.vIn.size > 0) (composeb(-1, 1 :: Nil) *) else skip)
                     //split plant1, told, ctrl1, dp1
                     & composeb(-1) * 3
                     //split dp1
-                    & composeb(-1) * (ctr1.interface.pre.size - 1)
+                    & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr1.interface.pre.size - 1, 0)
+                    & (if (ctr1.interface.pre.size > 0) (composeb(-1) *) else skip)
+//                    & composeb(-1) * (ctr1.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr1.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1102,10 +1107,14 @@ object Contract {
                 //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
                 //(5) cf. 2 - Lemma 1 to remove dp1
                 //TODO check
-                & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat)(1)
+                & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                 //vaphi2 ==> [dp][ctrl2][told][{plant2}]piout2
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr2.interface.pre.size - 1)) & (
+                //  first reconnect DP
+                & ComposeProofStuff.recomposeDP(ctr2.interface.vDelta)('R)
+                // then reconnect to one big box
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
+                & (
                 if (ctr2.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
@@ -1140,22 +1149,24 @@ object Contract {
                   & composeb('R) * (Math.max((ctr2.interface.vIn.toSet -- X.keySet).size, 1))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}[?in1*;in1*:=*]...[?in1*;in1*:=*][ports1][ports3]inv2
                   //  and merge all parts of in2
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr2.interface.vIn.toSet -- X.keySet).size-1,0))
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr2.interface.vIn.toSet -- X.keySet).size - 1, 0))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in2*;in2*:=*;?in2*;in2*:=*][ports2][ports3]inv2
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
-                  & ComposeProofStuff.introduceAndWeakenForAll(ctr2.interface.piIn, ctr1.interface.piOut, X, cpoT)('R)
+                  & ComposeProofStuff.introduceAndWeakenForAll(ctr2.interface.piIn, ctr1.interface.piOut, X, cpoT, ctr3.interface.vIn)('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2][ports3*]...[ports3*]inv2
                   //cf. 3 - drop remaining parts of ports3 (which are part of component 1)
-                  & ComposeProofStuff.dropRemainingPorts3(ctr1.interface.vIn)(1)
+                  & ComposeProofStuff.dropRemainingPorts3(ctr1.interface.vIn, X)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 11 - drop plant1
-                  & composeb(1) & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)(1)
+                  & composeb(1)
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                   //cf. 13 - drop dp1
                   //TODO check
-                  & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat)(1)
+                  & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr2.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 4 & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -1163,12 +1174,14 @@ object Contract {
                     //split ports2 and split further
                     & composeb(-1) & (composeb(-1, 1 :: Nil) * nPorts2)
                     //split in2 and split further
-                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & composeb(-1, 1 :: 1 :: Nil)) * Math.max((nIn2 + 1) / 2 - 1, 0))
-                    & (if (nIn2 > 0) composeb(-1, 1 :: Nil) else skip)
+                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & (composeb(-1, 1 :: 1 :: Nil) *)) * Math.max(ctr2.interface.vIn.size - 1, 0))
+                    & (if (ctr2.interface.vIn.size > 0) (composeb(-1, 1 :: Nil) *) else skip)
                     //split plant2, told, ctrl2, dp2
                     & composeb(-1) * 3
                     //split dp2
-                    & composeb(-1) * (ctr2.interface.pre.size - 1)
+                    & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr2.interface.pre.size - 1, 0)
+                    & (if (ctr2.interface.pre.size > 0) (composeb(-1) *) else skip)
+//                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr2.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1188,17 +1201,19 @@ object Contract {
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                 //vaphi1 ==> [dp1;dp2][ctrl1][told][{plant1}]piout1
                 //(5) cf. 2 - Lemma 1 to remove dp2
-                & print("REMOVE DPs: " + ctr2.interface.vInit)
-                //TODO check
-                & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat)(1)
-                & print("DONE REMOVE DPs")
+                & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                 //                & ComposeProofStuff.removeDeltaParts(ctr2.interface.vDelta.size, true)('R)
                 //vaphi1 ==> [dp1][ctrl1][told][{plant1}]piout1
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr1.interface.pre.size - 1)) & (
+                //  first reconnect DP
+                & ComposeProofStuff.recomposeDP(ctr1.interface.vDelta)('R)
+                // then reconnect to one big box
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
+                & (
                 if (ctr1.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
-                  < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side1)('R) & prop
+                  < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1)
+                  & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
               //closed!
               ) & print("C1;C2 done!")
@@ -1219,7 +1234,6 @@ object Contract {
                   //cf. 4 - drop in1
                   & composeb(1) * 2 & useAt("[;] compose", PosInExpr(1 :: Nil))('L) * 3
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2};in1*;in2*][ports2][ports3]inv2
-                  //TODO check
                   & ComposeProofStuff.dropIn(mutable.Seq((ctr1.interface.vIn.toSet -- X.keySet).toSeq: _*), mutable.Seq(ctr3.interface.vIn: _*))('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2};in2*][ports2][ports3]inv2
                   //cf. 5-9 - introduce, move and weaken test, weaken assignment
@@ -1227,23 +1241,24 @@ object Contract {
                   & composeb('R) * (Math.max((ctr2.interface.vIn.toSet -- X.keySet).size, 1))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}[?in2*;in2*:=*]...[?in2*;in2*:=*][ports2][ports3]inv2
                   //  and merge all parts of in2
-                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr2.interface.vIn.toSet -- X.keySet).size-1,0))
-//                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * ((ctr2.interface.vIn.toSet -- X.keySet).size / 2)
+                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr2.interface.vIn.toSet -- X.keySet).size - 1, 0))
+                  //                  & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * ((ctr2.interface.vIn.toSet -- X.keySet).size / 2)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}][?in2*;in2*:=*;?in2*;in2*:=*][ports2][ports3]inv2
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
-                  & ComposeProofStuff.introduceAndWeakenForAll(ctr2.interface.piIn, ctr1.interface.piOut, X, cpoT)('R)
+                  & ComposeProofStuff.introduceAndWeakenForAll(ctr2.interface.piIn, ctr1.interface.piOut, X, cpoT, ctr3.interface.vIn)('R)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2][ports3*]...[ports3*]inv2
                   //cf. 3 - drop remaining parts of ports3 (which are part of component 1)
-                  & ComposeProofStuff.dropRemainingPorts3(ctr1.interface.vIn)(1)
+                  & ComposeProofStuff.dropRemainingPorts3(ctr1.interface.vIn, X)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 11 - drop plant1
-                  & composeb(1) & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)(1)
+                  & composeb(1)
+                  //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant2][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                   //cf. 13 - drop dp1
-                  //TODO check
-                  & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat)(1)
+                  & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                   & print("before")
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr2.stepLemma.get.fact.conclusion.succ(0)) < (
@@ -1252,12 +1267,14 @@ object Contract {
                     //split ports2 and split further
                     & composeb(-1) & (composeb(-1, 1 :: Nil) * nPorts2)
                     //split in2 and split further
-                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & composeb(-1, 1 :: 1 :: Nil)) * Math.max((nIn2 + 1) / 2 - 1, 0))
-                    & (if (nIn2 > 0) composeb(-1, 1 :: Nil) else skip)
+                    & composeb(-1) & ((composeb(-1, 1 :: Nil) & (composeb(-1, 1 :: 1 :: Nil) *)) * Math.max(ctr2.interface.vIn.size - 1, 0))
+                    & (if (ctr2.interface.vIn.size > 0) (composeb(-1, 1 :: Nil) *) else skip)
                     //split plant2, told, ctrl2, dp2
                     & composeb(-1) * 3
                     //split dp2
-                    & composeb(-1) * (ctr2.interface.pre.size - 1)
+                    & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr2.interface.pre.size - 1, 0)
+                    & (if (ctr2.interface.pre.size > 0) (composeb(-1) *) else skip)
+//                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt(ctr2.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
@@ -1277,16 +1294,18 @@ object Contract {
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
                 //vaphi1 ==> [dp1;dp2][ctrl1][told][{plant1}]piout1
                 //(5) cf. 2 - Lemma 1 to remove dp2
-                & print("REMOVE DPs: " + ctr2.interface.vInit)
-                //TODO check
-                & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat)(1)
-                & print("DONE REMOVE DPs")
+                & ComposeProofStuff.dropDeltaParts(ctr2.interface.vDelta.isEmpty, ctr1.interface.vDelta.isEmpty, ctr2.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
                 //vaphi1 ==> [dp1][ctrl1][told][{plant1}]piout1
                 //(6) cf. 3 - close all branches with sideconditions for each part of piout1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3 + Math.max(0, ctr1.interface.pre.size - 1)) & (
+                //  first reconnect DP
+                & ComposeProofStuff.recomposeDP(ctr1.interface.vDelta)('R)
+                // then reconnect to one big box
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
+                & (
                 if (ctr1.interface.piOut.size == 0) boxTrue('R)
                 else (boxAnd('R) & andR('R)
-                  < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side1)('R) & prop
+                  < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1)
+                  & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
               //closed!
               ) & print("C2;C1 done!")
@@ -1308,7 +1327,20 @@ object Contract {
   }
 
   object ComposeProofStuff {
-    def dropDeltaParts(remEmpty: Boolean, keepEmpty: Boolean, remInit: Seq[Variable]): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def recomposeDP(vDelta: Seq[Seq[Variable]]): DependentPositionTactic = "Recompose Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Box(_, _)) =>
+        var t: BelleExpr = skip & print("recomposing dp")
+        var h = oneList(0)
+        var cnt = 0
+        vDelta.foreach((vs: Seq[Variable]) => {
+          t = t & print("recomposing single dp -> "+vs) & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, h) * (vs.size-1) & print("done")
+          h = 1 :: h
+        })
+        t = t & print("recomposing dmps") & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos) * Math.max(vDelta.size-1,0)
+        t&print("done recomposing dp")
+    })
+
+    def dropDeltaParts(remEmpty: Boolean, keepEmpty: Boolean, remInit: Seq[Variable], dCnt: Int, sCnt: Int): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(_, _)) =>
         var t: BelleExpr = skip
         //if remEmpty --> empty remDP, nothing to remove
@@ -1321,19 +1353,21 @@ object Contract {
           }
           else {
             //there is something in remDP and keepDP, so we have to check what to remove
-            t = t & print("dropping dp: " + remInit) & ComposeProofStuff.dropDeltaPartForPort(remInit)(1)
+            t = t & print("dropping dp: " + remInit) & ComposeProofStuff.dropDeltaPartForPort(remInit, dCnt, sCnt)(1)
           }
         }
         t
     })
 
-    def dropDeltaPartForPort(vInit: Seq[Variable]): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def dropDeltaPartForPort(vInit: Seq[Variable], dCnt: Int, sCnt: Int): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(dp: Compose, b: Box)) =>
-        val cnt: Int = countBinary[Compose](dp)
-        var t: BelleExpr = composeb(pos) * (cnt)
-        (cnt.until(0, -1)) foreach (i => {
+        //        val cnt: Int = countBinary[Compose](dp)
+        var t: BelleExpr = print("composing " + dCnt) & (composeb(pos.top.getPos) & (composeb(pos.top.getPos, 1 :: Nil) *)) * Math.max(dCnt - 1, 0) & (composeb(pos.top.getPos) *)
+        t = t & print("dropOrSkip " + sCnt)
+        ((sCnt - 1).until(0, -1)) foreach (i => {
           t = t & dropOrSkipDeltaPart(vInit)(pos.top.getPos, oneList(i))
         })
+        t = t & print("last one...")
         t = t & dropOrSkipDeltaPart(vInit)(pos.top.getPos)
         t
     })
@@ -1350,28 +1384,32 @@ object Contract {
         }
     })
 
-    def dropRemainingPorts3(vs: Seq[Seq[Variable]]): DependentPositionTactic = "Drop Remaining Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def dropRemainingPorts3(vIn: Seq[Seq[Variable]], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]]): DependentPositionTactic = "Drop Remaining Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, b: Box)) =>
         var t: BelleExpr = skip
-        vs.foreach(v => {
-          t = t & dropFromPorts3(v)(pos)
+        vIn.foreach(vi => {
+          if (X.contains(vi)) {
+            t = t & dropFromPorts3(vi, X(vi))(pos)
+          }
         })
         t
     })
 
-    def dropFromPorts3(vs: Seq[Variable]): DependentPositionTactic = "Drop From Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def dropFromPorts3(vi: Seq[Variable], vo: Seq[Variable]): DependentPositionTactic = "Drop From Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, b: Box)) =>
-        var t: BelleExpr = skip
+        var t: BelleExpr = skip & print("dropping reamining ports3, port=" + vi)
         //TODO check
         //remove all ports from front to back
         // because this way, the removal of a port does not change the position of the other ports
-        vs.reverse.foreach(v => {
-          val assPos = posOfAssign(b, v)
-          if (assPos > 0) {
-            //the assignment was found
-            t = t & Lemmas.lemma1(1, oneList(assPos))
-          }
-        })
+        //        vi.reverse.foreach(v => {
+        val mpa = MultiPort.assign(vi, vo)
+        val assPos = posOf(b, ((x: Program) => x.equals(mpa)))
+        //                    val assPos = posOfAssign(b, v)
+        if (assPos > 0) {
+          //the assignment was found
+          t = t & print("dropping at " + assPos) & Lemmas.lemma1(1, oneList(assPos)) & print("dropped")
+        }
+        //        })
         t
     })
 
@@ -1384,11 +1422,11 @@ object Contract {
         if (n > 1) {
           //          t = t & composeb(pos.top.getPos, 1 :: Nil) * (n / 2)
           //          t = t & (dropOrMerge(vInDrop)(pos.top.getPos) * ((n / 2) + 1))
-          t=t&print("HERE 1")
-          t = t & composeb(pos.top.getPos, 1 :: Nil) * (n-1)
-          t=t&print("HERE 2")
+          t = t & print("HERE 1")
+          t = t & composeb(pos.top.getPos, 1 :: Nil) * (n - 1)
+          t = t & print("HERE 2")
           t = t & dropOrMerge(vInDrop)(pos.top.getPos) * n
-          t=t&print("HERE 3")
+          t = t & print("HERE 3")
         }
         else {
           t = t & (dropOrMerge(vInDrop)(pos.top.getPos) * n)
@@ -1427,11 +1465,11 @@ object Contract {
       }
     })
 
-    def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable],vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in, Box(ports, Box(ports3, _))))) =>
         var t: BelleExpr = skip & print("introduceAndWeakenForAll")
-        val vtIn: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => X.keySet.contains(e._1))
-        val vtOut: mutable.LinkedHashMap[Seq[Variable], Formula] = piOut.filter((e) => X.values.toSet.contains(e._1))
+        val vInCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => X.keySet.contains(e._1))
+        val vOutCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piOut.filter((e) => X.values.toSet.contains(e._1))
         val vInOpen: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => !X.keySet.contains(e._1))
 
         if (X.isEmpty) {
@@ -1440,29 +1478,15 @@ object Contract {
           t = t & Lemmas.lemma1(1, 1 :: 1 :: Nil)
         }
 
-        //[p][in1][ports1][ports3]A
-        var nPorts3 = if (ports3.isInstanceOf[Compose]) {
-          //multiple assignments --> compose
-          (countBinary[Compose](ports3.asInstanceOf[Compose]) + 1)
-        }
-        else if (ports3.isInstanceOf[Assign]) {
-          //single assignment
-          1
-        }
-        else {
-          //no assignment, but empty test (has been removed already, cf. above!)
-          0
-        }
-        var hPorts3 = 1 :: 1 :: 1 :: Nil
+        //[p][in1][ports1][mports3]A
+        var nPorts3 = X.size
+        val hPorts3 = oneList(3)
         if (nPorts3 > 1) {
-          //TODO maybe use * instead of foreach?
-          (0 until nPorts3 - 1) foreach (i => {
-            t = t & print("goPorts3") & composeb(pos.top.getPos, hPorts3) & print("wentPorts3")
-          })
+          t = t & print("goPorts3 - " + Math.max(0, nPorts3 - 1) + " times") & composeb(pos.top.getPos, hPorts3) * Math.max(0, nPorts3 - 1) & print("wentPorts3")
         }
 
         //[p][in][ports][ports3-1]...[ports3-nPorts3]A
-        val nPorts1 = if (ports.isInstanceOf[Compose]) {
+        val nPorts = if (ports.isInstanceOf[Compose]) {
           //multiple assignments --> compose
           (countBinary[Compose](ports.asInstanceOf[Compose]) + 1)
         }
@@ -1475,12 +1499,13 @@ object Contract {
           0
         }
         var hPorts1 = 1 :: 1 :: Nil
-        if (nPorts1 > 1) {
+        if (nPorts > 1) {
           //TODO maybe use * instead of foreach?
-          (0 until nPorts1 - 1) foreach (i => {
-            t = t & print("goPorts " + i) & composeb(pos.top.getPos, hPorts1) & print("wentPorts " + i)
-            //            hPorts = 1 :: hPorts
-          })
+          //          (0 until nPorts1 - 1) foreach (i => {
+          //            t = t & print("goPorts " + i) & composeb(pos.top.getPos, hPorts1) & print("wentPorts " + i)
+          //            //            hPorts = 1 :: hPorts
+          //          })
+          t = t & print("goPorts - " + Math.max(0, nPorts - 1) + " times") & composeb(pos.top.getPos, hPorts1) * Math.max(0, nPorts - 1) & print("wentPorts")
         }
 
         //[p][in][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
@@ -1504,186 +1529,263 @@ object Contract {
           })
           //TODO Check
           //          t = t & print("go last") & composeb(pos.top.getPos, hIn) & print("go done") & print("done with introduceAndWeakenForAll")
-          t = t & ((print("go last") & composeb(pos.top.getPos, hIn)) *) & print("go done") & print("done with introduceAndWeakenForAll")
+          t = t & ((print("goIn last") & composeb(pos.top.getPos, hIn)) *) & print("goIn done")
         }
 
-        if (vtIn.nonEmpty) {
-          //[p][random-in-1][test-in-1]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
+        //ports connected --> something to do!
+        if (vInCon.nonEmpty) {
+          //[p][random-in-1]...[random-in-1][test-in-1]...[random-in-nIn]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][mports3-1]...[mports3-nPorts3]A
           var donePorts = Seq.empty[Seq[Variable]]
-          vtIn.foreach((e) => {
-            val inPos = piIn.keys.toSeq.indexOf(e._1)
+          vInCon.foreach((e) => {
+//            val inPos = if (piIn.keys.toSeq.indexOf(e._1) == 0) 0 else piIn.keys.toSeq.take(piIn.keys.toSeq.indexOf(e._1) - 1).flatten.size
+            val currIn=piIn.keys.toSeq.intersect(vIn3++donePorts++Seq(e._1))
+            println("currIn: "+currIn)
+            println("looking for position of "+e._1)
+            println("currIn.indexOf(e._1)="+currIn.indexOf(e._1))
+            println("currIn.take(currIn.indexOf(e._1) - 1)="+currIn.take(currIn.indexOf(e._1)))
+            val inPos = if (currIn.indexOf(e._1) == 0) 0 else currIn.take(currIn.indexOf(e._1)).flatten.size+currIn.take(currIn.indexOf(e._1)).size
+            println("and inPos="+inPos)
             val portPos = X.keys.toSeq.diff(donePorts).indexOf(e._1)
-            t = t & ComposeProofStuff.introduceTestFor(e._1, e._2, X.get(e._1).get, vtOut.get(X.get(e._1).get).get, nIn, nPorts1, nPorts3, inPos, portPos, cpoT((e._1, X(e._1))))(pos)
+            val cntIn = vInOpen.keySet.flatten.size + vInOpen.size + donePorts.flatten.size + donePorts.size
+            val cntPorts = if (nPorts == 0) 1 else nPorts
+            val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
+            t = t & ComposeProofStuff.introduceTestFor(e._1, e._2, X.get(e._1).get, vOutCon.get(X.get(e._1).get).get,
+              nIn, cntIn, nPorts, cntPorts, nPorts3, cntPorts3,
+              inPos, portPos, cpoT((e._1, X(e._1))),
+              Seq(X.keys.filter(v => !donePorts.contains(v)).toSeq: _*))(pos)
             donePorts = donePorts ++ Seq(e._1)
             nIn = nIn + 1
             nPorts3 = nPorts3 - 1
           })
         }
-        t
+        t & print("done with introduceAndWeakenForAll")
     })
 
 
-    def introduceTestFor(vIn: Seq[Variable], tIn: Formula, vOut: Seq[Variable], tOut: Formula, nIn: Int, nPorts: Int, nPorts3: Int, inPos: Int, portPos: Int, cpo: Provable): DependentPositionTactic = "Introduce And Weaken For" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def introduceTestFor(vIn: Seq[Variable], tIn: Formula, vOut: Seq[Variable], tOut: Formula,
+                         nIn: Int, cntIn: Int, nPorts: Int, cntPorts: Int, nPorts3: Int, cntPorts3: Int,
+                         inPos: Int, portPos: Int, cpo: Provable,
+                         Xin: Seq[Seq[Variable]]): DependentPositionTactic
+    = "Introduce And Weaken For" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, _)) =>
         //Initially we have:
-        //[p][random-in-1][test-in-1]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
-        val cntIn = if (nIn == 0) 0 else nIn * 2
-        val cntPorts = if (nPorts == 0) 1 else nPorts
-        val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
+        //[p][random-in-1]...[random-in-1][test-in-1]......[random-in-nIn]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
+        //        val cntIn = if (nIn == 0) 0 else nIn * 2
+        //        val cntPorts = if (nPorts == 0) 1 else nPorts
+        //        val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
 
-        var h = 1 :: 1 :: Nil
         //introduce test using lemma 5
-        var t: BelleExpr = print("start introduceTestFor: " + vIn + " --> " + tIn + " @pos=" + pos)
+        var t: BelleExpr = print("start introduceTestFor: vIn=" + vIn + "(vOut=" + vOut + ") --> " + tIn + "(tOut="+tOut+") @pos=" + pos+", with: nIn="+nIn+", cntIn="+cntIn+", nPorts="+nPorts+", cntPorts="+cntPorts+", nPorts3="+nPorts3+", inPos="+inPos+", portPos="+portPos)
         //if nIn is zero, we have just a ?true test as in3 -> remove this test, it will be replaced with actual ports
         if (nIn == 0) {
           t = t & print("remove empty in3") & Lemmas.lemma1(1, 1 :: Nil)
         }
-        t = t & Lemmas.lemma5T(tOut)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop)
-        //split test from p to get: [p][test][in...][ports...][ports3...]A
+        t = t & print("introduce test") & Lemmas.lemma5T(tOut)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop) & print("done introducing")
+        //split test from p
         t = t & composeb(pos)
+        //now: [p][test][in...][ports...][ports3...]A
+
         //commute test through in3
         t = t & print("commute through in3, nIn=" + nIn + ", cntIn=" + cntIn)
-
-        h = 1 :: Nil
+        var h = 1 :: Nil
         if (nIn != 0) {
           //there are some ports in in3, so we commute randomb;...;randomb;testb;...
-          (0 until nIn) foreach (i => {
-            //TODO check
-            t = t & print("a") & (Lemmas.lemma4_4T(pos.top.getPos, h) | Lemmas.lemma4_6T(pos.top.getPos, h))
-            h = 1 :: h
-            //TODO check
-            t = t & print("b") & (Lemmas.lemma4_6T(pos.top.getPos, h) | Lemmas.lemma4_4T(pos.top.getPos, h)) & print("c")
+          (0 until cntIn) foreach (_ => {
+            t = t & (Lemmas.lemma4_4T(pos.top.getPos, h) | Lemmas.lemma4_6T(pos.top.getPos, h)) & print("commuted in3")
             h = 1 :: h
           })
         }
         else {
-          //there is no port in in3, so we just commute the ?true;
-          //          t = t & print("d") & Lemmas.lemma4_6T(pos.top.getPos, h)
+          //there is no port in in3, so nothing to do, since we removed ?true
         }
         t = t & print("done with in3")
 
         //commute test with ports
         //TODO test case with actual portsX!
         require(nPorts == 0, "so far only atomic components can be composed")
-        t = t & print("commute through portsX, nPortsX=" + nPorts + ", cntPortsX=" + cntPorts)
+        t = t & print("commute through portsX, nPortsX=" + nPorts + ", cntPortsX=" + cntPorts + " --> assumed to be empty!")
         h = oneList(1 + cntIn)
-        if (nPorts != 0) {
-          //there are some ports in portsX, so we commute randomb;testb;...
-          (0 until nPorts3) foreach (i => {
-            t = t & print("a") & Lemmas.lemma4_4T(pos.top.getPos, h)
-            h = 1 :: h
-            t = t & print("b") & Lemmas.lemma4_6T(pos.top.getPos, h) & print("c")
-            h = 1 :: h
-          })
-        }
-        else {
-          //TODO beware! if there have been multiple compositions, we might have multiple ?true tests mixed with actual connections --> DROP ?true test from contract on composition?
-          //there is no port in portsX, so we just commute the ?true;
-          t = t & print("d") & Lemmas.lemma4_6T(pos.top.getPos, h)
-        }
+        t = t & Lemmas.lemma4_6T(pos.top.getPos, h)
+
+        //        if (nPorts != 0) {
+        //          //there are some ports in portsX, so we commute randomb;testb;...
+        //          (0 until nPorts3) foreach (i => {
+        //            t = t & print("a") & Lemmas.lemma4_4T(pos.top.getPos, h)
+        //            h = 1 :: h
+        //          })
+        //        }
+        //        else {
+        //          //TODO beware! if there have been multiple compositions, we might have multiple ?true tests mixed with actual connections --> DROP ?true test from contract on composition?
+        //          //there is no port in portsX, so we just commute the ?true;
+        //          t = t & print("d") & Lemmas.lemma4_6T(pos.top.getPos, h)
+        //        }
         t = t & print("done with portsX")
 
         //locate v in ports and move test there
-        t = t & print("commute to position in ports3, nPorts3=" + nPorts3 + ", cntPorts3=" + cntPorts3)
-        //position of last assignment of multiport--> if in3 was just an empty test, this test has been removed --> reduce by 1
+        //        val assPos = posOfAssign(seq.sub(pos).get.asInstanceOf[Box], vIn.last) - (if (nIn == 0) 1 else 0)
+        //position of assignment group of multiport--> if in3 was just an empty test, this test has been removed --> reduce by 1
+        val assPos = 1 + cntIn + cntPorts + portPos
+        t = t & print("commute to position in ports3, cntIn=" + cntIn + ", cntPorts=" + cntPorts + ", portPos=" + portPos + ", assPos=" + assPos)
         //TODO check
-        val assPos = posOfAssign(seq.sub(pos).get.asInstanceOf[Box], vIn.last) - (if (nIn == 0) 1 else 0)
-        println("assPos: " + assPos)
-        h = oneList(1 + cntIn + cntPorts)
-        (1 + cntIn + cntPorts until assPos) foreach (i => {
-          t = t & Lemmas.lemma4_5T(pos.top.getPos, h)
-          h = 1 :: h
+        //      h = oneList(1 + cntIn + cntPorts)
+        (1 + cntIn + cntPorts to assPos) foreach (i => {
+          // multiport I am commuting with
+          val vCurr = Xin(i - (1 + cntIn + cntPorts))
+          // split multiport assignments
+          t = t & print("splitting, i="+i+", vCurr="+vCurr)
+          t = t & composeb(pos.top.getPos, oneList(i+1)) * (vCurr.size - 1)
+          t = t & print("split")
+          // commute test with all assignments
+          (i until (i + vCurr.size)) foreach (j => {
+            t = t & Lemmas.lemma4_5T(pos.top.getPos, oneList(j))
+            t = t & print("commuted ports3...")
+          })
+          // reconnect multiport assignments
+          t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
+          t = t & print("reconnected")
+
+          // go to next multiport
+          //          h = 1 :: h
         })
         t = t & print("done moving to position in ports3")
 
         //weaken test
         t = t & print("weakening test")
-        t = t & Lemmas.lemma6T(tIn)(pos.top.getPos, h) < (
+        t = t & Lemmas.lemma6T(tIn)(pos.top.getPos, oneList(assPos+1)) < (
           skip
           ,
           (useAt("[;] compose", PosInExpr(1 :: Nil))('R) *) & composeb('R)
+            & print("using cpo=" + cpo)
             & useAt(cpo, PosInExpr(1 :: Nil))(1, 1 :: Nil)
+            & print("used cpo")
             //[dp3;(ctrl1;ctrl2);told;plant3;in;ports;ports3*]A
             //remove all remaining parts of ports3*, and all of ports and in, and plant3, told and (ctrl1;ctr2).
-            & ((composeb('R) & Lemmas.lemma1AB(1)) * (assPos + 1))
+            & ((composeb('R) & Lemmas.lemma1AB(1)) * (assPos + 2))
+            & print("removed remaining parts")
             //next, apply all assignments in dp3
-            & ((composeb('R) *) & ((assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) *))
+            & (((composeb('R) | assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) & print("step...")) *)
+            //            & ((composeb('R) *) & (( ( (composeb(1,1::Nil)*) & (assignb('R)*) ) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) *))
             //            & ((( (composeb('R)&print("composed"))  | (skip&print("skipped")) ) & ( (assignb('R)&print("assigned")) | (testb('R)&print("tested") & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
             //now QE should close the thing
             //TODO DOES IT?
-            & hide(-1) & QE
+            & hide(-1)
+            & QE
           ) & print("done weakening")
 
         //[p][in...][ports...][ports3*...]A
         //make assignment non-deterministic
         t = t & print("make non-det")
-        t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(assPos - 1))
+        // split multiport assignments
+        t = t & composeb(pos.top.getPos, oneList(assPos)) * (vIn.size - 1)
+        t = t & print("split")
+        // commute test with all assignments
+        (assPos until (assPos + vIn.size)) foreach (j => {
+          t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(j))
+          t = t & print("made non-det...")
+        })
+        //        t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(assPos))
         t = t & print("done making non-det")
 
         //[p][in...][ports...][ports3*...]A
-        //rotate new non-det assignment to designated position
-        t = t & print("commute new non-det port to designated position")
-        //  1) commute non-det assign with remaining ports3
-        (cntIn + cntPorts + portPos).until(cntIn + cntPorts, -1) foreach (i => {
-          t = t & Lemmas.lemma4_3T(1, oneList(i))
+        //rotate new non-det assignments to designated position
+        t = t & print("commute new non-det ports to designated position")
+        (0 until vIn.size) foreach (k => {
+          t = t & print("commute - " + k)
+          //  1) commute non-det assign with remaining ports3
+          (k + cntIn + cntPorts + portPos).until(k + cntIn + cntPorts, -1) foreach (i => {
+
+            // multiport I am commuting with
+            val vCurr = MultiPort.multiportAtPosition(Xin, i - (k + cntIn + cntPorts +1))
+            // split multiport assignments
+            t = t & print("splitting - vCurr=" + vCurr + ", i=" + i)
+            t = t & composeb(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
+            t = t & print("split")
+            // commute test with all assignments
+            (i+vCurr.size-1).until(i-1, -1) foreach (j => {
+              t = t & Lemmas.lemma4_3T(pos.top.getPos, oneList(j))
+              t = t & print("commuted...")
+            })
+            // reconnect multiport assignments
+            t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i+1)) * (vCurr.size - 1)
+            t = t & print("reconnected")
+
+            //            t = t & Lemmas.lemma4_3T(1, oneList(i))
+          })
+          //  2) commute non-det assign with portsX
+          //  TODO test case with actual portsX!
+          if (nPorts == 0) {
+            //its just a test
+            t = t & Lemmas.lemma4_4T(1, oneList(k + cntIn + cntPorts))
+          }
+          else {
+            //there are actual ports in portsX
+            (k + cntIn + cntPorts).until(k + inPos, -1) foreach (i => {
+              t = t & Lemmas.lemma4_3T(1, oneList(i))
+            })
+          }
+          //  3) commute non-det assign with in
+          if (nIn != 0) {
+            //there are actual open ports
+            //TODO check
+            //          (cntIn).until(inPos * 2, -2) foreach (i => {
+            //            t = t & Lemmas.lemma4_4T(1, oneList(i)) & Lemmas.lemma4_2T(1, oneList(i - 1))
+            //          })
+            (k + cntIn).until(k + inPos, -1) foreach (i => {
+              t = t & (Lemmas.lemma4_4T(1, oneList(i)) | Lemmas.lemma4_2T(1, oneList(i)))
+            })
+          }
         })
-        //  2) commute non-det assign with portsX
-        //  TODO test case with actual portsX!
-        if (nPorts == 0) {
-          //its just a test
-          t = t & Lemmas.lemma4_4T(1, oneList(cntIn + cntPorts))
-        }
-        else {
-          //there are actual ports in portsX
-          (cntIn + cntPorts).until(inPos, -1) foreach (i => {
-            t = t & Lemmas.lemma4_3T(1, oneList(i))
-          })
-        }
-        //  3) commute non-det assign with in
-        if (nIn == 0) {
-          //nothing there!
-          //          t = t & Lemmas.lemma4_4T(1, oneList(cntIn + cntPorts))
-        }
-        else {
-          //there are actual open ports
-          //TODO check
-          //          (cntIn).until(inPos * 2, -2) foreach (i => {
-          //            t = t & Lemmas.lemma4_4T(1, oneList(i)) & Lemmas.lemma4_2T(1, oneList(i - 1))
-          //          })
-          (cntIn).until(inPos * 2, -1) foreach (i => {
-            t = t & (Lemmas.lemma4_4T(1, oneList(i)) | Lemmas.lemma4_2T(1, oneList(i)))
-          })
-        }
+        //        // reconnect multiport assignments
+        //        t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos,oneList(inPos+1))*(vIn.size-1)
+        //        t = t & print("reconnected")
+
+
         //rotate test to designated position
         t = t & print("commute test to designated position")
         //  1) commute test with remaining ports3
-        (cntIn + cntPorts + portPos + 1).until(cntIn + cntPorts + 1, -1) foreach (i => {
-          t = t & Lemmas.lemma4_5T(1, oneList(i))
+        (cntIn + cntPorts + portPos + vIn.size).until(cntIn + cntPorts + vIn.size, -1) foreach (i => {
+
+          // multiport I am commuting with
+          val vCurr = MultiPort.multiportAtPosition(Xin, i - (cntIn + cntPorts + vIn.size) - 1)
+          // split multipornt assignments
+          t = t & print("splitting - vCurr=" + vCurr + ", i=" + i)
+          t = t & composeb(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
+          t = t & print("split")
+          // commute test with all assignments
+          (i+vCurr.size-1).until(i -1, -1) foreach (j => {
+            t = t & Lemmas.lemma4_5T(pos.top.getPos, oneList(j))
+            t = t & print("commuted...")
+          })
+          // reconnect multiport assignments
+          t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i+1)) * (vCurr.size - 1)
+          t = t & print("reconnected")
+
+          //          t = t & Lemmas.lemma4_5T(1, oneList(i))
         })
         //  2) commute test with ports
-        //  TODO test case with actual portsX!
         if (nPorts == 0) {
           //its just a test
-          t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + 1))
+          t = t & print("commuting test with ports")
+          t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + vIn.size))
         }
         else {
-          //there are actual ports in portsX
-          (cntIn + cntPorts + 1).until(inPos + 1, -1) foreach (i => {
-            t = t & Lemmas.lemma4_5T(1, oneList(i))
-          })
+          //TODO NOT implemented
+          throw new NotImplementedError("Composition for non-atomic components is not yet implemented!")
+          //          //there are actual ports in portsX
+          //          (cntIn + cntPorts + 1).until(inPos + 1, -1) foreach (i => {
+          //            t = t & Lemmas.lemma4_5T(1, oneList(i))
+          //          })
         }
         //  3) commute test with in
-        if (nIn == 0) {
-          //nothing there!
-          //          t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + 1))
-        }
-        else {
+        if (nIn != 0) {
+          t = t & print("commuting test with in")
           //there are actual open ports
           //TODO check
           //          (cntIn + 1).until(inPos * 2 + 1, -2) foreach (i => {
           //            t = t & Lemmas.lemma4_6T(1, oneList(i)) & Lemmas.lemma4_4T(1, oneList(i - 1))
           //          })
-          (cntIn + 1).until(inPos * 2 + 1, -1) foreach (i => {
+          (cntIn + vIn.size).until(inPos + vIn.size, -1) foreach (i => {
+            t = t & print("commute " + i)
             t = t & (Lemmas.lemma4_6T(1, oneList(i)) | Lemmas.lemma4_4T(1, oneList(i)))
           })
         }
