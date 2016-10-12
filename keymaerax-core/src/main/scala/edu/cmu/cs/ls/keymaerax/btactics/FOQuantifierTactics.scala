@@ -29,7 +29,7 @@ protected object FOQuantifierTactics {
 
   /** Inverse all instantiate, i.e., introduces a universally quantified Variable for each Term as specified by what. */
   def allInstantiateInverse(what: (Term, Variable)*): DependentPositionTactic = TacticFactory.anon ((pos: Position, sequent: Sequent) => {
-    def allInstI(t: Term, v: Variable): DependentPositionTactic = "all instantiate inverse single" by ((pos: Position, sequent: Sequent) => {
+    def allInstI(t: Term, v: Variable): DependentPositionTactic = "ANON" by ((pos: Position, sequent: Sequent) => {
       val fml = sequent.sub(pos) match { case Some(fml: Formula) => fml }
       useAt("all instantiate", PosInExpr(1::Nil), (us: Subst) => RenUSubst(
         ("x_".asTerm, v) ::
@@ -53,7 +53,7 @@ protected object FOQuantifierTactics {
 
             val assign = Box(Assign(x, t), p)
 
-            DLBySubst.selfAssign(x)(pos ++ PosInExpr(0::Nil)) &
+            DLBySubst.stutter(x)(pos ++ PosInExpr(0::Nil)) &
             ProofRuleTactics.cutLR(ctx(assign))(pos.topLevel) <(
               assignb(pos) partial,
               cohide('Rlast) & CMon(pos.inExpr) & byUS("all instantiate")
@@ -72,22 +72,13 @@ protected object FOQuantifierTactics {
   }
 
   def existsInstantiate(quantified: Option[Variable] = None, instance: Option[Term] = None): DependentPositionTactic =
-    existsByDuality(allInstantiate(quantified, instance))
+    if (instance==None)
+      useAt("exists eliminate")
+    else
+      existsByDuality(allInstantiate(quantified, instance))
 
 
-  /**
-   * Skolemization with bound renaming on demand.
-   * @example{{{
-   *     y>5   |- x^2>=0
-   *     --------------------------allSkolemize(1)
-   *     y>5   |- \forall x x^2>=0
-   * }}}
-   * @example Uniformly renames other occurrences of the quantified variable in the context on demand. {{{
-   *     x_0>0 |- x^2>=0
-   *     --------------------------allSkolemize(1)
-   *     x>0   |- \forall x x^2>=0
-   * }}}
-   */
+  /** @see [[SequentCalculus.allR]] */
   lazy val allSkolemize: DependentPositionTactic = new DependentPositionTactic("allR") {
     override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
       override def computeExpr(sequent: Sequent): BelleExpr = {

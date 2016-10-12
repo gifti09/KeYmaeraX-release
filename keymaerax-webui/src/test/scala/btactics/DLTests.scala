@@ -20,21 +20,21 @@ class DLTests extends TacticTestBase {
 
   // ordered up here since used indirectly in many places
   "self assign" should "introduce self assignments for simple formula" in {
-    val result = proveBy("x>0".asFormula, DLBySubst.selfAssign("x".asVariable)(1))
+    val result = proveBy("x>0".asFormula, DLBySubst.stutter("x".asVariable)(1))
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "[x:=x;]x>0".asFormula
   }
 
   it should "introduce self assignments for simple formula in antecedent" in {
-    val result = proveBy(Sequent(IndexedSeq("x>0".asFormula), IndexedSeq()), DLBySubst.selfAssign("x".asVariable)(-1))
+    val result = proveBy(Sequent(IndexedSeq("x>0".asFormula), IndexedSeq()), DLBySubst.stutter("x".asVariable)(-1))
     result.subgoals should have size 1
     result.subgoals.head.ante should contain only "[x:=x;]x>0".asFormula
     result.subgoals.head.succ shouldBe empty
   }
 
   it should "introduce self assignments in context in antecedent" in {
-    val result = proveBy(Sequent(IndexedSeq("[x:=2;]x>0".asFormula), IndexedSeq()), DLBySubst.selfAssign("x".asVariable)(-1, 1::Nil))
+    val result = proveBy(Sequent(IndexedSeq("[x:=2;]x>0".asFormula), IndexedSeq()), DLBySubst.stutter("x".asVariable)(-1, 1::Nil))
     result.subgoals should have size 1
     result.subgoals.head.ante should contain only "[x:=2;][x:=x;]x>0".asFormula
     result.subgoals.head.succ shouldBe empty
@@ -69,14 +69,14 @@ class DLTests extends TacticTestBase {
     result.subgoals.head.succ should contain only "y>0".asFormula
   }
 
-  it should "work with ODEs" in withMathematica { implicit qeTool =>
+  it should "work with ODEs" in withMathematica { qeTool =>
     val result = proveBy("[{x'=2}]x>0".asFormula, abstractionb(1))
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "\\forall x x>0".asFormula
   }
 
-  it should "work with ODEs followed by derived diff assigns" in withMathematica { implicit qeTool =>
+  it should "work with ODEs followed by derived diff assigns" in withMathematica { qeTool =>
     val result = proveBy("[{x'=2}][x':=2;]x'>0".asFormula, abstractionb(1))
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
@@ -84,21 +84,21 @@ class DLTests extends TacticTestBase {
     result.subgoals.head.succ should contain only "[x':=2;]x'>0".asFormula
   }
 
-  it should "work with ODEs followed by diff assigns" in withMathematica { implicit qeTool =>
+  it should "work with ODEs followed by diff assigns" in withMathematica { qeTool =>
     val result = proveBy("[{x'=2}][x':=2;](x>0)'".asFormula, abstractionb(1))
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "\\forall x [x':=2;](x>0)'".asFormula
   }
 
-  it should "work with ODEs followed by diff assigns, multi-var case" in withMathematica { implicit qeTool =>
+  it should "work with ODEs followed by diff assigns, multi-var case" in withMathematica { qeTool =>
     val result = proveBy("[{x'=2,y'=3,z'=4}][x':=2;][y':=3;][z':=4;](x>0&y=17&z<4)'".asFormula, abstractionb(1))
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "\\forall x \\forall y \\forall z [x':=2;][y':=3;][z':=4;](x>0&y=17&z<4)'".asFormula
   }
 
-  it should "work with cyclic ODEs" in withMathematica { implicit qeTool =>
+  it should "work with cyclic ODEs" in withMathematica { qeTool =>
     val result = proveBy("[{x'=y,y'=z,z'=x^2&y>=0}](y>=0->[z':=x^2;][y':=z;][x':=y;]x'>=0)".asFormula, abstractionb(1))
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
@@ -183,6 +183,13 @@ class DLTests extends TacticTestBase {
     result.subgoals.head.succ should contain only "[{x'=1}]x>0".asFormula
   }
 
+  it should "work with ODE as part of step" in {
+    val result = proveBy("[x:=x+1;][{x'=1}]x>0".asFormula, step(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain only "x=x_0+1".asFormula
+    result.subgoals.head.succ should contain only "[{x'=1}]x>0".asFormula
+  }
+
   it should "work when must-bound before ODE, even if it is somewhere in propositional context" in {
     val result = proveBy("[x:=1;](y>2 -> \\forall x [{x'=1}]x>0)".asFormula, assignb(1))
     result.subgoals should have size 1
@@ -205,7 +212,7 @@ class DLTests extends TacticTestBase {
   }
 
   it should "not touch other assignments flatly" in {
-    val result = proveBy(Sequent(IndexedSeq("x=1".asFormula, "[x:=2;]x=2".asFormula), IndexedSeq("[x:=3;]x>0".asFormula, "[x:=5;]x>6".asFormula, "x=7".asFormula)), DLBySubst.assignb(1))
+    val result = proveBy(Sequent(IndexedSeq("x=1".asFormula, "[x:=2;]x=2".asFormula), IndexedSeq("[x:=3;]x>0".asFormula, "[x:=5;]x>6".asFormula, "x=7".asFormula)), HilbertCalculus.assignb(1))
     println(result)
     result.subgoals should have size 1
     result.subgoals.head.ante should contain only ("x=1".asFormula, "[x:=2;]x=2".asFormula)
@@ -445,7 +452,7 @@ class DLTests extends TacticTestBase {
   "I gen" should "work on a simple example" in {
     val succ@Box(prg, _) = "[{x:=x+1;}*]x>0".asFormula
     val result = proveBy(Sequent(IndexedSeq("x>2".asFormula), IndexedSeq(succ)),
-      loop(new ConfigurableGenerate[Formula](Map((prg, "x>1".asFormula))))(1))
+      loop(new ConfigurableGenerator[Formula](Map((prg, "x>1".asFormula))))(1))
 
     result.subgoals should have size 3
     // init
@@ -529,7 +536,7 @@ class DLTests extends TacticTestBase {
   it should "keep constant context" in {
     val succ@Box(prg, _) = "[{x:=A+B+1;}*]x>0".asFormula
     val result = proveBy(Sequent(IndexedSeq("A>0".asFormula, "x>2".asFormula, "B>0".asFormula), IndexedSeq("C<1".asFormula, succ, "D<1".asFormula)),
-      loop(new ConfigurableGenerate[Formula](Map((prg, "x>1".asFormula))))(2))
+      loop(new ConfigurableGenerator[Formula](Map((prg, "x>1".asFormula))))(2))
 
     result.subgoals should have size 3
     // init

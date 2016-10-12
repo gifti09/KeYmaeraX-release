@@ -2,7 +2,8 @@ package edu.cmu.cs.ls.keymaerax.fcpsutils
 
 import java.io.File
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BTacticParser, BelleProvable, SequentialInterpreter}
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
+import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, BelleProvable, SequentialInterpreter}
 import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.core.{Formula, PrettyPrinter, Provable}
 import edu.cmu.cs.ls.keymaerax.parser.ParseException
@@ -17,7 +18,7 @@ object CourseMain {
       "libDir" -> "/usr/local/Wolfram/Mathematica/10.0/SystemFiles/Links/JLink/SystemFiles/Libraries/Linux-x86-64")
     val provider = new MathematicaToolProvider(config)
     ToolProvider.setProvider(provider)
-    if(provider.tool.isInitialized) println("Initialized!")
+    if(provider.tools().forall(_.isInitialized)) println("Initialized!")
     else println("Not initialized, but without any errors -- won't be able to parse tactics or check proofs.")
   } catch {
     case _: Throwable => println("Won't be able to parse tactics or check proofs.")
@@ -88,15 +89,15 @@ object CourseMain {
     fileName
   }
 
-  private def parseTacticFileOrFail(v: ArgValue) = {
+  private def parseTacticFileOrFail(v: ArgValue): BelleExpr = {
     val fileName = fileExistsOrFail(v)
-    BTacticParser(scala.io.Source.fromFile(new File(fileName)).mkString, false, Some(new NoneGenerate[Formula]())) match {
-      case Some(e) => e
-      case None => {
-        println(s"Tactic in ${fileName} did not parse")
+    try {
+      BelleParser.parseWithInvGen(scala.io.Source.fromFile(new File(fileName)).mkString, Some(FixedGenerator[Formula](Nil)))
+    } catch {
+      case ex: ParseException =>
+        println(s"Tactic in ${fileName} did not parse\n" + ex)
         System.exit(-1)
         ???
-      }
     }
   }
 

@@ -6,7 +6,6 @@ package edu.cmu.cs.ls.keymaerax.bellerophon
 
 import edu.cmu.cs.ls.keymaerax.btactics.{Augmentors, DerivationInfo}
 import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.btactics.SerializationNames.SerializationName
 import edu.cmu.cs.ls.keymaerax.parser.{Location, UnknownLocation}
 
 object BelleExpr {
@@ -38,6 +37,7 @@ abstract class BelleExpr(private var location: Location = UnknownLocation) {
   /** this*: bounded repetition executes this tactic to `times` number of times, failing if any of those repetitions fail. */
   def *(times: Int/*, annotation: BelleType*/) = RepeatTactic(this, times)
   /** <(e1,...,en): branching to run tactic `ei` on branch `i`, failing if any of them fail or if there are not exactly `n` branches. */
+  @deprecated("Use & with explicit Idioms.< instead; import Idioms.<, so a & <(b,c)", since="4.2")
   def <(children: BelleExpr*)         = SeqTactic(this, BranchTactic(children))
   /** case _ of {fi => ei} uniform substitution case pattern applies the first ei such that fi uniformly substitutes to current provable for which ei does not fail, fails if the ei of all matching fi fail. */
   def U(p: (SequentType, RenUSubst => BelleExpr)*) = SeqTactic(this, USubstPatternTactic(p))
@@ -422,7 +422,7 @@ abstract case class DependentPositionTactic(name: String) extends NamedBelleExpr
   /** Create the actual tactic to be applied at position pos */
   def factory(pos: Position): DependentTactic
 }
-abstract case class InputTactic[T](name: SerializationName, input: T) extends BelleExpr {
+abstract case class InputTactic[T](name: String, input: T) extends BelleExpr {
   //@todo extends NamedBelleExpr
   def computeExpr(): BelleExpr
   override def prettyString: String = "input(" + input + ")"
@@ -471,16 +471,19 @@ class AppliedDependentPositionTactic(val pt: DependentPositionTactic, val locato
           try {
             shape match {
               case Some(f) if !exact && UnificationMatch.unifiable(f, provable.subgoals(goal)(pos.top)).isDefined =>
-                pt.factory(pos).computeExpr(v)
+                pt.factory(pos).computeExpr(v) | tryAllAfter(goal, shape, pos.advanceIndex(1), exact, cause)
               case Some(f) if !exact && UnificationMatch.unifiable(f, provable.subgoals(goal)(pos.top)).isEmpty =>
                 tryAllAfter(goal, shape, pos.advanceIndex(1), exact, new BelleError(s"Formula is not of expected shape", cause))
-              case Some(f) if exact && f == provable.subgoals(goal)(pos.top) => pt.factory(pos).computeExpr(v)
+              case Some(f) if exact && f == provable.subgoals(goal)(pos.top) =>
+                pt.factory(pos).computeExpr(v) | tryAllAfter(goal, shape, pos.advanceIndex(1), exact, cause)
               case Some(f) if exact && f != provable.subgoals(goal)(pos.top) =>
                 tryAllAfter(goal, shape, pos.advanceIndex(1), exact, new BelleError(s"Formula is not of expected shape", cause))
-              case None => pt.factory(pos).computeExpr(v)
+              case None =>
+                pt.factory(pos).computeExpr(v) | tryAllAfter(goal, shape, pos.advanceIndex(1), exact, cause)
             }
           } catch {
-            case e: Throwable =>
+            // also advance if computeExpr already throws a BelleError
+            case e: BelleError =>
               val newCause = if (cause == null) new BelleError(s"Dependent position tactic ${pt.prettyString} is not " +
                 s"applicable at ${pos.prettyString}", e)
               else new CompoundException(
@@ -488,13 +491,16 @@ class AppliedDependentPositionTactic(val pt: DependentPositionTactic, val locato
                 cause)
               tryAllAfter(goal, shape, pos.advanceIndex(1), exact, newCause)
           }
+        } else if (cause == null) {
+          throw new BelleError(s"Dependent position tactic ${pt.prettyString} is not applicable at ${pos.prettyString}")
         } else throw cause
-      case _ => pt.factory(pos).computeExpr(v) // cannot search recursively, because don't know when to abort
+      case _ => pt.factory(pos).computeExpr(v) | tryAllAfter(goal, shape, pos.advanceIndex(1), exact, cause)
     }
   }
 }
 
 /** A partial tactic is allowed to leave its subgoals around as unproved */
+@deprecated("Replace with something else -- either assertProved or some sort of branch indicator?", "4.2")
 case class PartialTactic(child: BelleExpr, label: Option[BelleLabel] = None) extends BelleExpr {
   override def prettyString = label match {
     case Some(theLabel) => s"partial(${child.prettyString})@(${theLabel.prettyString})"
@@ -504,8 +510,9 @@ case class PartialTactic(child: BelleExpr, label: Option[BelleLabel] = None) ext
 
 case class SeqTactic(left: BelleExpr, right: BelleExpr) extends BelleExpr { override def prettyString = "(" + left.prettyString + "&" + right.prettyString + ")" }
 case class EitherTactic(left: BelleExpr, right: BelleExpr) extends BelleExpr { override def prettyString = "(" + left.prettyString + "|" + right.prettyString + ")" }
-case class SaturateTactic(child: BelleExpr) extends BelleExpr { override def prettyString = "(" + child.prettyString + ")*" }
-case class RepeatTactic(child: BelleExpr, times: Int) extends BelleExpr { override def prettyString = "(" + child.prettyString + ")*" + times }
+//@note saturate and repeat tactic fully parenthesize for parser
+case class SaturateTactic(child: BelleExpr) extends BelleExpr { override def prettyString = "((" + child.prettyString + ")*)" }
+case class RepeatTactic(child: BelleExpr, times: Int) extends BelleExpr { override def prettyString = "((" + child.prettyString + ")*" + times + ")" }
 case class BranchTactic(children: Seq[BelleExpr]) extends BelleExpr { override def prettyString = "<( " + children.map(_.prettyString).mkString(", ") + " )" }
 /** USubstPatternTactic((form1, us=>t1) :: ... (form2, us=>t2) :: Nil)
   * runs the first tactic `ti` for the unification `us` with the first pattern `formi` that matches the current goal.
@@ -520,8 +527,10 @@ case class USubstPatternTactic(options: Seq[(BelleType, RenUSubst => BelleExpr)]
 case class OnAll(e: BelleExpr) extends BelleExpr { override def prettyString = "doall(" + e.prettyString + ")" }
 
 /**
-  * ChooseSome(options, e)(BelleProvable(p)) proves `e(o)(p)` afte choosing some option `o` from `options` whose proof with `e` succeeds after supplying argument `o` to `e`.
-  * It's usually one of the first options `o` for which `e(o)(p)` does not fail.
+  * ChooseSome(options, e)(pr) proves `e(o)(pr)` after choosing some option `o` from `options`
+  * whose proof with tactic `e` succeeds after supplying argument `o` to `e`.
+  * It's usually one of the first options `o` for which `e(o)(pr)` does not fail.
+  * Fails if no choice from `options` made `e(o)(pr)` succeed.
   *
   * @param options The (lazy) iterator or stream from which subsequent options `o` will be tried.
   * @param e The tactic generator `e` that will be tried with input `o` on the Provable subsequently
@@ -539,13 +548,27 @@ case class ChooseSome[A](options: () => Iterator[A], e: A => BelleExpr) extends 
   *
   * @see [[Provable.apply(USubst)]]
   * @todo generalize inner to also AtPosition[E]
-  * @todo generalize to also allow value: Provable => Expression for `let j(x,y) = TBD in t` and have TBD computed from the Provable resulting after t.
   */
 case class Let(abbr: Expression, value: Expression, inner: BelleExpr) extends BelleExpr {
   require(abbr.kind == value.kind, "Abbreviation and value must be of same kind, but got abbr.kind=" + abbr.kind + " and value.kind=" + value.kind)
   override def prettyString = "let(" + abbr + "=" + value + " in " + inner + ")"
 }
 
+/**
+  * LetInspect(abbr, instantiator, inner) alias `let abbr := inspect instantiator in inner`
+  * postpones the choice for the definition of `abbr` until tactic `inner` finished on the Provable,
+  * and asks `instantiator` to choose a value for `abbr` based on that Provable at the end of `inner`.
+  * Resumes  to the outer proof by a uniform substitution of `instantiator(result)` for `abbr` of the resulting provable.
+  *
+  * @see [[Provable.apply(USubst)]]
+  * @todo generalize inner to also AtPosition[E]
+  * @note abbr should be fresh in the Provable
+  */
+case class LetInspect(abbr: Expression, instantiator: Provable => Expression, inner: BelleExpr) extends BelleExpr {
+  override def prettyString = "let(" + abbr + ":= inspect " + instantiator + " in " + inner + ")"
+}
+
+@deprecated("Does not work with useAt, which was the only point. There's also no way to print/parse ProveAs correctly, and scoping is global. So ProveAs should be replaced with something more systematic.", "4.2")
 case class ProveAs(lemmaName: String, f: Formula, e: BelleExpr) extends BelleExpr {
   override def prettyString: String = s"proveAs(${lemmaName})"
 }

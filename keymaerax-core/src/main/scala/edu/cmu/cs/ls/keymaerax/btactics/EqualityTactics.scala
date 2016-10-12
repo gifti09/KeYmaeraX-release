@@ -57,17 +57,7 @@ private object EqualityTactics {
     positions
   }
 
-  /**
-   * Rewrites a formula according to an equality appearing in the antecedent.
-   * @example{{{
-   *    x=0 |- 0*y=0, x+1>0
-   *    ---------------------eqL2R(-1)(1)
-   *    x=0 |- x*y=0, x+1>0
-   * }}}
-   * @param eqPos The position of the equality. If it points to a formula, it rewrites all occurrences of left in that formula.
-   *              If it points to a specific term, then only this term is rewritten.
-   * @return The tactic.
-   */
+  /** @see [[TactixLibrary.eqL2R]] */
   def eqL2R(eqPos: Int): DependentPositionTactic = eqL2R(Position(eqPos).checkAnte)
   def eqL2R(eqPos: AntePosition): DependentPositionTactic = TacticFactory.anon ((pos:Position, sequent:Sequent) => {
     sequent.sub(eqPos) match {
@@ -96,16 +86,7 @@ private object EqualityTactics {
     }
   })
 
-  /**
-   * Rewrites a formula according to an equality appearing in the antecedent.
-   * @example{{{
-   *    0=x |- 0*y=0, x+1>0
-   *    ---------------------eqR2L(-1)(1)
-   *    0=x |- x*y=0, x+1>0
-   * }}}
-   * @param eqPos The position of the equality.
-   * @return The tactic.
-   */
+  /** @see [[TactixLibrary.eqR2L]] */
   def eqR2L(eqPos: Int): DependentPositionTactic = eqR2L(Position(eqPos).checkAnte)
   def eqR2L(eqPos: AntePosition): DependentPositionTactic = "eqR2L" by ((pos, sequent) => {
     require(eqPos.isTopLevel, "Equality must be at top level, but is " + pos)
@@ -135,22 +116,13 @@ private object EqualityTactics {
    * }}}
    * @return The tactic.
    */
-  lazy val exhaustiveEqR2L: DependentPositionTactic = "allL2R" by ((pos, sequent) => sequent.sub(pos) match {
+  lazy val exhaustiveEqR2L: DependentPositionTactic = "allR2L" by ((pos, sequent) => sequent.sub(pos) match {
     case Some(fml@Equal(lhs, rhs)) =>
       useAt("= commute")(pos, fml) & exhaustiveEq("allL2R")(pos, Equal(rhs, lhs)) & useAt("= commute")(pos, Equal(rhs, lhs))
   })
 
 
-  /**
-   * Abbreviates a term at a position to a variable.
-   * @example{{{
-   *   maxcd = max(c,d) |- a+b <= maxcd+e
-   *   ----------------------------------------abbrv(Variable("maxcd"))(1, 1::0::Nil)
-   *                    |- a+b <= max(c, d) + e
-   * }}}
-   * @param abbrvV The abbreviation.
-   * @return The tactic.
-   */
+  /** @see [[TactixLibrary.abbrv()]] */
   def abbrv(abbrvV: Variable): DependentPositionTactic = "abbrv" by ((pos, sequent) => sequent.sub(pos) match {
     case Some(t: Term) => abbrv(t, Some(abbrvV))
     case Some(e) => throw new BelleError("Expected a term at position " + pos + ", but got " + e)

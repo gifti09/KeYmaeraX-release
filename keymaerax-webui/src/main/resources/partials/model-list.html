@@ -1,4 +1,20 @@
-<div class="panel panel-default">
+<div class="panel panel-default"> <!-- ModelListCtrl per app.js -->
+    <spinner name="modelListProofLoadingSpinner" ng-cloak>
+        <div class="spinner-overlay"></div>
+        <div class="spinner">
+            <div class="spinner-double-bounce1"></div>
+            <div class="spinner-double-bounce2"></div>
+        </div>
+        <div class="spinner-please-wait">Proof is loading, please wait...</div>
+    </spinner>
+    <spinner name="caseStudyImportSpinner" ng-cloak>
+        <div class="spinner-overlay"></div>
+        <div class="spinner">
+            <div class="spinner-double-bounce1"></div>
+            <div class="spinner-double-bounce2"></div>
+        </div>
+        <div class="spinner-please-wait">Case study is being imported, please wait...</div>
+    </spinner>
     <!-- Default panel contents -->
     <div class="panel-heading">Your Models</div>
     <div class="panel-body">
@@ -9,7 +25,6 @@
             </div>
             -->
             <div class="col-md-6">
-
                 <!-- TODO https://github.com/blueimp/jQuery-File-Upload/wiki/Basic-plugin -->
                 <form ng-controller="ModelUploadCtrl">
                     <div class="input-group">
@@ -18,10 +33,9 @@
                     </div>
                     <label for="keyFile">File</label>
                     <div class="fileinput fileinput-new input-group" data-provides="fileinput">
-
                         <div class="form-control" data-trigger="fileinput">
-                            <i class="glyphicon glyphicon-file fileinput-exists" />
-                            <span class="fileinput-filename" />
+                            <i class="glyphicon glyphicon-file fileinput-exists"></i>
+                            <span class="fileinput-filename"></span>
                         </div>
                         <span class="input-group-addon btn btn-default btn-file">
                             <span class="fileinput-new">Select file</span>
@@ -34,11 +48,29 @@
                     </div>
                 </form>
             </div>
-        </div>
+            <div class="col-md-2"></div>
+            <div class="col-md-4">
+                <div uib-carousel class="k4-examples-carousel" active="active" interval="5000">
+                    <div uib-slide ng-repeat="repo in examples track by repo.id" index="repo.id">
+                        <img ng-src="{{repo.image}}" style="margin:auto;">
+                        <div class="k4-examples-carousel-caption">
+                            <h4>{{repo.title}} <button class="btn btn-default"
+                                                       ng-click="importRepo(repo.url)"
+                                                       ng-controller="ModelUploadCtrl">Import</button></h4>
+                            <p>{{repo.description}} <small><a ng-href="{{repo.infoUrl}}">Details...</a></small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
     </div>
 
-    <!-- Table -->
-    <table class="table table-hover table-condensed" id="ModelList" ng-controller="ModelListCtrl">
+    <hr/>
+
+    <div class="row">
+    <p class="col-md-12" ng-if="models.length <= 0" ng-cloak>
+        Your database does not contain models so far. Upload new models or import tutorial models above.
+    </p>
+    <table class="table table-hover table-condensed" id="ModelList" ng-if="models.length > 0" ng-cloak>
         <thead>
         <tr>
             <td>ID</td>
@@ -58,23 +90,13 @@
             </td>
             <td><a href="" ng-if="model.hasTactic" ng-click="openTactic(model.id)">Browse <i class="fa fa-file-code-o"></i></a></td>
             <td ng-model="model">
-                <div class="btn-group" uib-dropdown>
-                <a ng-href="dashboard.html?#/models/{{ model.id }}/proofs" ng-if="model.numProofs > 0">Show proofs</a>
-                <a ng-controller="ModelProofCreateCtrl" ng-click="createProof(model.id, '', '')" ng-if="model.numProofs === 0">Start new proof</a>
-                <a uib-dropdown-toggle>
-                    <span class="caret"></span>
-                    <span class="sr-only">Toggle Dropdown</span>
-                </a>
-                <ul uib-dropdown-menu role="menu" ng-model="model">
-                    <li role="menuitem"><a ng-href="dashboard.html?#/models/{{ model.id }}/proofs">Show proofs</a></li>
-                    <li role="menuitem"><a ng-controller="ModelProofCreateCtrl" ng-click="createProof(model.id, '', '')">Start new proof</a></li>
-                    <li role="menuitem"><a ng-controller="ModelUploadCtrl" ng-click="deleteModel(model.id)"><span class="fa fa-trash"></span> Delete this model</a></li>
-                    <!--<li><a ng-href="dashboard.html?#/models/{{ model.id }}/proofs/create">Start new proof</a></li>-->
-                    <!--<li ng-if="model.tactic != ''"><a ng-click="runPreloadedProof(model)" ng-controller="ModelUploadCtrl">Prove with tactic</a></li>-->
-                </ul>
-                </div>
+                <a class="btn btn-default" ng-href="dashboard.html?#/models/{{ model.id }}/proofs" uib-tooltip="Show proofs"><i class="fa fa-list"></i></a>
+                <a class="btn btn-default" ng-controller="ModelProofCreateCtrl" ng-click="createProof(model.id, '', '')" uib-tooltip="Start new proof"><i class="fa fa-gears"></i></a>
+                <a ng-class="{'btn':true, 'btn-default':true, 'disabled':!model.hasTactic}" ng-controller="ModelProofCreateCtrl" ng-click="proveFromTactic(model.id)" uib-tooltip="Prove from tactic"><i class="fa fa-cog"></i></a>
+                <a class="btn btn-default" ng-controller="ModelUploadCtrl" ng-click="deleteModel(model.id)" uib-tooltip="Delete model and proofs" tooltip-placement="auto top"><i class="fa fa-trash"></i></a>
             </td>
         </tr>
         </tbody>
     </table>
+    </div>
 </div>

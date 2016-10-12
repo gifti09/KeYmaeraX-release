@@ -198,7 +198,7 @@ class KeYmaeraXPrinter extends BasePrettyPrinter {
   import OpSpec.op
   import OpSpec.statementSemicolon
 
-  val parser: KeYmaeraXParser.type = KeYmaeraXParser
+  lazy val parser: KeYmaeraXParser.type = KeYmaeraXParser
   val fullPrinter: (Expression => String) = FullPrettyPrinter
 
   /** Pretty-print term to a string but without contract checking! */
@@ -216,7 +216,7 @@ class KeYmaeraXPrinter extends BasePrettyPrinter {
   private val LEXSPACE: String = " "
 
   //@todo could add contract that TermAugmentor(original)(q) == term
-  private def pp(q: PosInExpr, term: Term): String = emit(q, term match {
+  protected def pp(q: PosInExpr, term: Term): String = emit(q, term match {
     case Nothing       => op(term).opcode
     case DotTerm(sort) => op(term).opcode + (sort match { case Tuple(_, _) => sort.toString case _ => "" }) //@note will parse as Pair(Variable("Real"), ...), which has Sort sort
     case x: Variable            => x.asString

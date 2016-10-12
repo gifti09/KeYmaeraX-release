@@ -10,15 +10,15 @@ import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser._
-import edu.cmu.cs.ls.keymaerax.tools.{Mathematica, Tool, ToolEvidence}
-import edu.cmu.cs.ls.keymaerax.codegen.{CGenerator, CseCGenerator, SpiralGenerator}
+import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
+import edu.cmu.cs.ls.keymaerax.codegen.CGenerator
 
 import scala.collection.immutable
 import scala.compat.Platform
 import scala.util.Random
 
 /**
- * Command-line interface for KeYmaera X.
+ * Command-line interface launcher for KeYmaera X.
  *
  * @author Stefan Mitsch
  * @author Andre Platzer
@@ -28,50 +28,47 @@ object KeYmaeraX {
 
   private type OptionMap = Map[Symbol, Any]
 
-  /** Usage -help information, formatted to 80 characters width. */
+  /** Usage -help information.
+    * @note Formatted to 80 characters width. */
   val usage = "KeYmaera X Prover" + " " + VERSION +
     """
       |
       |Usage: java -Xss20M -jar keymaerax.jar
-      |  -prove filename -tactic filename [-out filename] |
-      |  -modelplex filename [-out filename] |
-      |  -codegen filename -format C [-vars var1,var2,..,varn] [-out file] |
-      |  -ui [filename] [web server options] |
-      |  -parse [filename] |
-      |  -bparse [filename]
+      |  -prove filename.kyx -tactic filename.kyt [-out filename.kyp] |
+      |  -modelplex filename.kyx [-out filename.kym] |
+      |  -codegen filename.kyx [-vars var1,var2,..,varn] [-out file.c] |
+      |  -ui [web server options] |
+      |  -parse filename.kyx |
+      |  -bparse filename.kyt
       |
       |Actions:
-      |  -prove     run KeYmaera X prover on given file with given tactic
-      |  -modelplex synthesize monitor from given file with ModelPlex prover tactic
-      |  -codegen   generate executable code from given file for given target language
-      |  -ui        start web user interface with optional file (if any) and arguments
-      |  -parse     return error code !=0 if the input model file does not parse
+      |  -prove     run KeYmaera X prover on given problem file with given tactic
+      |  -modelplex synthesize monitor from given file by proof with ModelPlex tactic
+      |  -codegen   generate executable code from given file
+      |  -ui        start web user interface with optional arguments
+      |  -parse     return error code !=0 if the input problem file does not parse
       |  -bparse    return error code !=0 if bellerophon tactic file does not parse
       |
       |Additional options:
+      |  -tool mathematica|z3 choose which tool to use for arithmetic
       |  -mathkernel MathKernel(.exe) path to the Mathematica kernel executable
       |  -jlink path/to/jlinkNativeLib path to the J/Link native library directory
-      |  -verify   generate and check the final proof certificate (recommended)
-      |  -noverify skip checking proof certificates after proof search
-      |  -interval guard reals by interval arithmetic in floating point (recommended)
-      |  -nointerval  skip interval arithmetic presuming no floating point errors
-      |  -cse      use common subexpression elimination in C code (not recommended)
+      |  -kind ctrl|model what kind of monitor to generate with ModelPlex
       |  -vars     use ordered list of variables, treating others as constant functions
-      |  -kind     ctrl|model kind of monitor to generate
-      |  -lax      enable lax mode with more flexible parser, printer, prover etc.
-      |  -strict   enable strict mode with no flexibility in prover
-      |  -security enable security manager imposing some security restrictions
-      |  -debug    enable debug mode with more exhaustive messages
+      |  -interval guard reals by interval arithmetic in floating point (recommended)
+      |  -nointerval skip interval arithmetic presuming no floating point errors
+      |  -lax      use lax mode with more flexible parser, printer, prover etc.
+      |  -strict   use strict mode with no flexibility in prover
+      |  -debug    use debug mode with more exhaustive messages
       |  -nodebug  disable debug mode to suppress intermediate messages
+      |  -security use security manager imposing some runtime security restrictions
       |  -help     Display this usage information
       |  -license  Show license agreement for using this software
-      |
-      |Web server options:
-      |  -tool mathematica|z3
       |
       |Copyright (c) Carnegie Mellon University.
       |Use option -license to show the license conditions.
       |""".stripMargin
+
 
   private def launched() {
     LAUNCH = true
@@ -79,11 +76,12 @@ object KeYmaeraX {
   }
   var LAUNCH: Boolean = false
 
+
   def main (args: Array[String]): Unit = {
-    println("KeYmaera X Prover " + VERSION + "\n" +
+    if (args.length > 0 && (args(0)=="-help" || args(0)=="--help" || args(0)=="-h")) {println(usage); exit(1)}
+    println("KeYmaera X Prover" + " " + VERSION + "\n" +
       "Use option -help for usage and license information")
     if (args.length == 0) launchUI(args)
-    else if (args.length > 0 && (args(0)=="-help" || args(0)=="--help" || args(0)=="-h")) {println(usage); exit(1)}
     else {
       //@note 'commandLine is only passed in to preserve evidence of what generated the output.
       val options = nextOption(Map('commandLine -> args.mkString(" ")), args.toList)
@@ -97,7 +95,7 @@ object KeYmaeraX {
         codegen(options)
       else if (!options.get('mode).contains("ui") ) {
         try {
-          initializeProver(options)
+          initializeProver(if (options.contains('tool)) options else options ++ Map('tool -> "z3"))
 
           //@todo allow multiple passes by filter architecture: -prove bla.key -tactic bla.scal -modelplex -codegen
           options.get('mode) match {
@@ -151,6 +149,9 @@ object KeYmaeraX {
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('tactic -> value), tail)
         else optionErrorReporter("-tactic")
       case "-interactive" :: tail => nextOption(map ++ Map('interactive -> true), tail)
+      case "-tool" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('tool -> value), tail)
+        else optionErrorReporter("-tool")
       // aditional options
       case "-mathkernel" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mathkernel -> value), tail)
@@ -158,11 +159,8 @@ object KeYmaeraX {
       case "-jlink" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('jlink -> value), tail)
         else optionErrorReporter("-jlink")
-      case "-verify" :: tail => require(!map.contains('verify)); nextOption(map ++ Map('verify -> true), tail)
-      case "-noverify" :: tail => require(!map.contains('verify)); nextOption(map ++ Map('verify -> false), tail)
       case "-interval" :: tail => require(!map.contains('interval)); nextOption(map ++ Map('interval -> true), tail)
       case "-nointerval" :: tail => require(!map.contains('interval)); nextOption(map ++ Map('interval -> false), tail)
-      case "-cse" :: tail => require(!map.contains('cse)); nextOption(map ++ Map('cse -> true), tail)
       case "-dnf" :: tail => require(!map.contains('dnf)); nextOption(map ++ Map('dnf -> true), tail)
       // global options
       case "-lax" :: tail => System.setProperty("LAX", "true"); nextOption(map, tail)
@@ -177,14 +175,13 @@ object KeYmaeraX {
 
   private def parseProblemFile(fileName: String) = {
     try {
-      val fileContents = scala.io.Source.fromFile(fileName).getLines().reduce(_ + "\n" + _)
+      val fileContents = scala.io.Source.fromFile(fileName).getLines().mkString("\n")
       val formula = KeYmaeraXProblemParser(fileContents)
       println(KeYmaeraXPrettyPrinter(formula))
       println("Parsed file successfully")
       sys.exit(0)
-    }
-    catch {
-      case e : Exception =>
+    } catch {
+      case e: Throwable =>
         if (System.getProperty("DEBUG", "false")=="true") e.printStackTrace()
         println(e)
         println("Failed to parse file")
@@ -193,15 +190,18 @@ object KeYmaeraX {
   }
 
   private def parseBelleTactic(fileName: String) = {
-    val fileContents : String = scala.io.Source.fromFile(fileName).getLines().reduce(_ + "\n" + _)
     try {
+      initializeProver(Map('tool -> "z3")) //@note parsing a tactic requires prover (AxiomInfo)
+      val fileContents: String = scala.io.Source.fromFile(fileName).getLines().mkString("\n")
       BelleParser(fileContents)
       println("Parsed file successfully")
       sys.exit(0)
     } catch {
-      case _: Exception =>
-          println("Failed to parse file.")
-          sys.exit(-1)
+      case e: Throwable =>
+        if (System.getProperty("DEBUG", "false")=="true") e.printStackTrace()
+        println(e)
+        println("Failed to parse file")
+        sys.exit(-1)
     }
   }
 
@@ -213,14 +213,38 @@ object KeYmaeraX {
       case "-codegen" => println(noValueMessage + "Please use: -codegen FILENAME.mx\n\n" + usage); exit(1)
       case "-out" => println(noValueMessage + "Please use: -out FILENAME.proof | FILENAME.mx | FILENAME.c | FILENAME.g\n\n" + usage); exit(1)
       case "-vars" => println(noValueMessage + "Please use: -vars VARIABLE_1,VARIABLE_2,...\n\n" + usage); exit(1)
-      case "-tactic" =>  println(noValueMessage + "Please use: -tactic FILENAME.scala\n\n" + usage); exit(1)
+      case "-tactic" =>  println(noValueMessage + "Please use: -tactic FILENAME.[scala|kyt]\n\n" + usage); exit(1)
       case "-mathkernel" => println(noValueMessage + "Please use: -mathkernel PATH_TO_" + DefaultConfiguration.defaultMathLinkName._1 + "_FILE\n\n" + usage); exit(1)
       case "-jlink" => println(noValueMessage + "Please use: -jlink PATH_TO_DIRECTORY_CONTAINS_" +  DefaultConfiguration.defaultMathLinkName._2 + "_FILE\n\n" + usage); exit(1)
+      case "-tool" => println(noValueMessage + "Please use: -tool mathematica|z3\n\n" + usage); exit(1)
       case _ =>  println("[Error] Unknown option " + option + "\n\n" + usage); exit(1)
     }
   }
 
   def initializeProver(options: OptionMap) = {
+    options('tool) match {
+      case "mathematica" => initMathematica(options)
+      case "z3" => initZ3(options)
+      case tool => throw new Exception("Unknown tool " + tool)
+    }
+
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
+
+    val generator = new ConfigurableGenerator[Formula]()
+    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p->inv))
+    TactixLibrary.invGenerator = generator
+
+    //@note just in case the user shuts down the prover from the command line
+    Runtime.getRuntime.addShutdownHook(new Thread() { override def run(): Unit = { shutdownProver() } })
+  }
+
+  /** Initializes Z3 from command line options. */
+  private def initZ3(options: OptionMap) = {
+    ToolProvider.setProvider(new Z3ToolProvider())
+  }
+
+  /** Initializes Mathematica from command line options, if present; else from default config */
+  private def initMathematica(options: OptionMap) = {
     assert((options.contains('mathkernel) && options.contains('jlink)) || (!options.contains('mathkernel) && !options.contains('jlink)),
       "\n[Error] Please always use command line option -mathkernel and -jlink together," +
         "and specify the Mathematica link paths with:\n" +
@@ -228,8 +252,8 @@ object KeYmaeraX {
         " -jlink PATH_TO_DIRECTORY_CONTAINS_" +  DefaultConfiguration.defaultMathLinkName._2 + "_FILE \n\n" + usage)
 
     val mathematicaConfig =
-      if (options.contains('mathkernel) && options.contains('jlink)) Map("linkName" -> options.get('mathkernel).get.toString,
-                                                                         "libDir" -> options.get('jlink).get.toString)
+      if (options.contains('mathkernel) && options.contains('jlink)) Map("linkName" -> options('mathkernel).toString,
+        "libDir" -> options('jlink).toString)
       else DefaultConfiguration.defaultMathematicaConfig
 
     val linkNamePath = mathematicaConfig.get("linkName") match {
@@ -261,21 +285,12 @@ object KeYmaeraX {
         " -jlink PATH_TO_DIRECTORY_CONTAINS_" +  DefaultConfiguration.defaultMathLinkName._2 + "_FILE\n" +
         "[Note] Please always use command line option -mathkernel and -jlink together. \n\n" + usage)
 
-    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
-
-    val generator = new ConfigurableGenerate[Formula]()
-    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p->inv))
-    TactixLibrary.invGenerator = generator
-
-    ToolProvider.setProvider(new MathematicaToolProvider(DefaultConfiguration.defaultMathematicaConfig))
-
-    //@note just in case the user shuts down the prover from the command line
-    Runtime.getRuntime.addShutdownHook(new Thread() { override def run(): Unit = { shutdownProver() } })
+    ToolProvider.setProvider(new MathematicaToolProvider(mathematicaConfig))
   }
 
   def shutdownProver() = {
     ToolProvider.shutdown()
-    TactixLibrary.invGenerator = new NoneGenerate()
+    TactixLibrary.invGenerator = FixedGenerator(Nil)
   }
 
   /** Exit gracefully */
@@ -293,39 +308,43 @@ object KeYmaeraX {
    * {{{KeYmaeraXLemmaPrinter(Prover(tactic)(KeYmaeraXProblemParser(input)))}}}
    *
    * @param options The prover options.
-   * @todo tactic should default to master and builtin tactic names at least from ExposedTacticsLibrary should be accepted (without file extension)
    */
   def prove(options: OptionMap) = {
     require(options.contains('in), usage)
-    require(options.contains('tactic), usage)
 
-    val tacticFileNameDotScala = options.get('tactic).get.toString
-    //assert(tacticFileNameDotScala.endsWith(".scala"),
-    //  "\n[Error] Wrong file name " + tacticFileNameDotScala + " used for -tactic! KeYmaera X only reads .scala tactic file. Please use: -tactic FILENAME.scala")
-    val tacticSource = scala.io.Source.fromFile(tacticFileNameDotScala).mkString
-
-    val tacticGenClasses = new ScalaTacticCompiler().compile(tacticSource)
-    assert(tacticGenClasses.size == 1, "Expected exactly 1 tactic generator class, but got " + tacticGenClasses.map(_.getName()))
-    val tacticGenerator = tacticGenClasses.head.newInstance.asInstanceOf[(()=> BelleExpr)]
-    val tactic = tacticGenerator()
-
-    // KeYmaeraXLemmaPrinter(Prover(tactic)(KeYmaeraXProblemParser(input)))
-    val inputFileNameDotKey = options.get('in).get.toString
-    assert(inputFileNameDotKey.endsWith(".key") || inputFileNameDotKey.endsWith(".kyx"),
-      "\n[Error] Wrong file name " + inputFileNameDotKey + " used for -prove! KeYmaera X only proves .key or .kyx files. Please use: -prove FILENAME.[key/kyx]")
-    val input = scala.io.Source.fromFile(inputFileNameDotKey).mkString
-    val inputModel = KeYmaeraXProblemParser(input)
-    val inputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(inputModel))
-    val inputFileName = inputFileNameDotKey.dropRight(4)
-    var outputFileName = inputFileName
-    if(options.contains('out)) {
-      val outputFileNameDotProof = options.get('out).get.toString
-      assert(outputFileNameDotProof.endsWith(".proof"),
-        "\n[Error] Wrong file name " + outputFileNameDotProof + " used for -out! KeYmaera X only produces proof evidence as .proof file. Please use: -out FILENAME.proof")
-      outputFileName = outputFileNameDotProof.dropRight(6)
+    val (tactic: BelleExpr, tacticSource: String) = options.get('tactic) match {
+      case Some(t) =>
+        val fileName = t.toString
+        val source = scala.io.Source.fromFile(fileName).mkString
+        if (fileName.endsWith(".scala")) {
+          val tacticGenClasses = new ScalaTacticCompiler().compile(source)
+          assert(tacticGenClasses.size == 1, "Expected exactly 1 tactic generator class, but got " + tacticGenClasses.map(_.getName()))
+          val tacticGenerator = tacticGenClasses.head.newInstance.asInstanceOf[(()=> BelleExpr)]
+          (tacticGenerator(), source)
+        } else if (fileName.endsWith(".kyt")) {
+          (BelleParser(source), source)
+        } else {
+          ???
+          //@todo builtin tactic names at least from ExposedTacticsLibrary should be accepted (without file extension)
+        }
+      case None => TactixLibrary.auto
     }
 
-    val pw = new PrintWriter(outputFileName + ".proof")
+    // KeYmaeraXLemmaPrinter(Prover(tactic)(KeYmaeraXProblemParser(input)))
+    val inputFileName = options('in).toString
+    assert(inputFileName.endsWith(".key") || inputFileName.endsWith(".kyx"),
+      "\n[Error] Wrong file name " + inputFileName + " used for -prove! KeYmaera X only proves .key or .kyx files. Please use: -prove FILENAME.[key/kyx]")
+    val input = scala.io.Source.fromFile(inputFileName).mkString
+    val inputModel = KeYmaeraXProblemParser(input)
+    val inputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(inputModel))
+    var outputFileName = inputFileName.dropRight(4) + ".kyp"
+    if(options.contains('out)) {
+      outputFileName = options('out).toString
+      assert(outputFileName.endsWith(".kyp"),
+        "\n[Error] Wrong file name " + outputFileName + " used for -out! KeYmaera X only produces proof evidence as .kyp file. Please use: -out FILENAME.kyp")
+    }
+
+    val pw = new PrintWriter(outputFileName)
 
     val proofStart: Long = Platform.currentTime
     //@todo turn the following into a transformation as well. The natural type is Prover: Tactic=>(Formula=>Provable) which however always forces 'verify=true. Maybe that's not bad.
@@ -335,24 +354,17 @@ object KeYmaeraX {
 
     if (witness.isProved) {
       assert(witness.subgoals.isEmpty)
-      if (options.getOrElse('verify, false).asInstanceOf[Boolean]) {
-        val witnessStart: Long = Platform.currentTime
-        val proved = witness.proved
-        //@note assert(witness.isProved, "Successful proof certificate") already checked in line above
-        assert(inputSequent == proved, "Proved the original problem and not something else")
-        val witnessDuration = Platform.currentTime - witnessStart
-        Console.println("[proof time       " + proofDuration + "ms]")
-        Console.println("[certificate time " + witnessDuration + "ms]")
-        println("Proof certificate: Passed")
-      } else {
-        println("Proof certificate: Skipped extraction of proof certificate from proof search\n (use -verify to generate and check proof certificate)")
-      }
+      val witnessStart: Long = Platform.currentTime
+      val proved = witness.proved
+      //@note assert(witness.isProved, "Successful proof certificate") already checked in line above
+      assert(inputSequent == proved, "Proved the original problem and not something else")
+      val witnessDuration = Platform.currentTime - witnessStart
 
       //@note printing original input rather than a pretty-print of proved ensures that @invariant annotations are preserved for reproves.
       val evidence = ToolEvidence(List(
         "tool" -> "KeYmaera X",
         "model" -> input,
-        "tactic" -> scala.io.Source.fromFile(tacticFileNameDotScala).mkString,
+        "tactic" -> tacticSource,
         "proof" -> "" //@todo serialize proof
       )) :: Nil
 
@@ -482,9 +494,8 @@ object KeYmaeraX {
     val vars: List[Variable] =
       if(options.contains('vars)) options.get('vars).get.asInstanceOf[Array[Variable]].toList
       else StaticSemantics.vars(inputFormula).symbols.map((x:NamedSymbol)=>x.asInstanceOf[Variable]).toList.sortWith((x, y)=>x<y)
-    val cseMode = options.contains('cse)
     val codegenStart = Platform.currentTime
-    val output = if(cseMode) CseCGenerator(inputFormula, vars, outputFileName) else CGenerator(inputFormula, vars, outputFileName)
+    val output = CGenerator(inputFormula, vars, outputFileName)
     Console.println("[codegen time " + (Platform.currentTime - codegenStart) + "ms]")
     val pw = new PrintWriter(outputFileName + ".c")
     pw.write(stampHead(options))
@@ -516,15 +527,18 @@ object KeYmaeraX {
     * Instead we settle for preventing people from installing less-restrictive security managers and restricting
     * all writes to be inside the .keymaerax directory. */
   class KeYmaeraXSecurityManager extends SecurityManager {
-    val homeDir = System.getProperty("user.home")
-    val keymaerax = homeDir + "/.keymaerax"
+    private val homeDir = System.getProperty("user.home")
+    private val keymaerax = homeDir + "/.keymaerax"
 
     override def checkPermission(perm: Permission): Unit = {
       perm match {
+          //@todo should disallow writing reflection in .core.
+        case perm:ReflectPermission if "suppressAccessChecks"==perm.getName() =>
+          throw new SecurityException("suppressing access checks during reflection is forbidden")
         case _:ReflectPermission => ()
         case _:RuntimePermission =>
           if ("setSecurityManager".equals(perm.getName))
-            throw new SecurityException()
+            throw new SecurityException("Changing security manager is forbidden")
         case _:FilePermission =>
           val filePermission = perm.asInstanceOf[FilePermission]
           val name = filePermission.getName
@@ -548,7 +562,9 @@ object KeYmaeraX {
     "exit - quit the prover (or hit Ctrl-C any time).\n" +
     "help - will display this usage information.\n" +
     "Tactics will be reported back when a branch closes but may need cleanup.\n"
+
   /** KeYmaera C: A simple interactive command-line prover */
+  @deprecated("Use web UI instead")
   private def interactiveProver(root: Provable): Provable = {
     val commands = io.Source.stdin.getLines()
     println("KeYmaera X Interactive Command-line Prover\n" +

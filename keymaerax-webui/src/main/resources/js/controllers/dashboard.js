@@ -6,7 +6,7 @@ angular.module('keymaerax.controllers').controller('DashboardCtrl.ShutdownDialog
 }]);
 
 angular.module('keymaerax.controllers').controller('DashboardCtrl.ShutdownDialog', ['$scope', function($scope) {
-  $scope.noModalForHelpDialogHack = true
+
 }]);
 
 angular.module('keymaerax.controllers').controller('DashboardCtrl.ExtractDB', ['$scope', '$uibModalInstance', function($scope, $uibModalInstance, path) {
@@ -22,15 +22,10 @@ angular.module('keymaerax.controllers').controller('DashboardCtrl', ['$scope', '
     $scope.theview = args.theview;
   });
 
-  $scope.noModalForHelpDialogHack = false;
-
-  $scope.mathematicaIsConfigured = true;
-  $http.get("/config/mathematicaStatus")
-      .success(function(data) {
-          if(data.errorThrown) showCaughtErrorMessage($uibModal, data, "Could not retrieve Mathematica status")
-          else
-              $scope.mathematicaIsConfigured = data.configured;
-      });
+  $scope.toolIsConfigured = true;
+  $http.get("/config/toolStatus").success(function(data) {
+    $scope.toolIsConfigured = data.configured;
+  });
 
 
   $http.get('/users/' + $cookies.get('userId') + '/dashinfo')

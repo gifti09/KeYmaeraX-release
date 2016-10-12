@@ -75,7 +75,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
   }
 
   it should "failover to right whenever a non-closing and non-partial tactic is provided on the left" in {
-    val tactic = implyR(1)& DebuggingTactics.assertProved  | skip& DebuggingTactics.assertProved
+    val tactic = implyR(1)& DebuggingTactics.done  | skip& DebuggingTactics.done
     
     a[Throwable] shouldBe thrownBy(
       shouldResultIn(
@@ -87,7 +87,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
   }
 
   it should "fail when neither tactic manages to close the goal and also neither is partial" in {
-    val tactic = implyR(1) & DebuggingTactics.assertProved | (skip & skip) & DebuggingTactics.assertProved
+    val tactic = implyR(1) & DebuggingTactics.done | (skip & skip) & DebuggingTactics.done
     val f = "1=2 -> 1=2".asFormula
     a[BelleError] should be thrownBy theInterpreter(tactic, BelleProvable(Provable.startProof(f))
     )
@@ -184,6 +184,22 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     result.asInstanceOf[BelleProvable].p.isProved shouldBe true
   }
 
+  it should "prove |- (1=1->1=1) & (2=2->2=2) with new < combinator" in {
+    //@note cannot use < in unit tests without fully qualifying the name, because Matchers also knows < operator
+    val tactic = andR(SuccPos(0)) & Idioms.<(
+      implyR(SuccPos(0)) & close,
+      implyR(SuccPos(0)) & close
+      )
+    val v = {
+      val f = "(1=1->1=1) & (2=2->2=2)".asFormula
+      BelleProvable(Provable.startProof(f))
+    }
+    val result = theInterpreter.apply(tactic, v)
+
+    result.isInstanceOf[BelleProvable] shouldBe true
+    result.asInstanceOf[BelleProvable].p shouldBe 'proved
+  }
+
   it should "handle cases were subgoals are added." in {
     val tactic = andR(SuccPos(0)) < (
       andR(SuccPos(0)) partial,
@@ -199,8 +215,8 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
 
   it should "fail whenever there's a non-partial tactic that doesn't close its goal." in {
     val tactic = andR(SuccPos(0)) < (
-      andR(SuccPos(0)) & DebuggingTactics.assertProved,
-      implyR(SuccPos(0)) & close & DebuggingTactics.assertProved
+      andR(SuccPos(0)) & DebuggingTactics.done,
+      implyR(SuccPos(0)) & close & DebuggingTactics.done
       )
     val f = "(2=2 & 3=3) & (1=1->1=1)".asFormula
     a[BelleError] shouldBe thrownBy(

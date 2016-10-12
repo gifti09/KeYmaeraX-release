@@ -111,21 +111,21 @@ class FOQuantifierTests extends TacticTestBase {
     result shouldBe 'proved
   }
 
-  it should "diffWeaken ouch" in withMathematica { implicit qeTool =>
+  it should "diffWeaken ouch" in withMathematica { qeTool =>
     val result = proveBy("[{x'=1}][{x'=2&x>0}]x>0".asFormula,
       diffWeaken(1) & implyR(1) & diffWeaken(1) & prop)
     println(result)
     result shouldBe 'proved
   }
 
-  it should "diffWeaken before loopy" in withMathematica { implicit qeTool =>
+  it should "diffWeaken before loopy" in withMathematica { qeTool =>
     val result = proveBy("[{x'=1&x>0}][{x:=2;}*]x>0".asFormula,
       diffWeaken(1) & implyR(1) & loop("x>0".asFormula)(1) & master())
     println(result)
     result shouldBe 'proved
   }
 
-  it should "diffWeaken before semibound" in withMathematica { implicit qeTool =>
+  it should "diffWeaken before semibound" in withMathematica { qeTool =>
     val result = proveBy("[{x'=1&x>0}][{x:=2;++y:=2;}]x>0".asFormula,
       diffWeaken(1) & master())
     println(result)
@@ -377,6 +377,22 @@ class FOQuantifierTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "x>0".asFormula
+  }
+
+  it should "skolemize simple at any succedent position" in {
+    val s = Sequent(IndexedSeq(), IndexedSeq("y>0".asFormula, "\\forall x x>0".asFormula))
+    val result = proveBy(s, allSkolemize(2))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only ("y>0".asFormula, "x>0".asFormula)
+  }
+
+  it should "skolemize simple at any succedent position with position locator" in {
+    val s = Sequent(IndexedSeq(), IndexedSeq("y>0".asFormula, "\\forall x x>0".asFormula))
+    val result = proveBy(s, allSkolemize('R))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only ("y>0".asFormula, "x>0".asFormula)
   }
 
   it should "skolemize with boundrenaming when variable to skolemize is there already" in {

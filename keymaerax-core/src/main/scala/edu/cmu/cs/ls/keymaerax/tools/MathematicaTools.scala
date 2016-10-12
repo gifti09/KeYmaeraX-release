@@ -6,17 +6,20 @@
 package edu.cmu.cs.ls.keymaerax.tools
 
 import com.wolfram.jlink._
-import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal
+import edu.cmu.cs.ls.keymaerax.btactics.{ExpressionTraversal, FormulaTools}
 import ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.bellerophon.PosInExpr
+import edu.cmu.cs.ls.keymaerax.btactics.helpers.DifferentialHelper
 import edu.cmu.cs.ls.keymaerax.tools.MathematicaConversion._
 import edu.cmu.cs.ls.keymaerax.tools.SimulationTool.{SimRun, SimState, Simulation}
 
 import scala.collection.immutable
 
+@deprecated
 object ToolConversions {
 
+  //@todo duplicate with [[FormulaTools.conjuncts]]
   def flattenConjunctions(f: Formula): List[Formula] = {
     var result: List[Formula] = Nil
     ExpressionTraversal.traverse(new ExpressionTraversalFunction {
@@ -165,9 +168,9 @@ class MathematicaCEXTool(override val link: MathematicaLink) extends BaseKeYmaer
   * @author Nathan Fulton
   * @author Stefan Mitsch
   */
-class MathematicaODETool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, new UncheckedK2MConverter, new UncheckedM2KConverter) with DiffSolutionTool with DerivativeTool {
+class MathematicaODESolverTool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, new UncheckedK2MConverter, new UncheckedM2KConverter) with ODESolverTool with DerivativeTool {
 
-  def diffSol(diffSys: DifferentialProgram, diffArg: Variable, iv: Map[Variable, Variable]): Option[Formula] =
+  def odeSolve(diffSys: DifferentialProgram, diffArg: Variable, iv: Map[Variable, Variable]): Option[Formula] =
     diffSol(diffArg, iv, toDiffSys(diffSys, diffArg):_*)
 
   /**
@@ -211,7 +214,7 @@ class MathematicaODETool(override val link: MathematicaLink) extends BaseKeYmaer
     val initialValues = diffSys.map(t => k2m(
       Equal(functionalizeVars(t._1, Number(BigDecimal(0)), primedVars:_*), iv(t._1))))
 
-    val input = new MExpr(new MExpr(Expr.SYMBOL, "DSolve"),
+    val input = new MExpr(MathematicaSymbols.DSOLVE,
       Array[MExpr](
         new MExpr(Expr.SYM_LIST, (convertedDiffSys ++ initialValues).toArray),
         new MExpr(Expr.SYM_LIST, functions.toArray),
@@ -269,6 +272,218 @@ class MathematicaODETool(override val link: MathematicaLink) extends BaseKeYmaer
     val (_, result) = run(input)
     result match {
       case t: Term => t
+    }
+  }
+}
+
+/**
+  * A link to Mathematica using the JLink interface.
+  *
+  * @author Andre Platzer
+  */
+class MathematicaPDESolverTool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, new UncheckedK2MConverter, new DiffUncheckedM2KConverter) with PDESolverTool {
+
+  def pdeSolve(diffSys: DifferentialProgram): Iterator[Term] = {
+    val vars = DifferentialHelper.getPrimedVariables(diffSys).map(k2m).toArray
+    val f = new MExpr(Expr.SYMBOL, DiffUncheckedM2KConverter.PREFIX + "f")
+    val fall = new MExpr(f, vars)
+    val characteristics:List[MExpr] = DifferentialHelper.atomicOdes(diffSys).map({
+      case AtomicODE(DifferentialSymbol(x),t) =>
+        new MExpr(MathematicaSymbols.MULT, Array[MExpr](
+          k2m(t),
+          new MExpr(MathematicaSymbols.D, Array[MExpr](fall, k2m(x)))
+        ))
+    })
+    val pde = new MExpr(MathematicaSymbols.EQUALS,
+      Array[MExpr](
+        new MExpr(MathematicaSymbols.PLUS, characteristics.toArray),
+        k2m(Number(0))
+      )
+    )
+    val input = new MExpr(MathematicaSymbols.DSOLVE,
+      Array[MExpr](
+        pde,
+        fall,
+        new MExpr(Expr.SYM_LIST, vars),
+        new MExpr(MathematicaSymbols.RULE, Array[MExpr](
+          MathematicaSymbols.GENERATEDPARAMETERS,
+          new MExpr(MathematicaSymbols.FUNCTION, Array[MExpr](new MExpr(Expr.SYMBOL, DiffUncheckedM2KConverter.PREFIX + "C")))
+        ))
+      ))
+    val (_, result) = run(input)
+    result match {
+        //@note List[List[Rule]] are converted to Or of And of Equal where only the right side matters.
+      case r: Equal => List(r.right).iterator
+      case r: And => FormulaTools.conjuncts(r).map({case Equal(_,b) => b}).iterator
+      case r: Or => FormulaTools.disjuncts(r).flatMap(disj=>FormulaTools.conjuncts(disj).map{case Equal(_,b) => b}).iterator
+      case r => throw new ToolException("Mathematica did not solve the PDE for : " + diffSys + "\n" + r)
+    }
+  }
+}
+
+object DiffUncheckedM2KConverter {
+  val PREFIX = "xyk`"
+}
+
+/**
+  * Accept n-ary arguments as for PDESolve.
+  */
+private class DiffUncheckedM2KConverter extends UncheckedM2KConverter {
+
+  override def convert(e: MExpr): KExpr = {
+    if (e.listQ() && e.args().length == 1) {
+      //HACK: convert unique Groebner basis result
+      convert(e.args().head)
+    } else super.convert(e)
+  }
+
+  protected override def convertAtomicTerm(e: MExpr): KExpr = interpretedSymbols.get(e.head) match {
+    case Some(fn) => convertFunction(fn, e.args())
+    case None =>
+      toKeYmaera(e) match {
+        case fn: Function =>
+          insist(!fn.interpreted, "Expected uninterpreted function symbol, but got interpreted " + fn)
+          convertFunction(fn, e.args())
+        case result: Variable => result
+      }
+  }
+
+  private def toKeYmaera(e: MExpr): NamedSymbol = {
+    if (e.head.asString().startsWith(DiffUncheckedM2KConverter.PREFIX)) {
+      val name = e.head.asString().substring(DiffUncheckedM2KConverter.PREFIX.length)
+      val index = None
+      val fnDomain = convertFunctionDomain(e.args())
+      Function(name, index, fnDomain, Real, false)
+    } else {
+      MathematicaNameConversion.toKeYmaera(e)
+    }
+  }
+
+
+  protected def convertFunctionDomain(args: Array[MExpr]): Sort = {
+    Range(1,args.length).foldRight[Sort](Real)((i,t)=>Tuple(Real,t))
+  }
+  protected override def convertFunction(fn: Function, args: Array[MExpr]): KExpr = {
+    val arguments = args.map(convert).map(_.asInstanceOf[Term])
+    FuncOf(fn, arguments.reduceRightOption[Term]((l, r) => Pair(l, r)).getOrElse(Nothing))
+  }
+}
+
+/**
+  * A link to Mathematica using the JLink interface.
+  *
+  * @author Andre Platzer
+  */
+class MathematicaEquationSolverTool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, new UncheckedK2MConverter, new UncheckedM2KConverter) with EquationSolverTool {
+
+  def solve(equations: Formula, vars: List[Expression]): Option[Formula] = {
+    val eqs = k2m(equations)
+    val v = vars.map(k2m)
+
+    val input = new MExpr(MathematicaSymbols.SOLVE,
+      Array[MExpr](
+        eqs,
+        new MExpr(Expr.SYM_LIST, v.toArray)
+        ))
+    val (_, result) = run(input)
+    result match {
+      case f: Formula => Some(f)
+      case _ => None
+    }
+  }
+}
+
+/**
+  * A link to Mathematica using the JLink interface.
+  *
+  * @author Andre Platzer
+  */
+class MathematicaAlgebraTool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, new UncheckedK2MConverter, new DiffUncheckedM2KConverter) with AlgebraTool {
+
+  override def quotientRemainder(term: Term, div: Term, x:Variable): (Term,Term) = {
+    val t = k2m(term)
+    val d = k2m(div)
+    val v = k2m(x)
+
+    val input = new MExpr(MathematicaSymbols.POLYNOMIALQUOTIENTREMAINDER,
+      Array[MExpr](
+        t,
+        d,
+        v
+      ))
+    val (_, result) = run(input)
+    result match {
+      case Pair(quot,rem) => (quot, rem)
+      case quotRem: List[Term] if quotRem.length==2 => (quotRem(0), quotRem(1))
+      case r => throw new IllegalStateException("Unexpected output " + r + " of class " + r.getClass)
+    }
+  }
+
+  override def groebnerBasis(polynomials: List[Term]): List[Term] = {
+    //@note sort for stable results
+    val vars = polynomials.flatMap(p => StaticSemantics.vars(p).symbols[NamedSymbol].toList.sorted)
+    val input = new MExpr(MathematicaSymbols.GROEBNERBASIS,
+      Array[MExpr](
+        new MExpr(Expr.SYM_LIST, polynomials.map(k2m).toArray),
+        new MExpr(Expr.SYM_LIST, vars.map(k2m).toArray),
+        new MExpr(MathematicaSymbols.RULE, Array[MExpr](
+          MathematicaSymbols.MONOMIALORDER, MathematicaSymbols.DEGREEREVERSELEXICOGRAPHIC
+        ))
+      ))
+    val (_, result) = run(input)
+    result match {
+      // turn nested Pair back into list of terms
+      case r: Term => FormulaTools.argumentList(r)
+      case r => throw new IllegalStateException("Unexpected output " + r + " of class " + r.getClass)
+    }
+  }
+
+  override def polynomialReduce(polynomial: Term, GB: List[Term]): (List[Term], Term) = {
+    //@note sort for stable results
+    val vars = StaticSemantics.vars(polynomial).symbols[NamedSymbol].toList.sorted.map(_.asInstanceOf[Variable])
+    val input = new MExpr(MathematicaSymbols.POLYNOMIALREDUCE,
+      Array[MExpr](
+        k2m(polynomial),
+        new MExpr(Expr.SYM_LIST, GB.map(k2m).toArray),
+        new MExpr(Expr.SYM_LIST, vars.map(k2m).toArray),
+        new MExpr(MathematicaSymbols.RULE, Array[MExpr](
+          MathematicaSymbols.MONOMIALORDER, MathematicaSymbols.DEGREEREVERSELEXICOGRAPHIC
+        ))
+      ))
+    val (_, result) = run(input)
+    result match {
+      case r: Pair => (FormulaTools.argumentList(r.left), r.right)
+      case r => throw new IllegalStateException("Unexpected output " + r + " of class " + r.getClass)
+    }
+  }
+}
+
+/**
+  * A link to Mathematica using the JLink interface.
+  *
+  * @author Andre Platzer
+  */
+class MathematicaSimplificationTool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, new UncheckedK2MConverter, new UncheckedM2KConverter) with SimplificationTool {
+
+  override def simplify(expr: Formula, assumptions: List[Formula]): Formula =
+    simplify(expr.asInstanceOf[Expression], assumptions).asInstanceOf[Formula]
+
+  override def simplify(expr: Term, assumptions: List[Formula]): Term =
+    simplify(expr.asInstanceOf[Expression], assumptions).asInstanceOf[Term]
+
+  override def simplify(expr: Expression, assumptions: List[Formula]): Expression = {
+    val ex = k2m(expr)
+    val assuming = assumptions.map(k2m)
+
+    val input = new MExpr(MathematicaSymbols.FULLSIMPLIFY,
+      Array[MExpr](
+        ex,
+        new MExpr(Expr.SYM_LIST, assuming.toArray)
+      ))
+    val (_, result) = run(input)
+    result match {
+      case r: Expression => r
+      case _ => throw new ToolException("Mathematica did not successfuly simplify: " + expr + " under assumptions " + assumptions)
     }
   }
 }

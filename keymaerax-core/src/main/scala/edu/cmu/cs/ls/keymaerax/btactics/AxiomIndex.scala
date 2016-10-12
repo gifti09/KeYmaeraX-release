@@ -35,10 +35,6 @@ object AxiomIndex {
    */
   def axiomIndex(axiom: String): AxiomIndex = (axiom: @switch) match {
       //@todo axiom.intern() to @switch?
-    case "all instantiate" | "all eliminate"
-         | "vacuous all quantifier" | "vacuous exists quantifier"
-         | "all dual" | "exists dual" => directReduction
-    case "const congruence" | "const formula congruence" => reverseReduction
     // [a] modalities and <a> modalities
     case "<> diamond" | "[] box" => (PosInExpr(0::Nil), PosInExpr(Nil)::Nil)
     case "[:=] assign" | "<:=> assign" | "[':=] differential assign" | "<':=> differential assign" => directReduction
@@ -58,7 +54,6 @@ object AxiomIndex {
     case "DE differential effect" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
     //@todo unclear recursor
     case "DE differential effect system" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
-    case "DIo open differential invariance >" | "DIo open differential invariance <" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DG differential ghost" => directReduction
     case "DG inverse differential ghost system" => (PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(Nil)::Nil)
     case "DG inverse differential ghost" => (PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(Nil)::Nil) //todo copies from DG inverse differential ghost system. Not sure if this is correct.
@@ -89,6 +84,12 @@ object AxiomIndex {
     case "chain rule" => (PosInExpr(1::1::0::Nil), PosInExpr(0::Nil)::PosInExpr(1::Nil)::Nil)
     case "x' derive var"   => nullaryDefault
 
+    case "all instantiate" | "all eliminate"
+         | "vacuous all quantifier" | "vacuous exists quantifier"
+         | "all dual" | "exists dual" => directReduction
+    case "exists eliminate"
+         | "const congruence" | "const formula congruence" => reverseReduction
+
     /* @todo Adapt for hybrid games */
     case "V vacuous" => assert(Provable.axiom(axiom)==Imply(PredOf(Function("p", None, Unit, Bool), Nothing), Box(ProgramConst("a"), PredOf(Function("p", None, Unit, Bool), Nothing))))
       (PosInExpr(1::Nil), PosInExpr(Nil)::Nil)
@@ -101,6 +102,8 @@ object AxiomIndex {
 
     case "DW differential weakening" => (PosInExpr(0::Nil), unknown)
     case "DI differential invariant" => (PosInExpr(1::Nil), PosInExpr(1::1::Nil)::Nil)
+    case "DIo open differential invariance >" | "DIo open differential invariance <" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
+    case "DV differential variant >=" | "DV differential variant <=" => (PosInExpr(1::Nil), PosInExpr(0::1::1::1::0::Nil)::PosInExpr(0::1::1::1::1::0::Nil)::PosInExpr(0::1::Nil)::PosInExpr(Nil)::Nil)
     //@todo other axioms
 
       // derived axioms
@@ -120,7 +123,13 @@ object AxiomIndex {
 
     case "[] post weaken" => (PosInExpr(1::Nil), PosInExpr(Nil)::Nil)
 
-    case "+<= up" | "-<= up" | "<=+ down" | "<=- down" => (PosInExpr(1::Nil), PosInExpr(0::0::Nil)::PosInExpr(0::1::Nil)::Nil)
+    case "<= both" | "< both" => (PosInExpr(1::Nil), Nil)
+    case ">= flip" => directReduction
+    case "> flip" => directReduction
+    case "& recursor" | "| recursor" | "-> expand" => binaryDefault
+    case "neg<= up" | "<=neg down" => (PosInExpr(1::Nil), PosInExpr(0::Nil)::Nil)
+    case "+<= up" | "-<= up" | "abs<= up" | "max<= up" | "min<= up" | "<=+ down" | "<=- down" | "<=abs down" | "<=max down" | "<=min down" | "pow<= up" | "<=pow down" => (PosInExpr(1::Nil), PosInExpr(0::0::Nil)::PosInExpr(0::1::Nil)::Nil)
+    case "*<= up" | "<=* down" | "Div<= up" | "<=Div down" => (PosInExpr(1::Nil),  PosInExpr(0::0::0::Nil)::PosInExpr(0::0::1::Nil)::PosInExpr(0::1::0::Nil)::PosInExpr(0::1::1::Nil)::Nil)
 
     // default position
     case _ => (PosInExpr(0::Nil), Nil)
@@ -131,7 +140,7 @@ object AxiomIndex {
   private val unaryDefault = (PosInExpr(0::Nil), PosInExpr(0::Nil)::Nil)
   private val binaryDefault = (PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(1::Nil)::Nil)
   private val directReduction = (PosInExpr(0::Nil), PosInExpr(Nil)::Nil)
-  private val reverseReduction = (PosInExpr(0::Nil), PosInExpr(Nil)::Nil)
+  private val reverseReduction = (PosInExpr(1::Nil), PosInExpr(Nil)::Nil)
 
 
   // lookup canonical axioms for an expression (index)
@@ -139,6 +148,7 @@ object AxiomIndex {
   /** Give the first canonical (derived) axiom name or tactic name that simplifies the expression `expr`. */
   def axiomFor(expr: Expression): Option[String] = axiomsFor(expr).headOption
 
+  //@todo add "ODE" or replace others with "ODE"
   private val odeList: List[String] = "DI differential invariant" :: "DC differential cut" :: "DG differential ghost" :: Nil
   //@note "diffCut" is more powerful than "DC differential cut" due to old(.) but only with a suitable invariant generator.
 
@@ -246,7 +256,7 @@ object AxiomIndex {
         case _: Less => "! <" :: Nil
         case _: LessEqual => "! <=" :: Nil
         case _: Greater => "! >" :: Nil
-        case _: GreaterEqual => "! >=" :: Nil
+        //case _: GreaterEqual => "! >=" :: Nil
         case _: Not => "!! double negation" :: Nil
         case _: And => "!& deMorgan" :: Nil
         case _: Or => "!| deMorgan" :: Nil
@@ -257,6 +267,8 @@ object AxiomIndex {
 
       case And(True, _) => "true&" :: Nil
       case And(_, True) => "&true" :: Nil
+      case And(True, _) => "false&" :: Nil
+      case And(_, True) => "&false" :: Nil
       case Imply(True, _) => "true->" :: Nil
       case Imply(_, True) => "->true" :: Nil
 

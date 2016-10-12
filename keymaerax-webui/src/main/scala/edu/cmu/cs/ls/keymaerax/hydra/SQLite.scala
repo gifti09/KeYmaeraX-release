@@ -15,7 +15,7 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import javax.xml.bind.DatatypeConverter
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, BelleProvable, SequentialInterpreter}
 import _root_.edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary
 import _root_.edu.cmu.cs.ls.keymaerax.core._
@@ -216,15 +216,7 @@ object SQLite {
         Users.map(u => (u.email.get, u.hash.get, u.salt.get, u.iterations.get))
           .insert((username, hash, salt, iterations))
         nInserts = nInserts + 1
-        copyTutorialModels(username)
       })}
-
-    private def copyTutorialModels(userId: String): Unit = {
-      val tutorialModels = Models.filter(_._Id <= 14).list.map(element => new ModelPOJO(element._Id.get, element.userid.get, element.name.get,
-        blankOk(element.date), blankOk(element.filecontents),
-        blankOk(element.description), blankOk(element.publink), blankOk(element.title), element.tactic, getNumProofs(element._Id.get)))
-      tutorialModels.foreach(m => createModel(userId, m.name, m.keyFile, m.date, Some(m.description), Some(m.pubLink), Some(m.title), m.tactic))
-    }
 
     /**
       * Poorly named -- either update the config, or else insert an existing key.
@@ -252,6 +244,12 @@ object SQLite {
           }
         })
       })
+
+    val proofClosedQuery = Compiled((proofId: Column[Int]) =>
+      Proofs.filter(p => p._Id === proofId && p.closed.getOrElse(0) === 1).exists)
+    override def isProofClosed(proofId: Int): Boolean = synchronizedTransaction({
+      proofClosedQuery(proofId).run
+    })
 
     //Proofs and Proof Nodes
     override def getProofInfo(proofId: Int): ProofPOJO =
@@ -438,11 +436,11 @@ object SQLite {
       synchronizedTransaction({
         val status = ExecutionStepStatus.toString(step.status)
         val steps =
-          Executionsteps.map({case dbstep => (dbstep.executionid.get, dbstep.previousstep, dbstep.parentstep,
+          Executionsteps.map(dbstep => (dbstep.executionid.get, dbstep.previousstep, dbstep.parentstep,
             dbstep.branchorder.get, dbstep.branchlabel.get, dbstep.alternativeorder.get, dbstep.status.get, dbstep.executableid.get,
             dbstep.inputprovableid, dbstep.resultprovableid, dbstep.localprovableid, dbstep.userexecuted.get, dbstep.childrenrecorded.get,
             dbstep.rulename.get)
-          }) returning Executionsteps.map(es => es._Id.get)
+          ) returning Executionsteps.map(_._Id.get)
         val stepId = steps
             .insert((step.executionId, step.previousStep, step.parentStep, branchOrder, branchLabel,
               step.alternativeOrder, status, step.executableId, step.inputProvableId, step.resultProvableId,
@@ -495,7 +493,7 @@ object SQLite {
         val executableId =
           (Executables.map({case exe => (exe.belleexpr) })
             returning Executables.map(_._Id.get))
-          .insert(Some(expr.prettyString))
+          .insert(Some(BellePrettyPrinter(expr)))
         nInserts = nInserts + 1
         executableId
       })
@@ -517,14 +515,13 @@ object SQLite {
     def getExecutables(executableIds: List[Int]): List[ExecutablePOJO] =
       synchronizedTransaction({
         nSelects = nSelects + 1
-        val executableMap =
-          Executables.map(exe => (exe._Id.get, exe.belleexpr.get))
-          .list
-          .map{case (id, expr) => (id, ExecutablePOJO(id, expr))}
-          .foldLeft(Map.empty[Int,ExecutablePOJO]){case (acc, (id, exe)) => acc.+((id, exe))}
-
+        val q = for {
+          exe <- Executables
+          if exe._Id inSetBind executableIds
+        } yield (exe._Id.get, exe.belleexpr.get)
+        val executableMap = q.run.map(exe => (exe._1, ExecutablePOJO(exe._1, exe._2))).toMap
         try {
-          executableIds.map{case id => executableMap(id)}
+          executableIds.map(executableMap)
         } catch {
           case _:Exception => throw new ProverException("getExecutable type should be an Option")
         }
@@ -621,33 +618,28 @@ object SQLite {
       })
     }
 
-    private def sortFormulas(fromAnte: Boolean, formulas: List[SequentFormulaPOJO]): List[Formula] = {
-      import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
-      val relevant = formulas.filter({ case formula => fromAnte == formula.isAnte })
-      val sorted = relevant.sortWith({ case (f1, f2) => f1.index > f2.index })
-      sorted.map({ case formula => formula.formulaStr.asFormula })
-    }
-
     def printStats(): Unit = {
       println("Updates: " + nUpdates + " Inserts: " + nInserts + " Selects: " + nSelects)
     }
 
+    val executionStepsQuery = Compiled((executionId: Column[Int]) =>
+      Executionsteps.filter(row => row.executionid === executionId &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)).sortBy(_.alternativeorder.desc))
+
     def proofSteps(executionId: Int): List[ExecutionStepPOJO] = {
       synchronizedTransaction({
-        var steps = Executionsteps.filter({case row => row.executionid === executionId &&
-          row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)}).list
+        /* The Executionsteps table may contain many alternate histories for the same execution. In order to reconstruct
+         * the current state of the world, we must pick the most recent alternative at every opportunity.*/
+        var steps = executionStepsQuery(executionId).run
         var prevId: Option[Int] = None
         var revResult: List[ExecutionStepPOJO] = Nil
-        /* The Executionsteps table may contain many alternate histories for the same execution. In order to reconstruct
-        * the current state of the world, we must pick the most recent alternative at every opportunity.*/
-        steps = steps.sortWith({case (x, y) => y.alternativeorder.get < x.alternativeorder.get})
         while(steps != Nil) {
           val (headSteps, tailSteps) = steps.partition({step => step.previousstep == prevId})
           if (headSteps == Nil)
             return revResult.reverse
           val head = headSteps.head
           revResult =
-            new ExecutionStepPOJO(head._Id, head.executionid.get, head.previousstep, head.parentstep,
+            ExecutionStepPOJO(head._Id, head.executionid.get, head.previousstep, head.parentstep,
               head.branchorder, head.branchlabel, head.alternativeorder.get, ExecutionStepStatus.fromString(head.status.get),
               head.executableid.get, head.inputprovableid, head.resultprovableid, head.localprovableid, head.userexecuted.get.toBoolean,
               head.rulename.get)::revResult

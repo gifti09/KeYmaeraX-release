@@ -17,6 +17,7 @@ import spray.json._
   * A_VERSION_STRING should have one of the formats following:
   * {{{
   *   X.X
+  *   X.X.X
   *   X.XbX
 *   }}}
   * where X is a natural number.
@@ -25,8 +26,10 @@ import spray.json._
   */
 object UpdateChecker {
 
+
+
   def needDatabaseUpgrade(databaseVersion: String) : Option[Boolean] = {
-    downloadDBVersion() match {
+    downloadDBVersion match {
       case Some(oldestAcceptableDBVersion) =>
         Some(StringToVersion(databaseVersion) < StringToVersion(oldestAcceptableDBVersion))
       case None => None
@@ -40,7 +43,7 @@ object UpdateChecker {
     * or else None if we could not determine the most recent version (e.g., because we have no network connection).
     */
   def getVersionStatus() : Option[(Boolean, String)] = {
-    downloadCurrentVersion() match {
+    downloadCurrentVersion match {
       case Some(current) => Some((current == edu.cmu.cs.ls.keymaerax.core.VERSION, current))
       case None          => None
     }
@@ -58,7 +61,7 @@ object UpdateChecker {
     case None => None
   }
 
-  private def downloadDBVersion() : Option[String] = {
+  private lazy val downloadDBVersion : Option[String] = {
     try {
       val json = JsonParser(scala.io.Source.fromURL("http://keymaerax.org/version.json").mkString)
       if(json.asJsObject.getFields("oldestAcceptableDB").isEmpty)
@@ -75,13 +78,14 @@ object UpdateChecker {
   }
 
   /** Returns the current version # in keymaerax.org/version.json, or None if the contents cannot be downloaded/parsed. */
-  private def downloadCurrentVersion() : Option[String] = {
+  private lazy val downloadCurrentVersion: Option[String] = {
     try {
       val json = JsonParser(scala.io.Source.fromURL("http://keymaerax.org/version.json").mkString)
-      if(json.asJsObject.getFields("version").isEmpty)
+      val version = json.asJsObject.getFields("version")
+      if (version.isEmpty)
         throw new Exception("version.json does not contain a version key.")
       else {
-        val versionString = json.asJsObject.getFields("version").last.toString.replace("\"", "")
+        val versionString = version.last.toString.replace("\"", "")
         Some(versionString)
       }
     }
@@ -92,45 +96,39 @@ object UpdateChecker {
 
 }
 
-case class VersionString(major: Int, minor: Int, letter: Option[Char], incr: Option[Int]) {
-  require(letter.isDefined == incr.isDefined)
-
+case class VersionString(major: Int, minor: Int, rev: Int, letter: Option[Char], incr: Option[Int]) {
   def <(that: VersionString) = compareTo(that) == -1
   def >(that: VersionString) = compareTo(that) == 1
   def >=(that: VersionString) = !(this < that)
   def <=(that: VersionString) = !(this > that)
-  def !=(that: VersionString) = !(this.equals(that))
+  def !=(that: VersionString) = !this.equals(that)
 
   def compareTo(that: VersionString) = {
-    if(major > that.major) 1
-    else if(major < that.major) -1
-    else if(minor > that.minor) 1
-    else if(minor < that.minor) -1
-    else if(letter.isEmpty && !that.letter.isEmpty) 1 //4.0 > 4.0b
-    else if(!letter.isEmpty && that.letter.isEmpty) -1
-    else if(letter.get == 'b' && that.letter.get == 'a') 1 //4.0b > 4.0a
-    else if(letter.get == 'a' && that.letter.get == 'b') -1
-    else incr.get.compareTo(that.incr.get) //4.0b2 > b.0b1
+    if (major != that.major) major.compareTo(that.major)
+    else if (minor != that.minor) minor.compareTo(that.minor)
+    else if (rev != that.rev) rev.compareTo(that.rev) //@note undefined rev == -1, 4.0.1 > 4.0.0 > 4.0 (.-1)
+    else if (letter.isEmpty && that.letter.isDefined) 1 //4.0 > 4.0b
+    else if (letter.isDefined && that.letter.isEmpty) -1
+    else if (letter != that.letter) letter.get.compareTo(that.letter.get)
+    else if (incr.isEmpty && that.incr.isDefined) 1 //4.0a > 4.0a1
+    else if (incr.isDefined && that.incr.isEmpty) -1
+    else if (incr != that.incr) incr.get.compareTo(that.incr.get) //4.0b2 > 4.0b1
+    else 0
   }
 }
 
 object StringToVersion {
   def apply(s: String): VersionString = {
-    val (major, d1) = {
-      val parts = s.split("\\.")
-      (parts(0).toInt, parts(1))
-    }
+    val versionFormat = """^(\d+)\.(\d+)(?:(?:(\w)(\d?)|\.(\d+))?)$""".r("major", "minor", "letter", "incr", "rev")
+    require(s.matches(versionFormat.regex), s"Unexpected version string $s")
+    // only 1 match
+    val m = versionFormat.findAllIn(s).matchData.toList.head
+    val major: Int = m.group("major").toInt
+    val minor: Int = m.group("minor").toInt
+    val letter: Option[Char] = m.group("letter") match { case null => None case "" => None case l if l.length == 1 => Some(l.charAt(0)) }
+    val incr: Option[Int]   = m.group("incr") match { case null => None case "" => None case i => Some(i.toInt) }
+    val rev: Int = m.group("rev") match { case null => -1 case "" => -1 case r => r.toInt }
 
-    val (minor: Int, letter: Option[Char], incr: Option[Int]) = {
-      if(d1.contains("a") || d1.contains("b")) {
-        val parts = d1.split("a|b")
-        val letter = if (d1.contains("a")) 'a' else if (d1.contains("b")) 'b' else ???
-        (parts(0).toInt, Some(letter), Some(parts(1).toInt))
-      }
-      else {
-        (d1.toInt, None, None)
-      }
-    }
-    VersionString(major, minor, letter, incr)
+    VersionString(major, minor, rev, letter, incr)
   }
 }

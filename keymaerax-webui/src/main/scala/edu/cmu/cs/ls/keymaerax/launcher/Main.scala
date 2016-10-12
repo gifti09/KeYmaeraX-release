@@ -21,19 +21,19 @@ import scala.collection.JavaConversions._
 object Main {
   def startServer(args: Array[String]) : Unit = {
     launcherLog("-launch -- starting KeYmaera X Web UI server HyDRA.")
-    try {
-//      throw new LemmbaDatabaseInitializationException("")
-//      LemmaDatabaseInitializer.initializeFromJAR
-    }
-    catch {
-      case e: LemmbaDatabaseInitializationException => {
-        println("!!! ERROR: Could not initialize database !!!)")
-        e.printStackTrace()
-        println("!!! ERROR RECOVERY: Trying to generate the Lemma database by proving all derived axioms")
-        edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms.prepopulateDerivedLemmaDatabase()
-//        edu.cmu.cs.ls.keymaerax.tactics.DerivedAxioms.prepopulateDerivedLemmaDatabase()
-      }
-    }
+//    try {
+////      throw new LemmbaDatabaseInitializationException("")
+////      LemmaDatabaseInitializer.initializeFromJAR
+//    }
+//    catch {
+//      case e: LemmbaDatabaseInitializationException => {
+//        println("!!! ERROR: Could not initialize database !!!)")
+//        e.printStackTrace()
+//        println("!!! ERROR RECOVERY: Trying to generate the Lemma database by proving all derived axioms")
+//        edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms.prepopulateDerivedLemmaDatabase()
+////        edu.cmu.cs.ls.keymaerax.tactics.DerivedAxioms.prepopulateDerivedLemmaDatabase()
+//      }
+//    }
     //@todo skip -ui -launch
     if(System.getenv().containsKey("HyDRA_SSL") && System.getenv("HyDRA_SSL").equals("on")) {
       edu.cmu.cs.ls.keymaerax.hydra.SSLBoot.main(args)
@@ -48,15 +48,15 @@ object Main {
   //@todo set via -log command line option
   private var logFile = false
   def main(args : Array[String]) : Unit = {
-    val isFirstLaunch = if(args.length >= 1) {
+    val isFirstLaunch = if (args.length >= 1) {
       !args.head.equals("-launch") || args.length>=2 && args(0)=="-ui" && args(1)=="-launch"
     } else true
 
-    if(isFirstLaunch) {
+    if (isFirstLaunch) {
       val java : String = javaLocation
-      val keymaera : String = jarLocation
+      val keymaeraxjar : String = jarLocation
       println("Restarting KeYmaera X with sufficient stack space")
-      runCmd((java :: "-Xss20M" :: "-jar" :: keymaera :: "-launch"  :: Nil) ++ args.toList ++ ("-ui" :: Nil))
+      runCmd((java :: "-Xss20M" :: "-jar" :: keymaeraxjar :: "-launch"  :: Nil) ++ args.toList ++ ("-ui" :: Nil))
     }
     else {
       exitIfDeprecated()
@@ -70,19 +70,18 @@ object Main {
 
   /** Clears the cache if the cache was created by a previous version of KeYmaera X */
   private def clearCacheIfDeprecated(): Unit = {
-    val cacheLocation = System.getenv("HOME") + File.separator + ".keymaerax" + File.separator + "cache"
+    val cacheLocation = System.getProperty("user.home") + File.separator + ".keymaerax" + File.separator + "cache"
     val cacheDirectory = new File(cacheLocation)
     val cacheVersionFile = new File(cacheLocation + File.separator + "VERSION")
-    val lemmadb          = new File(cacheLocation + File.separator + "lemmadb")
 
-    if(!cacheDirectory.exists()) {
-      if(!cacheDirectory.mkdirs()) {
+    if (!cacheDirectory.exists()) {
+      if (!cacheDirectory.mkdirs()) {
         throw new Exception(s"Could not create the directory ${cacheDirectory.getAbsolutePath}. Please check your file system permissions.")
       }
     }
 
-    if(!cacheVersionFile.exists()) {
-      if(!cacheVersionFile.createNewFile())
+    if (!cacheVersionFile.exists()) {
+      if (!cacheVersionFile.createNewFile())
         throw new Exception(s"Could not create the file ${cacheVersionFile.getAbsolutePath}. Please check your file system permissions.")
       clearCache(new File(cacheLocation))
     }
@@ -169,7 +168,7 @@ object Main {
 
 
   private def runCmd(cmd: List[String]) = {
-    launcherLog("Running command: " + cmd)
+    launcherLog("Running command:\n" + cmd.mkString(" "))
 
     val pb = new ProcessBuilder(cmd)
     var pollOnStd = false

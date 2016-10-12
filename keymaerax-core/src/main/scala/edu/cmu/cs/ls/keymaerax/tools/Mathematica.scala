@@ -19,14 +19,18 @@ import scala.collection.immutable.Map
  * @author Stefan Mitsch
  * @todo Code Review: Move non-critical tool implementations into a separate package tactictools
  */
-class Mathematica extends ToolBase("Mathematica") with QETool with DiffSolutionTool with CounterExampleTool with SimulationTool with DerivativeTool {
+class Mathematica extends ToolBase("Mathematica") with QETool with ODESolverTool with CounterExampleTool with SimulationTool with DerivativeTool with EquationSolverTool with SimplificationTool with AlgebraTool with PDESolverTool {
   // JLink, shared between tools
   private val link = new JLinkMathematicaLink
 
   private val mQE = new MathematicaQETool(link)
   private val mCEX = new MathematicaCEXTool(link)
-  private val mODE = new MathematicaODETool(link)
+  private val mODE = new MathematicaODESolverTool(link)
+  private val mPDE = new MathematicaPDESolverTool(link)
   private val mSim = new MathematicaSimulationTool(link)
+  private val mSolve = new MathematicaEquationSolverTool(link)
+  private val mAlgebra = new MathematicaAlgebraTool(link)
+  private val mSimplify = new MathematicaSimplificationTool(link)
 
   override def init(config: Map[String,String]) = {
     val linkName = config.get("linkName") match {
@@ -46,7 +50,11 @@ class Mathematica extends ToolBase("Mathematica") with QETool with DiffSolutionT
     mQE.shutdown()
     mCEX.shutdown()
     mODE.shutdown()
+    mPDE.shutdown()
     mSim.shutdown()
+    mSolve.shutdown()
+    mAlgebra.shutdown()
+    mSimplify.shutdown()
     //@note last, because we want to shut down all executors (tool threads) before shutting down the JLink interface
     link.shutdown()
     initialized = false
@@ -61,8 +69,8 @@ class Mathematica extends ToolBase("Mathematica") with QETool with DiffSolutionT
    * @param iv Names of initial values per variable, e.g., x -> x_0
    * @return The solution, if found. None otherwise.
    */
-  override def diffSol(diffSys: DifferentialProgram, diffArg: Variable,
-                       iv: Predef.Map[Variable, Variable]): Option[Formula] = mODE.diffSol(diffSys, diffArg, iv)
+  override def odeSolve(diffSys: DifferentialProgram, diffArg: Variable,
+                        iv: Predef.Map[Variable, Variable]): Option[Formula] = mODE.odeSolve(diffSys, diffArg, iv)
 
   override def deriveBy(term: Term, v: Variable): Term = mODE.deriveBy(term, v)
 
@@ -96,6 +104,15 @@ class Mathematica extends ToolBase("Mathematica") with QETool with DiffSolutionT
     * @return A list (length 'steps') of simulated states.
     */
   override def simulateRun(initial: SimState, stateRelation: Formula, steps: Int = 10): SimRun = mSim.simulateRun(initial, stateRelation, steps)
+
+  /*override*/ def pdeSolve(diffSys: DifferentialProgram): Iterator[Term] = mPDE.pdeSolve(diffSys)
+  override def solve(equations: Formula, vars: List[Expression]): Option[Formula] = mSolve.solve(equations,vars)
+  override def quotientRemainder(term: Term, div: Term, x:Variable): (Term,Term) = mAlgebra.quotientRemainder(term,div,x)
+  override def groebnerBasis(polynomials: List[Term]): List[Term] = mAlgebra.groebnerBasis(polynomials)
+  override def polynomialReduce(polynomial: Term, GB: List[Term]): (List[Term], Term) = mAlgebra.polynomialReduce(polynomial, GB)
+  override def simplify(expr: Expression, assumptions: List[Formula]): Expression = mSimplify.simplify(expr, assumptions)
+  override def simplify(expr: Formula, assumptions: List[Formula]): Formula = mSimplify.simplify(expr, assumptions)
+  override def simplify(expr: Term, assumptions: List[Formula]): Term = mSimplify.simplify(expr, assumptions)
 
   /** Restarts the MathKernel with the current configuration */
   override def restart() = link.restart()

@@ -51,7 +51,7 @@ trait HilbertCalculus extends UnifyUSCalculus {
     * @note Efficient source-level indexing implementation.
     * @see [[AxiomIndex]]
     */
-  lazy val stepAt: DependentPositionTactic = stepAt(AxiomIndex.axiomFor)
+  val stepAt: DependentPositionTactic = stepAt(AxiomIndex.axiomFor)
 
 
   //
@@ -69,7 +69,7 @@ trait HilbertCalculus extends UnifyUSCalculus {
     * @see [[monb]] with p(x)=True
     * @see [[boxTrue]]
     */
-  lazy val G            : DependentPositionTactic = "G" by ((pos:Position) =>
+  val G            : DependentPositionTactic = "G" by ((pos:Position) =>
     SequentCalculus.cohideR(pos) & DLBySubst.G
     )
 
@@ -90,17 +90,43 @@ trait HilbertCalculus extends UnifyUSCalculus {
 
   /** diamond: <.> reduce double-negated box `![a]!p(x)` to a diamond `⟨a⟩p(x)`. */
   lazy val diamond            : DependentPositionTactic = useAt("<> diamond")
-  /** assignb: [:=] simplify assignment `[x:=f;]p(x)` by substitution `p(f)` or equation */
+  /** assignb: [:=] simplify assignment `[x:=f;]p(x)` by substitution `p(f)` or equation.
+    * Box assignment by substitution assignment [v:=t();]p(v) <-> p(t()) (preferred),
+    * or by equality assignment [x:=f();]p(||) <-> \forall x (x=f() -> p(||)) as a fallback.
+    * Universal quantifiers are skolemized if applied at top-level in the succedent; they remain unhandled in the
+    * antecedent and in non-top-level context.
+    * @example{{{
+    *    |- 1>0
+    *    --------------------assignb(1)
+    *    |- [x:=1;]x>0
+    * }}}
+    * @example{{{
+    *           1>0 |-
+    *    --------------------assignb(-1)
+    *    [x:=1;]x>0 |-
+    * }}}
+    * @example{{{
+    *    x_0=1 |- [{x_0:=x_0+1;}*]x_0>0
+    *    ----------------------------------assignb(1)
+    *          |- [x:=1;][{x:=x+1;}*]x>0
+    * }}}
+    * @example{{{
+    *    \\forall x_0 (x_0=1 -> [{x_0:=x_0+1;}*]x_0>0) |-
+    *    -------------------------------------------------assignb(-1)
+    *                           [x:=1;][{x:=x+1;}*]x>0 |-
+    * }}}
+    * @example{{{
+    *    |- [y:=2;]\\forall x_0 (x_0=1 -> x_0=1 -> [{x_0:=x_0+1;}*]x_0>0)
+    *    -----------------------------------------------------------------assignb(1, 1::Nil)
+    *    |- [y:=2;][x:=1;][{x:=x+1;}*]x>0
+    * }}}
+    * @see [[DLBySubst.assignEquality]] */
   lazy val assignb            : DependentPositionTactic =
-//    "[:=]" by(pos =>
-//    if (INTERNAL) ((useAt("[:=] assign")(pos) partial) | (useAt("[:=] assign equality")(pos) partial) /*| (useAt("[:=] assign update")(pos) partial)*/) partial
-//    else DLBySubst.assignb(pos)
-//    )
     new DependentPositionTactic("assignb") {
     override def factory(pos: Position): DependentTactic = new DependentTactic(name) {
       override def computeExpr(v: BelleValue): BelleExpr = {
-        if (INTERNAL) (useAt("[:=] assign")(pos) partial) | ((useAt("[:=] assign equality")(pos) partial) /*| (useAt("[:=] assign update")(pos) partial)*/) partial
-        else DLBySubst.assignb(pos)
+        if (INTERNAL) useAt("[:=] assign")(pos) | useAt("[:=] assign equality")(pos) /*| useAt("[:=] assign update")(pos)*/
+        else useAt("[:=] assign")(pos) | useAt("[:=] self assign")(pos) | DLBySubst.assignEquality(pos)
       }
     }
   }
@@ -181,7 +207,25 @@ trait HilbertCalculus extends UnifyUSCalculus {
   def DC(invariant: Formula)  : DependentPositionTactic = namedUseAt("DCaxiom", "DC differential cut",
     (us:Subst)=>us++RenUSubst(Seq((UnitPredicational("r",AnyArg), invariant)))
   )
-  /** DE: Differential Effect exposes the effect of a differential equation `[x'=f(x)]p(x,x')` on its differential symbols as `[x'=f(x)][x':=f(x)]p(x,x')` with its differential assignment `x':=f(x)`. */
+  /** DE: Differential Effect exposes the effect of a differential equation `[x'=f(x)]p(x,x')` on its differential symbols
+    * as `[x'=f(x)][x':=f(x)]p(x,x')` with its differential assignment `x':=f(x)`.
+    * {{{
+    *   G |- [{x'=f(||)&H(||)}][x':=f(||);]p(||), D
+    *   -------------------------------------------
+    *   G |- [{x'=f(||)&H(||)}]p(||), D
+    * }}}
+    *
+    * @example{{{
+    *    |- [{x'=1}][x':=1;]x>0
+    *    -----------------------DE(1)
+    *    |- [{x'=1}]x>0
+    * }}}
+    * @example{{{
+    *    |- [{x'=1, y'=x & x>0}][y':=x;][x':=1;]x>0
+    *    -------------------------------------------DE(1)
+    *    |- [{x'=1, y'=x & x>0}]x>0
+    * }}}
+    */
   lazy val DE                 : DependentPositionTactic = DifferentialTactics.DE
   /** DI: Differential Invariants are used for proving a formula to be an invariant of a differential equation.
     * `[x'=f(x)&q(x)]p(x)` reduces to `q(x) -> p(x) & [x'=f(x)]p(x)'`.
@@ -189,12 +233,17 @@ trait HilbertCalculus extends UnifyUSCalculus {
   lazy val DI                 : DependentPositionTactic = namedUseAt("DI", "DI differential invariant")
 
   /** DGC: Differential ghost add auxiliary differential equation with extra constant g */
-  private[btactics] def DGC(y:Variable, b:Term) = useAt("DG differential ghost constant", PosInExpr(0::Nil),
-    (us:Subst)=>us++RenUSubst(Seq(
-      (Variable("y_",None,Real), y),
-      (UnitFunctional("b", Except(Variable("y_", None, Real)), Real), b)
-    ))
-  )
+  private[btactics] def DGC(y:Variable, b:Term) =
+    useAt("DG differential ghost constant", PosInExpr(0::Nil),
+      (us:Subst)=>{
+        val singular = FormulaTools.singularities(b)
+        insist(singular.isEmpty, "Possible singularities during DG(" + DifferentialSymbol(y) + "=" + b + ") will be rejected: " + singular.mkString(","))
+        us++RenUSubst(Seq(
+          (Variable("y_",None,Real), y),
+          (UnitFunctional("b", Except(Variable("y_", None, Real)), Real), b)
+        ))
+      }
+    )
 
   //  /** DA: Differential Ghost add auxiliary differential equations with extra variables y'=a*y+b and replacement formula */
 //  def DA(y:Variable, a:Term, b:Term, r:Formula) : PositionTactic = ODETactics.diffAuxiliariesRule(y,a,b,r)
@@ -214,6 +263,7 @@ trait HilbertCalculus extends UnifyUSCalculus {
     * @see [[UnifyUSCalculus.chase]]
     */
   lazy val derive: DependentPositionTactic = new DependentPositionTactic("derive") {
+    //@todo check that it's actuall a ' maybe?
     override def factory(pos: Position): DependentTactic = chase(pos)
   }
 
@@ -242,7 +292,26 @@ trait HilbertCalculus extends UnifyUSCalculus {
     lazy val Dcompose           : DependentPositionTactic = ???
     /** Dconst: c()' derives a constant `c()' = 0` */
     lazy val Dconst             : DependentPositionTactic = namedUseAt("Dconst", "c()' derive constant fn")
-    /** Dvariable: x' derives a variable `(x)' = x'` */
+    /** Dvariable: x' derives a variable `(x)' = x'`
+      * Syntactically derives a differential of a variable to a differential symbol.
+      * {{{
+      *   G |- x'=f, D
+      *   --------------
+      *   G |- (x)'=f, D
+      * }}}
+      *
+      * @example{{{
+      *   |- x'=1
+      *   ----------Dvariable(1, 0::Nil)
+      *   |- (x)'=1
+      * }}}
+      * @example{{{
+      *   |- [z':=1;]z'=1
+      *   ------------------Dvariable(1, 1::0::Nil)
+      *   |- [z':=1;](z)'=1
+      * }}}
+      * @incontext
+      */
     lazy val Dvar               : DependentPositionTactic = new DependentPositionTactic("Dvar") {
       /** Create the actual tactic to be applied at position pos */
       override def factory(pos: Position): DependentTactic = (if (INTERNAL) namedUseAt("Dvar", "x' derive var") else DifferentialTactics.Dvariable)(pos)
@@ -310,6 +379,7 @@ trait HilbertCalculus extends UnifyUSCalculus {
 
   // implementation
 
+  @deprecated("useAt(AxiomInfo,inst) instead or just useAt(axiomName,inst)")
   private[btactics] def namedUseAt(codeName: String, axiomName: String, inst: (Subst=>Subst) = us=>us) = new DependentPositionTactic(codeName) {
     assert(DerivationInfo.hasCodeName(codeName), s"$codeName is a tactic name but is not a DerivationInfo codeName.")
     if (DerivationInfo.ofCodeName(codeName).codeName.toLowerCase() != codeName.toLowerCase()) println("WARNING: codeName should be changed to a consistent name: " + codeName)

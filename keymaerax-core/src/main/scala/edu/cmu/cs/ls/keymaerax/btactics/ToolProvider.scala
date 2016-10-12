@@ -16,14 +16,15 @@ import edu.cmu.cs.ls.keymaerax.tools._
   *       initialized.
   * @author Stefan Mitsch
   * @see [[edu.cmu.cs.ls.keymaerax.tools]]
+  * @see [[edu.cmu.cs.ls.keymaerax.tools.ToolInterface]]
   */
-object ToolProvider {
+object ToolProvider extends ToolProvider {
 
   /** Configuration options for tools. */
   type Configuration = Map[String, String]
 
-  /* @note mutable state for switching out default tool providers, which defaults to just returning null */
-  private[this] var f: ToolProvider = new NullToolProvider()
+  /* @note mutable state for switching out default tool providers, which defaults to just returning None */
+  private[this] var f: ToolProvider = new NoneToolProvider()
 
   /** Returns the current tool provider. */
   def provider: ToolProvider = f
@@ -32,94 +33,138 @@ object ToolProvider {
     * Set a new tool provider to be used from now on.
     * @param provider the tool provider to use in KeYmaera X from now on.
     */
-  def setProvider(provider: ToolProvider) = {f = provider}
+  def setProvider(provider: ToolProvider) = {
+    if (provider!=this) this.f = provider else throw new IllegalArgumentException("Provide a concrete tool provider, not this repository.")
+  }
 
   // convenience methods forwarding to the current factory
 
-  /** Returns a quantifier elimination tool for real arithmetic. */
-  def qeTool(): QETool = f.qeTool()
+  def qeTool(): Option[QETool] = f.qeTool()
 
-  /** Returns a differential equation solving helper tool. */
-  def odeTool(): DiffSolutionTool = f.odeTool()
+  def odeTool(): Option[ODESolverTool] = f.odeTool()
 
-  /** Returns a counterexample finding helper tool. */
-  def cexTool(): CounterExampleTool = f.cexTool()
+  def pdeTool(): Option[PDESolverTool] = f.pdeTool()
 
-  /** Returns a simulation helper tool. */
-  def simulationTool(): SimulationTool = f.simulationTool()
+  def simplifierTool(): Option[SimplificationTool] = f.simplifierTool()
 
-  /** Shutdown the tools provided by the current provider. After shutdown, the provider hands out null only. */
+  def solverTool(): Option[EquationSolverTool] = f.solverTool()
+
+  def algebraTool(): Option[AlgebraTool] = f.algebraTool()
+
+  def cexTool(): Option[CounterExampleTool] = f.cexTool()
+
+  def simulationTool(): Option[SimulationTool] = f.simulationTool()
+
   def shutdown(): Unit = f.shutdown()
+
+  def tools(): List[Tool] = f.tools()
 
 }
 
-/** A tool factory creates various tools.
+/** A tool factory creates various arithmetic and simulation tools.
   * @author Stefan Mitsch
+  * @see [[edu.cmu.cs.ls.keymaerax.tools.ToolInterface]]
   */
 trait ToolProvider {
   /** The provided tools. */
   def tools(): List[Tool]
 
   /** Returns a QE tool. */
-  def qeTool(): QETool
+  def qeTool(): Option[QETool]
 
   /** Returns an ODE tool. */
-  def odeTool(): DiffSolutionTool
+  def odeTool(): Option[ODESolverTool]
+
+  /** Returns a PDE tool. */
+  def pdeTool(): Option[PDESolverTool]
+
+  /** Returns an equation solver tool. */
+  def solverTool(): Option[EquationSolverTool]
+
+  /** Returns an algebra tool for algebraic computations. */
+  def algebraTool(): Option[AlgebraTool]
+
+  /** Returns an arithmetic/logical simplification tool */
+  def simplifierTool(): Option[SimplificationTool]
 
   /** Returns a counterexample tool. */
-  def cexTool(): CounterExampleTool
+  def cexTool(): Option[CounterExampleTool]
 
   /** Returns a simulation tool. */
-  def simulationTool(): SimulationTool
+  def simulationTool(): Option[SimulationTool]
 
-  /** Shutdown the tools provided by this provider. After shutdown, the provider hands out null only. */
+  /** Shutdown the tools provided by this provider. After shutdown, the provider hands out None only. */
   def shutdown(): Unit
 }
 
-/** A tool provider that points all tools to the specified `tool`
+/** A tool provider that picks appropriate special tools from the list of preferences, i.e., if multiple tools with
+  * the same trait appear in `toolPreferences`, the first will be picked for that trait.
   * @author Stefan Mitsch
   */
-class SingleToolProvider[T <: Tool](val tool: T) extends ToolProvider {
-  require(tool != null && tool.isInitialized, "Initialized tool expected")
-  private[this] var theTool: T = tool
+class PreferredToolProvider[T <: Tool](val toolPreferences: List[T]) extends ToolProvider {
+  require(toolPreferences != null && toolPreferences.nonEmpty && toolPreferences.forall(_.isInitialized), "Initialized tool expected")
 
-  override def tools(): List[Tool] = theTool :: Nil
-  override def qeTool(): QETool = theTool  match { case t: QETool => t case _ => null }
-  override def odeTool(): DiffSolutionTool = theTool  match { case t: DiffSolutionTool => t case _ => null }
-  override def cexTool(): CounterExampleTool = theTool  match { case t: CounterExampleTool => t case _ => null }
-  override def simulationTool(): SimulationTool = theTool  match { case t: SimulationTool => t case _ => null }
-  override def shutdown(): Unit = {
-    if (theTool != null) {
-      theTool.shutdown()
-      theTool = null.asInstanceOf[T]
-    }
+  private[this] lazy val qe: Option[Tool with QETool] = toolPreferences.find(_.isInstanceOf[QETool]).map(_.asInstanceOf[Tool with QETool])
+  private[this] lazy val ode: Option[Tool with ODESolverTool] = toolPreferences.find(_.isInstanceOf[ODESolverTool]).map(_.asInstanceOf[Tool with ODESolverTool])
+  private[this] lazy val pde: Option[Tool with PDESolverTool] = toolPreferences.find(_.isInstanceOf[PDESolverTool]).map(_.asInstanceOf[Tool with PDESolverTool])
+  private[this] lazy val cex: Option[Tool with CounterExampleTool] = toolPreferences.find(_.isInstanceOf[CounterExampleTool]).map(_.asInstanceOf[Tool with CounterExampleTool])
+  private[this] lazy val simplifier: Option[Tool with SimplificationTool] = toolPreferences.find(_.isInstanceOf[SimplificationTool]).map(_.asInstanceOf[Tool with SimplificationTool])
+  private[this] lazy val simulator: Option[Tool with SimulationTool] = toolPreferences.find(_.isInstanceOf[SimulationTool]).map(_.asInstanceOf[Tool with SimulationTool])
+  private[this] lazy val solver: Option[Tool with EquationSolverTool] = toolPreferences.find(_.isInstanceOf[EquationSolverTool]).map(_.asInstanceOf[Tool with EquationSolverTool])
+  private[this] lazy val algebra: Option[Tool with AlgebraTool] = toolPreferences.find(_.isInstanceOf[AlgebraTool]).map(_.asInstanceOf[Tool with AlgebraTool])
+
+  override def tools(): List[Tool] = toolPreferences
+  override def qeTool(): Option[QETool] = ensureInitialized(qe)
+  override def odeTool(): Option[ODESolverTool] = ensureInitialized(ode)
+  override def pdeTool(): Option[PDESolverTool] = ensureInitialized(pde)
+  override def cexTool(): Option[CounterExampleTool] = ensureInitialized(cex)
+  override def simplifierTool(): Option[SimplificationTool] = ensureInitialized(simplifier)
+  override def simulationTool(): Option[SimulationTool] = ensureInitialized(simulator)
+  override def solverTool(): Option[EquationSolverTool] = ensureInitialized(solver)
+  override def algebraTool(): Option[AlgebraTool] = ensureInitialized(algebra)
+  override def shutdown(): Unit = toolPreferences.foreach(_.shutdown())
+
+  /** Ensures that the tool `t` is initialized (= not yet shutdown) before returning it; returns None for uninitialized tools. */
+  private def ensureInitialized[S <: Tool](tool: Option[S]): Option[S] = tool match {
+    case Some(t) if t.isInitialized => tool
+    case _ => None
   }
 }
 
-/** A tool provider that initializes tools to null.
+/** A tool provider without tools.
   * @author Stefan Mitsch
   */
-class NullToolProvider extends ToolProvider {
+class NoneToolProvider extends ToolProvider {
   override def tools(): List[Tool] = Nil
-  override def qeTool(): QETool = null
-  override def odeTool(): DiffSolutionTool = null
-  override def cexTool(): CounterExampleTool = null
-  override def simulationTool(): SimulationTool = null
+  override def qeTool(): Option[QETool] = None
+  override def odeTool(): Option[ODESolverTool] = None
+  override def pdeTool(): Option[PDESolverTool] = None
+  override def simplifierTool(): Option[SimplificationTool] = None
+  override def cexTool(): Option[CounterExampleTool] = None
+  override def simulationTool(): Option[SimulationTool] = None
+  override def solverTool(): Option[EquationSolverTool] = None
+  override def algebraTool(): Option[AlgebraTool] = None
   override def shutdown(): Unit = {}
 }
 
-/** A tool provider that initializes QE tools to Polya, everything else to null.
+/** A tool provider that provides Polya as a QE tools, everything else is None.
   * @author Stefan Mitsch
   */
-class PolyaToolProvider extends SingleToolProvider({ val p = new Polya; p.init(Map()); p }) { }
+class PolyaToolProvider extends PreferredToolProvider({ val p = new Polya; p.init(Map()); p :: Nil }) {
+  def tool(): Polya = tools().head.asInstanceOf[Polya]
+}
 
 /** A tool provider that initializes tools to Mathematica.
-  * @param config
+  * @param config The Mathematica configuration (linkName, libDir).
   * @author Stefan Mitsch
   */
-class MathematicaToolProvider(config: Configuration) extends SingleToolProvider({ val m = new Mathematica(); m.init(config); m }) { }
+class MathematicaToolProvider(config: Configuration) extends PreferredToolProvider({ val m = new Mathematica(); m.init(config); m :: Nil }) {
+  def tool(): Mathematica = tools().head.asInstanceOf[Mathematica]
+}
 
-/** A tool provider that initializes QE tools to Z3, everything else to null.
+/** A tool provider that provides Z3 as QE tool and KeYmaera's own bundled diff. solution tool, everything else is None.
   * @author Stefan Mitsch
   */
-class Z3ToolProvider extends SingleToolProvider({ val z = new Z3; z.init(Map()); z }) { }
+class Z3ToolProvider extends PreferredToolProvider({ val z = new Z3; z.init(Map()); val ode = new IntegratorODESolverTool; ode.init(Map()); z :: ode :: Nil }) {
+  def tool(): Z3 = tools().head.asInstanceOf[Z3]
+}

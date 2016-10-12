@@ -27,7 +27,7 @@ private object ToolTactics {
         (varExhaustiveEqL2R('L)*) &
         (tryClosePredicate('L)*) & (tryClosePredicate('R)*) &
       Idioms.?(toSingleFormula & FOQuantifierTactics.universalClosure(order)(1) & rcf(qeTool)) &
-      DebuggingTactics.assertProved("QE was unable to prove: invalid formula")
+      DebuggingTactics.done("QE was unable to prove: invalid formula")
   )}
   def fullQE(qeTool: QETool): BelleExpr = fullQE()(qeTool)
 
@@ -36,7 +36,7 @@ private object ToolTactics {
     */
   def partialQE(qeTool: QETool) = {
     require(qeTool != null, "No QE tool available. Use parameter 'qeTool' to provide an instance (e.g., use withMathematica in unit tests)")
-    Idioms.NamedTactic("QE",
+    Idioms.NamedTactic("pQE",
       toSingleFormula & rcf(qeTool)
     )
   }
@@ -58,27 +58,8 @@ private object ToolTactics {
       )
   })
 
-  /**
-   * Transforms the FOL formula at position 'pos' into the formula 'to'. Uses QE to prove the transformation correct.
-   * @example {{{
-   *                           *
-   *                           --------------
-   *           a<b |- a<b      |- a<b -> b>a
-   *           ------------------------------ transform("a<b".asFormula)(1)
-   *           a<b |- b>a
-   * }}}
-   * * @example {{{
-   *                                         *
-   *                                    ---------------------
-   *           a+b<c, b>=0 |- a+b<c     b>=0 |- a+b<c -> a<c
-   *           ---------------------------------------------- transform("a+b<c".asFormula)(1)
-   *           a+b<c, b>=0 |- a<c
-   * }}}
-   * @param to The transformed formula.
-   * @param tool The tool to perform QE and obtain counter examples.
-   * @return The tactic
-   */
-  def transform(to: Formula)(tool: QETool with CounterExampleTool): DependentPositionTactic = "transform" by ((pos: Position, sequent: Sequent) => {
+  /** @see [[TactixLibrary.transform()]] */
+  def transform(to: Formula)(tool: QETool with CounterExampleTool): DependentPositionWithAppliedInputTactic = "transform" byWithInput (to, (pos: Position, sequent: Sequent) => {
     require(pos.isTopLevel, "transform only at top level")
     require(sequent(pos.checkTop).isFOL, "transform only on first-order formulas")
 

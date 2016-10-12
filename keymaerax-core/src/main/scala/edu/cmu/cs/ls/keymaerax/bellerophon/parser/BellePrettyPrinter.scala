@@ -33,10 +33,11 @@ object BellePrettyPrinter extends (BelleExpr => String) {
           case EitherTactic(l,r) => wrapLeft(e, l, indent) + " " + op(e).terminal.img + " " + wrapRight(e, r, indent)
           case BranchTactic(ts) => op(e).terminal.img +
             "(" + newline(indent) + ts.map(pp(_, indent+1)).mkString(", " + newline(indent+1)) + newline(indent) + ")"
-          case SaturateTactic(t) => "(" + pp(t, indent) + ")" + op(e).terminal.img
+          case SaturateTactic(t) => wrapLeft(e, t, indent) + op(e).terminal.img
           case b : BuiltInTactic => b.name
-          case e: PartialTactic => op(e).terminal.img + "(" + pp(e.child, indent) + ")"
-          case e: RepeatTactic => "(" + pp(e.child, indent) + ")^" + e.times
+          case e: PartialTactic => wrapLeft(e, e.child, indent) + " " + op(e).terminal.img
+          case e: RepeatTactic => wrapLeft(e, e.child, indent) + op(e).terminal.img
+          case OnAll(c) => op(e).terminal.img + "(" + pp(c, indent) + ")"
           case adp: AppliedDependentPositionTactic => adp.pt match {
             case e: DependentPositionWithAppliedInputTactic =>
               val eargs = e.inputs.map(input => argPrinter(Left(input))).mkString(", ")
@@ -53,6 +54,7 @@ object BellePrettyPrinter extends (BelleExpr => String) {
             it.name + "(" + argPrinter(theArg) + ")"
           }
           case ProveAs(lemmaName, pos, e) => "proveAs"
+          case t: AppliedBuiltinTwoPositionTactic => t.positionTactic.name + "(" + t.posOne.prettyString + ", " + t.posTwo.prettyString + ")"
           case _ => throw PrinterException(s"Do not know how to pretty-print ${e}")
         }
     }

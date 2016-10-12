@@ -56,6 +56,22 @@ object DebuggingTactics {
     }
   }
 
+  /**
+    * Assert that the assertion holds at a the specified position. Could be a non-top-level position. Analogous to [[debugAt]].
+    * @param msg The message to display.
+    * @param assertion The assertion.
+    */
+  def assertAt(msg: Expression => String, assertion: Expression => Boolean): BuiltInPositionTactic = new BuiltInPositionTactic("NOT_EXTRACTABLE") {
+    override def computeResult(provable: Provable, pos: Position): Provable = {
+      val ctx = provable.subgoals.head.at(pos)
+      if (!assertion(ctx._2))
+        throw new BelleUserGeneratedError("Assertion Failed: " + msg(ctx._2) + "\nAt:\n" + ctx)
+      provable
+    }
+  }
+
+  def assertAt(msg: => String, assertion: Expression => Boolean): BuiltInPositionTactic = assertAt((e:Expression) => msg, assertion)
+
   /** assert is a no-op tactic that raises an error if the provable is not of the expected size. */
   def assert(anteSize: Int, succSize: Int, msg: => String = ""): BuiltInTactic = new BuiltInTactic("assert") {
     override def result(provable: Provable): Provable = {
@@ -122,9 +138,9 @@ object DebuggingTactics {
     }
   }
 
-  /** no-op tactic that raises an error if the provable is not proved */
-  lazy val assertProved: BelleExpr = assertProved()
-  def assertProved(msg: String = ""): BelleExpr = new BuiltInTactic("assert proved") {
+  /** @see [[TactixLibrary.done]] */
+  lazy val done: BelleExpr = done()
+  def done(msg: String = ""): BelleExpr = new BuiltInTactic("done") {
     override def result(provable : Provable): Provable =
       if (provable.isProved) provable
       else throw new BelleError((if (msg.nonEmpty) msg+"\n" else "") + "Expected proved provable, but got " + provable)
@@ -135,15 +151,17 @@ object DebuggingTactics {
  * @author Nathan Fulton
  */
 object Idioms {
-  lazy val nil = PartialTactic(new BuiltInTactic("nil") {
+  lazy val nil = new BuiltInTactic("nil") {
     override def result(provable: Provable): Provable = provable
-  })
+  }
   lazy val ident = nil
 
   /** Optional tactic */
   def ?(t: BelleExpr): BelleExpr = (t partial) | nil
 
-  /** Mandatory change */
+  def <(t: BelleExpr*): BelleExpr = BranchTactic(t)
+
+  /** must(t) runs tactic `t` but only if `t` actually changed the goal. */
   def must(t: BelleExpr): BelleExpr = new DependentTactic("must") {
     override def computeExpr(before: Provable): BelleExpr = t & new BuiltInTactic(name) {
       override def result(after: Provable): Provable = {
@@ -188,9 +206,11 @@ object TacticFactory {
    *  "[:=] assign" by (pos => useAt("[:=] assign")(pos))
    * }}}
    * @param name The tactic name.
+    *             Use the special name "ANON" to indicate that this is an anonymous inner tactic that needs no storage.
    */
   implicit class TacticForNameFactory(val name: String) {
-    {
+    if (name == "") throw new InternalError("Don't use empty name, use ANON for anonymous inner tactics")
+    /*if (false)*/ {
       try {
         if (name != "ANON" && DerivationInfo.ofCodeName(name).codeName.toLowerCase() != name.toLowerCase())
           println("WARNING: codeName should be changed to a consistent name: " + name + " vs. " + DerivationInfo.ofCodeName(name).codeName)

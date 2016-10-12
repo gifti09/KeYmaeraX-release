@@ -1,0 +1,40 @@
+Lemma "bouncing-ball-tout.key".
+Sequent.
+
+==>
+Formula: ((((v)^((2))) <= ((((2))*(g()))*((H)-(h))))&(((h) >= ((0)))&(((g()) > ((0)))&(((H) >= ((0)))&((((0)) <= (c))&((c) < ((1))))))))->([{{{h'=v,v'=-(g())&(h) >= ((0))}};{{?((h) >= ((0)));}++{{?((h) = ((0)));};{v:=-((c)*(v));}}}}*](((h) >= ((0)))&((h) <= (H))))
+
+End.
+Tool.
+  tool """"KeYmaera X""""
+  model """"Functions.
+  R g().
+End.
+
+ProgramVariables.
+  R h.
+  R v.
+  R t.
+  R c.
+  R V.
+  R H.
+End.
+
+
+Problem.
+    v^2<=2*g()*(H-h) & h>=0 & g()>0 & H>=0 & 0<=c & c<1
+ -> [
+      {
+        {h'=v, v'=-g() & h>=0}
+        {  ?h>=0;
+        ++ ?h=0; v := -c*v; }
+      }* /*@invariant(v^2<=2*g()*(H-h) & h>=0)*/
+    ]
+    (h>=0 & h<=H)
+End.""""
+  tactic """"implyR(1) & (andL('L)*) & loop({`v^2<=2*g()*(H-h) & h>=0`}, 1) & <(
+  QE & done,
+  QE & done,
+  composeb(1) & choiceb(1.1) & testb(1.1.0) & composeb(1.1.1) & testb(1.1.1) & assignb(1.1.1.1) & ODE(1) & done)""""
+  proof """"""""
+End.

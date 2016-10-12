@@ -15,14 +15,16 @@ angular.module('sequent', ['ngSanitize', 'formula', 'ui.bootstrap', 'ngCookies',
             onApplyTwoPositionTactic: '&'
         },
         link: function(scope, elem, attr) {
+            //@todo duplicate with provingawesome.js#getCounterExample
             scope.getCounterExample = function() {
                 spinnerService.show('counterExampleSpinner');
                 $http.get('proofs/user/' + scope.userId + '/' + scope.proofId + '/' + scope.nodeId + '/counterExample')
                     .then(function(response) {
+                      var dialogSize = (response.data.result === 'cex.found') ? 'lg' : 'md';
                       $uibModal.open({
                         templateUrl: 'templates/counterExample.html',
                         controller: 'CounterExampleCtrl',
-                        size: 'lg',
+                        size: dialogSize,
                         resolve: {
                           result: function() { return response.data.result; },
                           origFormula: function() { return response.data.origFormula; },
@@ -85,10 +87,10 @@ angular.module('sequent', ['ngSanitize', 'formula', 'ui.bootstrap', 'ngCookies',
                 if (formula.formula.name === 'equals') {
                   scope.onApplyTactic({formulaId: formula.id, tacticId: 'allL2R'})
                 } else {
-                  $rootScope.$emit('proof.message', 'Drop formulas of the form "lhs=rhs" only')
+                  $rootScope.$emit('proof.message', { textStatus: 'Drop formulas of the form "lhs=rhs" only', errorThrown: "" })
                 }
               } else {
-                $rootScope.$emit('proof.message', 'Drop antecedent formulas only')
+                $rootScope.$emit('proof.message', { textStatus: 'Drop antecedent formulas only', errorThrown: "" })
               }
             }
 

@@ -6,8 +6,9 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.core._
-import DifferentialHelper._
+import edu.cmu.cs.ls.keymaerax.btactics.helpers.DifferentialHelper._
 import StaticSemantics.freeVars
+import edu.cmu.cs.ls.keymaerax.tools.{ODESolverTool, Tool, ToolBase}
 
 /**
   * Solves the initial value problem for systems of differential equations.
@@ -15,13 +16,19 @@ import StaticSemantics.freeVars
   * @author Nathan Fulton
   */
 object Integrator {
-  def apply(initialValues: Map[Variable, Term], system: ODESystem): List[Equal] = {
+  /**
+    * Integrates the differential equation and returns the solution as a list of equalities for each of the primed variables occuring in the system.
+    * @param initialValues Initial conditions for each of the variables that occur primed in the ODE.
+    * @param system The ODE system. @todo this could be a DifferentialProgram instead because we never use the contraint.
+    * @return The solution as a list of equalities, one for each of the primed variables.
+    */
+  def apply(initialValues: Map[Variable, Term], diffArg: Variable, system: ODESystem): List[Equal] = {
     val sortedOdes = sortAtomicOdes(atomicOdes(system))
     val primedVars = sortedOdes.map(ode => ode.xp.x)
     val initializedVars = initialValues.keySet
-    val timer = timeVar(system).getOrElse(throw new Exception("System needs a time variable."))
+    val timer = diffArg
 
-    assert(primedVars.filterNot(x => initializedVars contains x).isEmpty, "All primed vars should be initialized.")
+    assert(primedVars.forall(initializedVars.contains), "All primed vars should be initialized.")
 
     sortedOdes.foldLeft[List[Equal]](Nil)((solvedComponents, ode) => {
       if(timer == ode.xp.x)
@@ -37,9 +44,25 @@ object Integrator {
     })
   }
 
+  /**
+    * Glue code that implements the [[edu.cmu.cs.ls.keymaerax.tools.ODESolverTool]] interface using the Integrator.
+ *
+    * @todo untested
+    */
+  def diffSol(diffSys: DifferentialProgram, diffArg: Variable, iv: Map[Variable, Variable]): Option[Formula] = {
+    apply(iv, diffArg, ODESystem(diffSys)).foldLeft[Formula](True)((fml, eqn) => And(fml, eqn)) match {
+      case True => None
+      case And(l,r) => {
+        //throw away the initial True
+        if(l != True) throw new AxiomaticODESolver.AxiomaticODESolverExn("Expected the left-most component to be a True.")
+        Some(r)
+      }
+    }
+  }
+
   /** Returns true if `t` contains variables that have solutions in `solvedComponents`
     * @param solvedComponents Should be a list of equalities with Variables on the LHS. */
-  def containsSolvedComponents(t: Term, solvedComponents: List[Equal]) = {
+  private def containsSolvedComponents(t: Term, solvedComponents: List[Equal]) = {
     assert(solvedComponents.forall(eq => eq.left.isInstanceOf[Variable]))
     val solutions = conditionsToValues(solvedComponents)
 
@@ -71,7 +94,7 @@ object Integrator {
     * @param t Time variable
     * @return Integral term dt
     */
-  def integrator(term : Term, t : Variable, system: ODESystem) : Term = term match {
+  private def integrator(term : Term, t : Variable, system: ODESystem) : Term = term match {
     case Plus(l, r) => Plus(integrator(l, t, system), integrator(r, t, system))
     case Minus(l, r) => Minus(integrator(l, t, system), integrator(r, t, system))
     case Times(c, x) if x.equals(t) && !StaticSemantics.freeVars(c).contains(t) => Times(Divide(c, Number(2)), Power(x, Number(2)))
@@ -97,4 +120,22 @@ object Integrator {
         throw new Exception("Expected that recurrences would be solved so that derivatives don't ever mention other primed variables.")
     }
   }
+}
+
+class IntegratorODESolverTool extends ToolBase("IntegratorDiffSolutionTool") with ODESolverTool {
+  /**
+    * Computes the symbolic solution of a differential equation in normal form.
+    *
+    * @param diffSys The system of differential equations of the form x' = theta & H.
+    * @param diffArg The name of the differential argument (dx/d diffArg = theta).
+    * @param iv      The initial values per derivative.
+    * @return The solution if found; None otherwise
+    */
+  override def odeSolve(diffSys: DifferentialProgram, diffArg: Variable, iv: Map[Variable, Variable]): Option[Formula] = {
+    Some(Integrator(iv, diffArg, ODESystem(diffSys, True)).reduce[Formula]((l,r) => And(l,r)))
+  }
+
+  override def init(config: Map[String, String]): Unit = { initialized = true }
+  override def restart(): Unit = { initialized = true }
+  override def shutdown(): Unit = { initialized = false }
 }

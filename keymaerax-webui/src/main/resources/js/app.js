@@ -1,13 +1,11 @@
   var keymaeraProofApp = angular.module('keymaeraProofApp', [
   'ngRoute',
   'ngCookies',
+  'ngFileSaver',
   'ngSanitize',
   'ngAnimate',
   'ngTextcomplete',
-  'angularTreeview',
   'angularSpinners',
-  'ui.tree',
-  'cgBusy',
   'diff-match-patch',
   'ui.bootstrap',
   'ui.bootstrap.tabs',
@@ -20,19 +18,15 @@
   'keymaerax.errorHandlers',
   'keymaerax.interceptors',
   'keymaerax.services',
+  //'keymaerax.ui.binding',
   'keymaerax.ui.keyevents',
   'keymaerax.ui.mouseevents',
   'keymaerax.ui.directives',
   'keymaerax.ui.tacticeditor',
-  'progressMeter',
-  'proofProgressChart',
   'formula',
-  'mathjaxformula',
-  'mathjaxbind',
   'sequent',
   'sequentproof',
-  'xeditable',
-  'chart.js'
+  'xeditable'
 ], function($rootScopeProvider) {
   $rootScopeProvider.digestTtl(1000);
 });
@@ -74,8 +68,8 @@ keymaeraProofApp.config(['$routeProvider',
         controller: 'ModelDetailCtrl'
       }).
       when('/models/:modelId/proofs', {
-        templateUrl: 'partials/modelproof-list.html',
-        controller: 'ModelProofsCtrl'
+        templateUrl: 'partials/proof-list.html',
+        controller: 'ProofListCtrl'
       }).
       when('/models/:modelId/proofs/create', {
         //templateUrl: 'partials/proof-detail.html',
@@ -91,20 +85,16 @@ keymaeraProofApp.config(['$routeProvider',
         templateUrl: 'partials/proofawesome.html',
         controller: 'ProofCtrl'
       }).
-      when('/prooftree/:proofId', {
-        templateUrl: 'partials/prooftree-hacms.html',
-        controller: 'HACMSTreeCtrl'
-      }).
       when('/dev', {
         templateUrl: 'partials/dev.html',
         controller: 'DevCtrl'
       }).
-      when('/mathematica', {
-        templateUrl: 'partials/mathematica_config.html',
-        controller: 'MathematicaConfig'
+      when('/tools', {
+        templateUrl: 'partials/tool_config.html',
+        controller: 'ToolConfig'
       }).
       when('/license', {
-                templateUrl: 'partials/license_dialog.html',
+                templateUrl: 'partials/license_page.html',
                 controller: 'ServerInfoCtrl'
       }).
       otherwise({

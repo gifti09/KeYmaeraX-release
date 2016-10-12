@@ -11,7 +11,7 @@ import edu.cmu.cs.ls.keymaerax.core._
 import scala.annotation.tailrec
 
 /**
- * Parses .kyx KeYmaera X problem files.
+ * Parses `.kyx` KeYmaera X problem files.
  * @todo check sorts
  * @author Nathan Fulton
  * Created by nfulton on 6/12/15.
@@ -47,7 +47,7 @@ object KeYmaeraXProblemParser {
   catch {case e: ParseException => throw e.inInput(input)} //@todo properly offset Belle parse exceptions...
 
   /** Returns the location and value of the first non-ASCII character in a string. */
-  private def firstNonASCIICharacter(s : String) : Option[(Location, Char)] = {
+  def firstNonASCIICharacter(s : String) : Option[(Location, Char)] = {
     val pattern = """([^\p{ASCII}])""".r
     val matches = pattern.findAllIn(s).matchData
 

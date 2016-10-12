@@ -1,18 +1,19 @@
 <div class="row">
 <div class="col-md-12">
-<spinner name="tacticExecutionSpinner" ng-cloak="">
-    <div class="spinner-overlay"></div>
-    <div class="spinner">
+<spinner name="tacticExecutionSpinner" ng-cloak>
+    <div class="tactic-spinner-background"></div>
+    <div class="tactic-spinner-overlay">
+    <div class="tactic-spinner">
         <div class="spinner-double-bounce1"></div>
         <div class="spinner-double-bounce2"></div>
     </div>
-    <div class="spinner-please-wait">
-        <p>Tactic is executing, please wait...</p>
-        <p>{{runningTask.lastStep}}</p>
+    <div class="tactic-spinner-please-wait">
+        <p>Tactic {{runningTask.lastStep}} is executing, please wait...</p>
         <p><button class="btn btn-default" ng-click="runningTask.stop()"><i class="fa fa-stop"></i> Stop</button></p>
     </div>
+    </div>
 </spinner>
-<spinner name="proofLoadingSpinner" ng-cloak="">
+<spinner name="proofLoadingSpinner" ng-cloak>
     <div class="spinner-overlay"></div>
     <div class="spinner">
         <div class="spinner-double-bounce1"></div>
@@ -20,7 +21,7 @@
     </div>
     <div class="spinner-please-wait">Proof is loading, please wait...</div>
 </spinner>
-<spinner name="counterExampleSpinner" ng-cloak="">
+<spinner name="counterExampleSpinner" ng-cloak>
     <div class="spinner-overlay"></div>
     <div class="spinner">
         <div class="spinner-double-bounce1"></div>
@@ -32,7 +33,8 @@
     </div>
 </spinner>
 <div>
-<div class="row" ng-controller="TaskCtrl">
+<div  ng-controller="TaskCtrl">
+<div class="row">
     <div class="col-md-12">
         <!-- Tool box -->
         <div class="navbar navbar-default">
@@ -43,19 +45,13 @@
                         {{proofName}}
                     </span>
                 </span>
-                <li class="nav">
+                <div class="nav">
                     <ul class="nav navbar-nav">
                         <li><a ng-click="doTactic(undefined, 'master')"><span class="fa fa-play"> Auto</span></a></li>
-                        <li><a ng-click="doTactic(undefined, 'normalize')"><span class="fa fa-magic"> Normalize</span></a></li>
+                        <li><a ng-click="doTactic(undefined, 'unfoldProgramNormalize')"><span class="fa fa-magic"> Normalize</span></a></li>
                         <li><a ng-click="undoLastStep()"><span class="fa fa-undo"> Step back</span></a></li>
                     </ul>
                     <ul class="nav navbar-nav pull-right">
-                        <li><a ng-controller="ProofMessagesCtrl">
-                            <k4-auto-hide-alert message="proofMessage.text"
-                                                is-visible="proofMessage.isVisible" timeout="3000">
-                            </k4-auto-hide-alert>
-                            </a>
-                        </li>
                         <li><a ng-click="isNavbarCollapsed=!isNavbarCollapsed"><span class="fa fa-bars"></span></a></li>
                     </ul>
                 </div>
@@ -150,14 +146,25 @@
                             <a class="dropdown-toggle" data-toggle="dropdown" role="button"
                                aria-haspopup="true" aria-expanded="false">Inspect <span class="caret"></span></a>
                             <ul class="dropdown-menu">
-                                <!--<li><a ng-click="getCounterExample()">Counterexample</a></li>-->
+                                <li><a ng-click="getCounterExample()">Counterexample</a></li>
                                 <li><a ng-click="simulate()">Simulate</a></li>
                                 <li><a ng-click="doTactic(undefined, 'pQE')">Find assumptions</a></li>
                                 <li><a ng-click="exportSubgoal()">Export current subgoal</a></li>
                                 <li><a ng-click="downloadProblemSolution()">Download proof</a></li>
                             </ul>
                         </li>
-                    </ul><br/>
+                    </ul>
+                </div>
+                <div class="nav">
+                    <ul class="nav navbar-nav">
+                        <li ng-controller="ProofMessagesCtrl">
+                            <k4-auto-hide-alert message="proofMessage.text"
+                                                details="proofMessage.details"
+                                                is-visible="proofMessage.isVisible" timeout="-1">
+                            </k4-auto-hide-alert>
+                        </li>
+
+                    </ul>
                 </div>
             </div>
             </div>
@@ -165,7 +172,7 @@
     </div>
 </div>
 
-<div class="row" ng-controller="TaskCtrl">
+<div class="row">
     <div class="col-md-12">
         <!-- TODO restrict to < 10 tasks as tabs, then complement the rest with dropdown -->
         <uib-tabset justified="true">
@@ -214,11 +221,17 @@
                 <div style="margin-top:20px;"></div>
 
                 <!-- Tactic -->
-                <div class="row" controller="TaskCtrl">
+                <div class="row">
                     <div class="col-md-12">
                         <div class="panel panel-default">
                             <div class="panel-heading">
-                                <h3 class="panel-title">Proof Programming</h3>
+                                <div class="row">
+                                    <div class="col-md-2"><h3 class="panel-title">Proof Programming</h3></div>
+                                    <div class="col-md-9 k4-abbreviate"
+                                         uib-tooltip="Edit tactic below (execute with 'shift-enter' or click 'Run')"
+                                         tooltip-placement="top-left">Execute on current branch: {{tactic.tacticDiff}}</div>
+                                    <div class="col-md-1"><button class="btn btn-default pull-right" ng-click="executeTacticDiff()">Run</button></div>
+                                </div>
                             </div>
                             <div class="panel-body">
                             <k4-tactic-editor user-id="userId" proof-id="proofId" node-id="task.id"
@@ -235,5 +248,7 @@
     </div>
 </div>
 
+</div>
+</div>
 </div>
 </div>

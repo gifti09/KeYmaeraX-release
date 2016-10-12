@@ -10,34 +10,27 @@
  */
 package edu.cmu.cs.ls.keymaerax.hydra
 
-import java.io._
-import java.nio.file.Path
-import java.text.SimpleDateFormat
-import java.util.{Calendar, Locale}
-
-import _root_.edu.cmu.cs.ls.keymaerax.bellerophon._
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.hydra.SQLite.SQLiteDB
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXProblemParser, ParseException}
-import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
-import _root_.edu.cmu.cs.ls.keymaerax.btactics._
+import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.btactics.DerivationInfo
-import _root_.edu.cmu.cs.ls.keymaerax.tacticsinterface.TraceRecordingListener
-import com.github.fge.jackson.JsonLoader
-import com.github.fge.jsonschema.main.JsonSchemaFactory
+import edu.cmu.cs.ls.keymaerax.tacticsinterface.TraceRecordingListener
 import edu.cmu.cs.ls.keymaerax.core._
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter, HackyInlineErrorMsgPrinter}
+import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
 import Augmentors._
 import edu.cmu.cs.ls.keymaerax.tools._
 
-import scala.collection.immutable
-import scala.io.Source
 import spray.json._
 import spray.json.DefaultJsonProtocol._
-import java.io.{File, FileInputStream, FileOutputStream}
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter, HackyInlineErrorMsgPrinter}
-import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
+import java.io.{File, FileInputStream, FileOutputStream, FileNotFoundException}
+import java.text.SimpleDateFormat
+import java.util.{Calendar, Locale}
 
-import scala.collection.immutable.List
+import scala.io.Source
+import scala.collection.immutable._
 
 /**
  * A Request should handle all expensive computation as well as all
@@ -153,10 +146,13 @@ class CounterExampleRequest(db: DBAbstraction, userId: String, proofId: String, 
     val fml = node.sequent.toFormula
     if (fml.isFOL) {
       try {
-        ToolProvider.cexTool().findCounterExample(fml) match {
-          //@todo return actual sequent, use collapsiblesequentview to display counterexample
-          case Some(cex) => new CounterExampleResponse("cex.found", fml, cex) :: Nil
-          case None => new CounterExampleResponse("cex.none") :: Nil
+        ToolProvider.cexTool() match {
+          case Some(cexTool) => cexTool.findCounterExample(fml) match {
+            //@todo return actual sequent, use collapsiblesequentview to display counterexample
+            case Some(cex) => new CounterExampleResponse("cex.found", fml, cex) :: Nil
+            case None => new CounterExampleResponse("cex.none") :: Nil
+          }
+          case None => new CounterExampleResponse("cex.notool") :: Nil
         }
       } catch {
         case ex: MathematicaComputationAbortedException => new CounterExampleResponse("cex.timeout") :: Nil
@@ -178,7 +174,7 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
 
     //@note not a tactic because we don't want to change the proof tree just by simulating
     val fml = if (node.sequent.ante.nonEmpty) node.sequent.toFormula else { val Imply(True, succ) = node.sequent.toFormula; succ }
-    fml match {
+    if (ToolProvider.odeTool().isDefined) fml match {
       case Imply(initial, b@Box(prg, _)) =>
         // all symbols because we need frame constraints for constants
         val vars = (StaticSemantics.symbols(prg) ++ StaticSemantics.symbols(initial)).filter(_.isInstanceOf[Variable])
@@ -188,6 +184,7 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
         new SetupSimulationResponse(addNonDetInitials(initial, vars), transform(simSpec)) :: Nil
       case _ => new ErrorResponse("Simulation only supported for formulas of the form initial -> [program]safe") :: Nil
     }
+    else new ErrorResponse("No simulation tool available, please configure Mathematica") :: Nil
   }
 
   private def addNonDetInitials(initial: Formula, vars: Set[NamedSymbol]): Formula = {
@@ -225,7 +222,7 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
       primedSymbols(ode).map(v => v -> Variable(v.name + "0", v.index, v.sort)).toMap
     val time: Variable = Variable("t_", None, Real)
     //@note replace initial values with original variable, since we turn them into assignments
-    val solution = replaceFree(ToolProvider.odeTool().diffSol(ode, time, iv).get, iv.map(_.swap))
+    val solution = replaceFree(ToolProvider.odeTool().get.odeSolve(ode, time, iv).get, iv.map(_.swap))
     val flatSolution = flattenConjunctions(solution).
       sortWith((f, g) => StaticSemantics.symbols(f).size < StaticSemantics.symbols(g).size)
     Compose(
@@ -263,12 +260,13 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
 
 class SimulationRequest(db: DBAbstraction, userId: String, proofId: String, nodeId: String, initial: Formula, stateRelation: Formula, steps: Int, n: Int, stepDuration: Term) extends UserRequest(userId) {
   override def resultingResponses(): List[Response] = {
-    val s = ToolProvider.simulationTool()
-    if (s != null) {
-      val timedStateRelation = stateRelation.replaceFree(Variable("t_"), stepDuration)
-      val simulation = s.simulate(initial, timedStateRelation, steps, n)
-      new SimulationResponse(simulation, stepDuration) :: Nil
-    } else new ErrorResponse("No simulation tool configured, please setup Mathematica") :: Nil
+    ToolProvider.simulationTool() match {
+      case Some(s) =>
+        val timedStateRelation = stateRelation.replaceFree(Variable("t_"), stepDuration)
+        val simulation = s.simulate(initial, timedStateRelation, steps, n)
+        new SimulationResponse(simulation, stepDuration) :: Nil
+      case _ => new ErrorResponse("No simulation tool configured, please setup Mathematica") :: Nil
+    }
   }
 }
 
@@ -361,7 +359,7 @@ class ConfigureMathematicaRequest(db : DBAbstraction, linkName : String, jlinkLi
 class GetMathematicaConfigSuggestionRequest(db : DBAbstraction) extends LocalhostOnlyRequest {
   override def resultingResponses(): List[Response] = {
     val reader = this.getClass.getResourceAsStream("/config/potentialMathematicaPaths.json")
-    val contents : String = Source.fromInputStream(reader).getLines().foldLeft("")((file, line) => file + "\n" + line)
+    val contents : String = Source.fromInputStream(reader).getLines().mkString("\n")
     val source : JsArray = contents.parseJson.asInstanceOf[JsArray]
 
     // TODO provide classes and spray JSON protocol to convert
@@ -385,7 +383,7 @@ class GetMathematicaConfigSuggestionRequest(db : DBAbstraction) extends Localhos
       case None => pathTuples.head // use the first configuration as suggestion when nothing else matches
     }
 
-    new MathematicaConfigSuggestionResponse(os, suggestion._1, suggestion._2, suggestion._3, suggestion._4, suggestion._5) :: Nil
+    new MathematicaConfigSuggestionResponse(os, suggestion._1, suggestion._2, suggestion._3, suggestion._4, suggestion._5, pathTuples) :: Nil
   }
 
   private def osKeyOf(osName: String): String = {
@@ -393,6 +391,23 @@ class GetMathematicaConfigSuggestionRequest(db : DBAbstraction) extends Localhos
     else if (osName.contains("mac")) "MacOS"
     else if (osName.contains("nix") || osName.contains("nux") || osName.contains("aix")) "Unix"
     else "Unknown"
+  }
+}
+
+class GetToolRequest(db: DBAbstraction) extends LocalhostOnlyRequest {
+  override def resultingResponses(): List[Response] = {
+    //@todo more/different tools
+    new KvpResponse("tool", db.getConfiguration("tool").config("qe")) :: Nil
+  }
+}
+
+class SetToolRequest(db: DBAbstraction, tool: String) extends LocalhostOnlyRequest {
+  override def resultingResponses(): List[Response] = {
+    //@todo more/different tools
+    assert(tool == "mathematica" || tool == "z3", "Expected either Mathematica or Z3 tool")
+    val toolConfig = new ConfigurationPOJO("tool", Map("qe" -> tool))
+    db.updateConfiguration(toolConfig)
+    new KvpResponse("tool", tool) :: Nil
   }
 }
 
@@ -417,7 +432,30 @@ class GetMathematicaConfigurationRequest(db : DBAbstraction) extends LocalhostOn
 class MathematicaStatusRequest(db : DBAbstraction) extends Request {
   override def resultingResponses(): List[Response] = {
     val config = db.getConfiguration("mathematica").config
-    new MathematicaStatusResponse(config.contains("linkName") && config.contains("jlinkLibDir")) :: Nil
+    new ToolStatusResponse(config.contains("linkName") && config.contains("jlinkLibDir")) :: Nil
+  }
+}
+
+class Z3StatusRequest(db : DBAbstraction) extends Request {
+  override def resultingResponses(): List[Response] = new ToolStatusResponse(true) :: Nil
+}
+
+class ListExamplesRequest(db: DBAbstraction) extends Request {
+  override def resultingResponses(): List[Response] = {
+    //@todo read from the database/some web page?
+    val examples =
+      new ExamplePOJO(0, "STTT Tutorial",
+        "Automated stop sign braking for cars",
+        "/dashboard.html?#/tutorials",
+        "classpath:/examples/tutorials/sttt/sttt.json",
+        "/examples/tutorials/sttt/sttt.png") ::
+      new ExamplePOJO(1, "CPSWeek 2016 Tutorial",
+        "Proving ODEs",
+        "http://www.ls.cs.cmu.edu/KeYmaeraX/KeYmaeraX-tutorial.pdf",
+        "classpath:/examples/tutorials/cpsweek/cpsweek.json",
+        "/examples/tutorials/cpsweek/cpsweek.png") ::
+      Nil
+    new ListExamplesResponse(examples) :: Nil
   }
 }
 
@@ -454,6 +492,13 @@ class CreateModelRequest(db : DBAbstraction, userId : String, nameOfModel : Stri
   def getModelId = createdId match {
     case Some(s) => s
     case None => throw new IllegalStateException("Requested created model ID before calling resultingResponses, or else an error occurred during creation.")
+  }
+}
+
+class ImportExampleRepoRequest(db: DBAbstraction, userId: String, repoUrl: String) extends UserRequest(userId) {
+  override def resultingResponses(): List[Response] = {
+    DatabasePopulator.importJson(db, userId, repoUrl, prove=false)
+    new BooleanResponse(true) :: Nil
   }
 }
 
@@ -519,6 +564,20 @@ class CreateProofRequest(db : DBAbstraction, userId : String, modelId : String, 
   }
 }
 
+class ProveFromTacticRequest(db: DBAbstraction, userId: String, modelId: String) extends UserRequest(userId) {
+  def resultingResponses() = {
+    val model = db.getModel(modelId)
+    model.tactic match {
+      case Some(tacticText) =>
+        val proofId = db.createProofForModel(Integer.parseInt(modelId), model.name + " from tactic", "Proof from tactic", currentDate())
+        DatabasePopulator.executeTactic(db, model.keyFile, proofId, tacticText)
+        new CreatedIdResponse(proofId.toString) :: Nil
+      case None => ???
+    }
+
+  }
+}
+
 class ProofsForModelRequest(db : DBAbstraction, userId: String, modelId: String) extends UserRequest(userId) {
   def resultingResponses() = {
     val proofs = db.getProofsForModel(modelId).map(proof =>
@@ -544,9 +603,13 @@ class OpenProofRequest(db : DBAbstraction, userId : String, proofId : String, wa
   */
 class GetAgendaAwesomeRequest(db : DBAbstraction, userId : String, proofId : String) extends UserRequest(userId) {
   def resultingResponses() = {
-    val items = db.agendaItemsForProof(proofId.toInt)
-    val closed = db.getProofInfo(proofId).closed
-    val response = new AgendaAwesomeResponse(ProofTree.ofTrace(db.getExecutionTrace(proofId.toInt), agendaItems = items, proofFinished = closed))
+    val proofIdInt = proofId.toInt
+    val closed = db.isProofClosed(proofIdInt)
+    val trace = db.getExecutionTrace(proofIdInt)
+    val proofTree = ProofTree.ofTrace(trace, () => db.agendaItemsForProof(proofIdInt), proofFinished = closed)
+    val (_ :: leaves) = proofTree.leavesAndRoot
+    val leavesWithPositions = leaves.map(n => (n, RequestHelper.stepPosition(db, n)))
+    val response = new AgendaAwesomeResponse(proofId, proofTree.root, leavesWithPositions, proofTree.leaves)
     response :: Nil
   }
 }
@@ -605,7 +668,8 @@ class ProofTaskParentRequest(db: DBAbstraction, userId: String, proofId: String,
     tree.findNode(nodeId).flatMap(_.parent) match {
       case None => throw new Exception("Tried to get parent of node " + nodeId + " which has no parent")
       case Some(parent) =>
-        val response = new ProofTaskParentResponse(parent)
+        val positionLocator = RequestHelper.stepPosition(db, parent)
+        val response = new ProofTaskParentResponse(parent, positionLocator)
         response :: Nil
     }
   }
@@ -623,7 +687,8 @@ case class GetPathAllRequest(db: DBAbstraction, userId: String, proofId: String,
     }
     /* To start with, always send the whole path. */
     val parentsRemaining = 0
-    val response = new GetPathAllResponse(path.reverse, parentsRemaining)
+    val pathWithPos = path.map(n => (n, RequestHelper.stepPosition(db, n)))
+    val response = new GetPathAllResponse(pathWithPos.reverse, parentsRemaining)
     response :: Nil
   }
 }
@@ -632,7 +697,7 @@ case class GetBranchRootRequest(db: DBAbstraction, userId: String, proofId: Stri
   def resultingResponses() = {
     val closed = db.getProofInfo(proofId).closed
     val tree = ProofTree.ofTrace(db.getExecutionTrace(proofId.toInt), proofFinished = closed)
-    val node = tree.nodes.find({case node => node.id.toString == nodeId})
+    val node = tree.nodes.find(_.id.toString == nodeId)
     node match {
       case None => throw new Exception("Node not found")
       case Some(node) =>
@@ -646,7 +711,8 @@ case class GetBranchRootRequest(db: DBAbstraction, userId: String, proofId: Stri
             done = true
           }
         }
-          new GetBranchRootResponse(currNode) :: Nil
+        val positionLocator = RequestHelper.stepPosition(db, currNode)
+        new GetBranchRootResponse(currNode, positionLocator) :: Nil
     }
   }
 }
@@ -666,9 +732,9 @@ class GetApplicableAxiomsRequest(db:DBAbstraction, userId: String, proofId: Stri
           map{axiom => (
             DerivationInfo(axiom),
             UIIndex.comfortOf(axiom).map(DerivationInfo(_)))}
-        val generator = new ConfigurableGenerate(db.getInvariants(proof.modelId))
+        val generator = new ConfigurableGenerator(db.getInvariants(proof.modelId))
         val suggestedInput = generator(sequent, pos)
-        new ApplicableAxiomsResponse(axioms, suggestedInput) :: Nil
+        new ApplicableAxiomsResponse(axioms, if (suggestedInput.hasNext) Some(suggestedInput.next) else None) :: Nil
       case None => new ApplicableAxiomsResponse(Nil, None) :: Nil
     }
   }
@@ -735,6 +801,26 @@ class ExportFormula(db: DBAbstraction, userId: String, proofId: String, nodeId: 
 
 case class BelleTermInput(value: String, spec:Option[ArgInfo])
 
+class GetStepRequest(db: DBAbstraction, userId: String, proofId: String, nodeId: String, pos: Position) extends UserRequest(userId) {
+  def resultingResponses(): List[Response] = {
+    val trace = db.getExecutionTrace(proofId.toInt)
+    val tree = ProofTree.ofTrace(trace)
+    val node = tree.findNode(nodeId) match {
+      case None => throw new ProverException("Invalid node " + nodeId)
+      case Some(n) => n
+    }
+
+    node.sequent.sub(pos) match {
+      case Some(fml: Formula) =>
+        UIIndex.theStepAt(fml, Some(pos)) match {
+          case Some(step) => new ApplicableAxiomsResponse((DerivationInfo(step), None) :: Nil, None) :: Nil
+          case None => new ApplicableAxiomsResponse(Nil, None) :: Nil
+        }
+      case _ => new ApplicableAxiomsResponse(Nil, None) :: Nil
+    }
+  }
+}
+
 /* If pos is Some then belleTerm must parse to a PositionTactic, else if pos is None belleTerm must parse
 * to a Tactic */
 class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, nodeId: String, belleTerm: String,
@@ -785,13 +871,12 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
   private class TacticPositionError(val msg:String,val pos: edu.cmu.cs.ls.keymaerax.parser.Location,val inlineMsg: String) extends Exception
 
   def resultingResponses(): List[Response] = {
-    val closed = db.getProofInfo(proofId).closed
+    val proof = db.getProofInfo(proofId)
+    val closed = proof.closed
     if (closed) {
       return new ErrorResponse("Can't execute tactics on a closed proof") :: Nil
     }
-    val proof = db.getProofInfo(proofId)
-    val model = db.getModel(proof.modelId)
-    val generator = new ConfigurableGenerate(db.getInvariants(proof.modelId))
+    val generator = new ConfigurableGenerator(db.getInvariants(proof.modelId))
     val trace = db.getExecutionTrace(proofId.toInt)
     val tree = ProofTree.ofTrace(trace)
     val node =
@@ -884,8 +969,9 @@ class TaskResultRequest(db: DBAbstraction, userId: String, proofId: String, node
         case Some(Left(BelleProvable(_, _))) =>
           val finalTree = ProofTree.ofTrace(db.getExecutionTrace(proofId.toInt))
           val parentNode = finalTree.findNode(nodeId).get
+          val positionLocator = if (parentNode.children.isEmpty) None else RequestHelper.stepPosition(db, parentNode.children.head)
           assert(noBogusClosing(finalTree, parentNode), "Server thinks a goal has been closed when it clearly has not")
-          new TaskResultResponse(parentNode, parentNode.children, progress = true)
+          new TaskResultResponse(parentNode, parentNode.children, positionLocator, progress = true)
         case Some(Right(error: BelleError)) => new ErrorResponse("Tactic failed with error: " + error.getMessage, error.getCause)
         case None => new ErrorResponse("Could not get tactic result - execution cancelled? ")
       }
@@ -989,11 +1075,12 @@ class CheckIsProvedRequest(db: DBAbstraction, userId: String, proofId: String) e
     val proof = db.getProofInfo(proofId)
     val model = db.getModel(proof.modelId)
     val conclusionFormula = KeYmaeraXProblemParser(model.keyFile)
-    val conclusion = Sequent(immutable.IndexedSeq(), immutable.IndexedSeq(conclusionFormula))
+    val conclusion = Sequent(IndexedSeq(), IndexedSeq(conclusionFormula))
     val trace = db.getExecutionTrace(proofId.toInt)
     val provable = trace.lastProvable
-    val isProved = provable.isProved && provable.conclusion == conclusion
-    new ProofVerificationResponse(proofId, isProved) :: Nil
+    assert(provable.conclusion == conclusion, "Conclusion of provable " + provable + " must match problem " + conclusion)
+    val tactic = new ExtractTacticFromTrace(db).getTacticString(trace)
+    new ProofVerificationResponse(proofId, provable, tactic) :: Nil
   }
 }
 
@@ -1092,8 +1179,26 @@ class ExtractTacticRequest(db: DBAbstraction, proofIdStr: String) extends Reques
   private val proofId = Integer.parseInt(proofIdStr)
 
   override def resultingResponses(): List[Response] = {
-    val exprText = BellePrettyPrinter(new ExtractTacticFromTrace(db).apply(proofId))
+    val exprText = new ExtractTacticFromTrace(db).getTacticString(db.getExecutionTrace(proofId))
     new ExtractTacticResponse(exprText) :: Nil
+  }
+}
+
+class ExtractLemmaRequest(db: DBAbstraction, proofIdStr: String) extends Request {
+  private val proofId = Integer.parseInt(proofIdStr)
+
+  override def resultingResponses(): List[Response] = {
+    val proofInfo = db.getProofInfo(proofIdStr)
+    val model = db.getModel(proofInfo.modelId)
+    val trace = db.getExecutionTrace(proofId)
+    val tactic = new ExtractTacticFromTrace(db).getTacticString(trace)
+    val provable = trace.lastProvable
+    val evidence = Lemma.requiredEvidence(provable, ToolEvidence(List(
+      "tool" -> "KeYmaera X",
+      "model" -> model.keyFile,
+      "tactic" -> tactic
+    )) :: Nil)
+    new ExtractProblemSolutionResponse(new Lemma(provable, evidence, Some(proofInfo.name)).toString) :: Nil
   }
 }
 
@@ -1101,7 +1206,7 @@ class ExtractProblemSolutionRequest(db: DBAbstraction, proofIdStr: String) exten
   private val proofId = Integer.parseInt(proofIdStr)
 
   override def resultingResponses(): List[Response] = {
-    val exprText = BellePrettyPrinter(new ExtractTacticFromTrace(db).apply(proofId))
+    val exprText = BellePrettyPrinter(new ExtractTacticFromTrace(db).apply(db.getExecutionTrace(proofId)))
     val problem = db.getModel(db.getProofInfo(proofId).modelId).keyFile
     new ExtractProblemSolutionResponse(problem + "\n" + "Solution.\n" + exprText + "\nEnd.") :: Nil
   }
@@ -1109,4 +1214,20 @@ class ExtractProblemSolutionRequest(db: DBAbstraction, proofIdStr: String) exten
 
 class MockRequest(resourceName: String) extends Request {
   override def resultingResponses(): List[Response] = new MockResponse(resourceName) :: Nil
+}
+
+object RequestHelper {
+  /** Queries the database for the position where the tactic that created the node `node` was applied. */
+  def stepPosition(db: DBAbstraction, node: TreeNode): Option[PositionLocator] = {
+    node.startStep match {
+      case Some(step) =>
+        BelleParser(db.getExecutable(step.executableId).belleExpr) match {
+          case pt: AppliedPositionTactic => Some(pt.locator)
+          case pt: AppliedDependentPositionTactic => Some(pt.locator)
+          case _ => None
+        }
+      case None => None
+    }
+  }
+
 }

@@ -4,11 +4,13 @@
 */
 package edu.cmu.cs.ls.keymaerax.btactics
 
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.bellerophon.{OnAll, TheType}
-import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{print,printIndexed}
+import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{print, printIndexed}
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 import edu.cmu.cs.ls.keymaerax.core.{DotTerm, Formula, SubstitutionPair, USubst}
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXProblemParser
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.tags.SlowTest
 import testHelper.ParserFactory._
@@ -23,7 +25,7 @@ import scala.language.postfixOps
 @SlowTest
 class CpsWeekTutorial extends TacticTestBase {
 
-  "Example 0" should "prove with abstract invariant J(x)" in withMathematica { implicit tool =>
+  "Example 0" should "prove with abstract invariant J(x)" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/00_robosimple.kyx"))
     val tactic = implyR('R) & (andL('L)*) & loop("J(v)".asFormula)('R) <(
       skip,
@@ -35,7 +37,7 @@ class CpsWeekTutorial extends TacticTestBase {
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  "Example 1" should "have 4 open goals for abstract invariant J(x,v)" in withMathematica { implicit qeTool =>
+  "Example 1" should "have 4 open goals for abstract invariant J(x,v)" in withMathematica { qeTool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/01_robo1.kyx"))
     val tactic = implyR('R) & (andL('L)*) & loop("J(x,v)".asFormula)('R) <(
       print("Base case") partial,
@@ -55,7 +57,7 @@ class CpsWeekTutorial extends TacticTestBase {
     result.subgoals(3).succ should contain only "((true&t_>=0)&v=-1*b*t_+v_0)&x=1/2*(-1*b*t_^2+2*t_*v_0+2*x_0)->J(x,v)".asFormula
   }
 
-  it should "have 4 open goals for abstract invariant J(x,v) with master" in withMathematica { implicit qeTool =>
+  it should "have 4 open goals for abstract invariant J(x,v) with master" in withMathematica { qeTool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/01_robo1.kyx"))
     val result = proveBy(s, master())
     result.subgoals should have size 4
@@ -72,12 +74,12 @@ class CpsWeekTutorial extends TacticTestBase {
     result.subgoals(3).succ should contain only "J(x,v)".asFormula
   }
 
-  it should "prove automatically with the correct conditions" in withMathematica { implicit tool =>
+  it should "prove automatically with the correct conditions" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/01_robo1-full.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove with a manually written searchy tactic" in withMathematica { implicit tool =>
+  it should "prove with a manually written searchy tactic" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/01_robo1-full.kyx"))
     val tactic = implyR('R) & (andL('L)*) & loop("v^2<=2*b*(m-x)".asFormula)('R) <(
       print("Base case") & closeId,
@@ -87,7 +89,14 @@ class CpsWeekTutorial extends TacticTestBase {
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  "Example 2" should "have expected open goal and a counter example" in withMathematica { implicit tool =>
+  it should "stop after ODE to let users inspect a counterexample with false speed sb condition" in withMathematica { tool =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/01_robo1-falsespeedsb.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/01_robo1-falsespeedsb.kyt")).mkString)
+    val result = proveBy(KeYmaeraXProblemParser(modelContent), tactic)
+    result.subgoals should have size 2
+  }
+
+  "Example 2" should "have expected open goal and a counter example" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/02_robo2-justbrakenaive.kyx"))
     val result = proveBy(s, master())
     result.isProved shouldBe false //@note This assertion is a soundness check!
@@ -117,7 +126,7 @@ class CpsWeekTutorial extends TacticTestBase {
     cex.get("m".asVariable) should contain ("4".asTerm)
   }
 
-  it should "find the braking condition" in withMathematica { implicit tool =>
+  it should "find the braking condition" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/02_robo2-justbrakenaive.kyx"))
     val result = proveBy(s, master())
     result.subgoals should have size 1
@@ -149,7 +158,7 @@ class CpsWeekTutorial extends TacticTestBase {
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "find the acceleration condition" in withMathematica { implicit tool =>
+  it should "find the acceleration condition" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/04_robo2-justaccnaive.kyx"))
     val result = proveBy(s, master())
     result.subgoals should have size 1
@@ -171,12 +180,32 @@ class CpsWeekTutorial extends TacticTestBase {
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove the full model" in withMathematica { implicit tool =>
+  it should "prove the full model" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-full.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  "A searchy tactic" should "prove both a simple and a complicated model" in withMathematica { implicit tool =>
+  it should "be provable from parsed tactic" in withMathematica { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-full.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-full.kyt")).mkString)
+    db.proveBy(modelContent, tactic) shouldBe 'proved
+  }}
+
+  it should "be provable from parsed tactic with Z3" in withZ3 { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-full.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-full.kyt")).mkString)
+    db.proveBy(modelContent, tactic) shouldBe 'proved
+  }}
+
+  it should "find a hint for SB from parsed tactic" in withMathematica { qeTool =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-fullnaive.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/06_robo2-fullnaive.kyt")).mkString)
+    val result = proveBy(KeYmaeraXProblemParser(modelContent), tactic)
+    result.subgoals should have size 2
+    result.subgoals.last.succ should contain only "ep<=0|ep>0&((v_0 < 0|v_0=0&(t_0 < ep&((t_<=0|(0 < t_&t_<=ep+-1*t_0)&(A<=0|A>0&((t < t_0+t_|t=t_0+t_&((v < A*t_|v=A*t_&(((x<=m|(m < x&x < 1/2*(2*m+A*t_^2))&((x_0 < 1/2*(-1*A*t_^2+2*x)|x_0=1/2*(-1*A*t_^2+2*x)&(b<=0|b>0&(t__0 < 0|t__0>0)))|x_0>1/2*(-1*A*t_^2+2*x)))|x=1/2*(2*m+A*t_^2)&((x_0 < m|x_0=m&(b<=0|b>0&(t__0 < 0|t__0>0)))|x_0>m))|x>1/2*(2*m+A*t_^2)))|v>A*t_))|t>t_0+t_)))|t_>ep+-1*t_0)|t_0>=ep))|v_0>0&(t_0 < ep&((t_<=0|(0 < t_&t_<=ep+-1*t_0)&(A < 0|A>=0&((t < t_0+t_|t=t_0+t_&((v < A*t_+v_0|v=A*t_+v_0&(((x<=m|(m < x&x < 1/2*(2*m+A*t_^2+2*t_*v_0))&((x_0 < 1/2*(-1*A*t_^2+-2*t_*v_0+2*x)|x_0=1/2*(-1*A*t_^2+-2*t_*v_0+2*x)&(b<=0|b>0&(t__0 < 0|t__0>0)))|x_0>1/2*(-1*A*t_^2+-2*t_*v_0+2*x)))|x=1/2*(2*m+A*t_^2+2*t_*v_0)&((x_0 < m|x_0=m&(b<=0|b>0&(t__0 < 0|t__0>0)))|x_0>m))|x>1/2*(2*m+A*t_^2+2*t_*v_0)))|v>A*t_+v_0))|t>t_0+t_)))|t_>ep+-1*t_0)|t_0>=ep))".asFormula
+  }
+
+  "A searchy tactic" should "prove both a simple and a complicated model" in withMathematica { tool =>
     def tactic(j: Formula) = implyR('R) & (andL('L)*) & loop(j)('R) <(
       print("Base case") & closeId,
       print("Use case") & QE,
@@ -190,7 +219,7 @@ class CpsWeekTutorial extends TacticTestBase {
     proveBy(harder, tactic("v^2<=2*b*(m-x)".asFormula)) shouldBe 'proved
   }
 
-  "2D Car" should "be provable" in withMathematica { implicit tool =>
+  "2D Car" should "be provable" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/07_robo3-full.kyx"))
 
     def di(a: String) = diffInvariant("dx^2+dy^2=1".asFormula, "t>=0".asFormula, s"v=old(v)+$a*t".asFormula,
@@ -213,13 +242,57 @@ class CpsWeekTutorial extends TacticTestBase {
     result.subgoals should have size 1
   }
 
-  "Motzkin" should "be provable with DI+DW" in withMathematica { implicit tool =>
+  it should "be provable from parsed tactic" in withMathematica { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/07_robo3-full.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/07_robo3-full.kyt")).mkString)
+    val result = db.proveBy(modelContent, tactic)
+    result.subgoals should have size 1
+  }}
+
+  it should "be provable from parsed tactic with Z3" in withZ3 { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/07_robo3-full.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/07_robo3-full.kyt")).mkString)
+    val result = db.proveBy(modelContent, tactic)
+    result.subgoals should have size 1
+  }}
+
+  "Motzkin" should "be provable with DI+DW" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/motzkin.kyx"))
     val tactic = implyR('R) & diffInvariant("x1^4*x2^2+x1^2*x2^4-3*x1^2*x2^2+1 <= c".asFormula)('R) & diffWeaken('R) & prop
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  "Self crossing" should "be provable with DI+DW" in withMathematica { implicit tool =>
+  it should "be provable from parsed tactic" in withMathematica { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/motzkin.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/motzkin.kyt")).mkString)
+    db.proveBy(modelContent, tactic) shouldBe 'proved
+  }}
+
+  it should "be provable from parsed tactic Z3" in withZ3 { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/motzkin.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/motzkin.kyt")).mkString)
+    db.proveBy(modelContent, tactic) shouldBe 'proved
+  }}
+
+  "Damped oscillator" should "be provable with DI+DW" in withMathematica { tool =>
+    val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/08_dampedosc.kyx"))
+    val tactic = implyR('R) & diffInd('full)('R)
+    proveBy(s, tactic) shouldBe 'proved
+  }
+
+  it should "be provable from parsed tactic" in withMathematica { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/08_dampedosc.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/08_dampedosc.kyt")).mkString)
+    db.proveBy(modelContent, tactic) shouldBe 'proved
+  }}
+
+  it should "be provable from parsed tactic with Z3" in withZ3 { qeTool => withDatabase { db =>
+    val modelContent = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/08_dampedosc.kyx")).mkString
+    val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/tutorials/cpsweek/08_dampedosc.kyt")).mkString)
+    db.proveBy(modelContent, tactic) shouldBe 'proved
+  }}
+
+  "Self crossing" should "be provable with DI+DW" in withMathematica { tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/tutorials/cpsweek/10-diffinv-self-crossing.kyx"))
     val tactic = implyR('R) & diffInvariant("x^2+x^3-y^2-c=0".asFormula)('R) & diffWeaken('R) & prop
     proveBy(s, tactic) shouldBe 'proved

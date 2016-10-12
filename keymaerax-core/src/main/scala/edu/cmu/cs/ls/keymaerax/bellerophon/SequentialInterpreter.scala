@@ -73,6 +73,7 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
           apply(valueDependentTactic, v)
         } catch {
           case e: BelleError => throw e.inContext(d, v.prettyString)
+            //@todo unable to create is a serious error in the tactic not just an "oops whatever try something else exception"
           case e: Throwable => throw new BelleError("Unable to create dependent tactic", e).inContext(d, "")
         }
         case it: InputTactic[_] => try {
@@ -174,14 +175,15 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
           }
 
         case ChooseSome(options, e) =>
+          val ec = e.asInstanceOf[Formula=>BelleExpr]
           //@todo specialization to A=Formula should be undone
           val opts = options().asInstanceOf[Iterator[Formula]]
           var errors = ""
           while (opts.hasNext) {
-            val o = opts.next()
+            val o = opts.next().asInstanceOf[Formula]
             if (BelleExpr.DEBUG) println("ChooseSome: try " + o)
             val someResult: Option[BelleValue] = try {
-              Some(apply(e.asInstanceOf[Formula=>BelleExpr](o.asInstanceOf[Formula]), v))
+              Some(apply(ec(o), v))
             } catch { case err: BelleError => errors += "in " + o + " " + err + "\n"; None }
             if (BelleExpr.DEBUG) println("ChooseSome: try " + o + " got " + someResult)
             (someResult, e) match {
@@ -240,8 +242,32 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
             case BelleProvable(derivation, _) =>
               val backsubst: Provable = derivation(us)
               BelleProvable(provable(backsubst,0), lbl)
-            case e: BelleError => throw e.inContext(expr, "Let expected proved sub-derivation")
+            case e => throw new BelleError("Let expected sub-derivation")
           }
+
+        case LetInspect(abbr, instantiator, inner) =>
+          val (provable,lbl) = v match {
+            case BelleProvable(p, l) => (p,l)
+            case _ => throw new BelleError("Cannot attempt LetInspect with a non-Provable value.").inContext(expr, "")
+          }
+          if (provable.subgoals.length != 1)
+            throw new BelleError("LetInspect of multiple goals is not currently supported.").inContext(expr, "")
+
+          val in: Provable = Provable.startProof(provable.subgoals.head)
+          apply(inner, new BelleProvable(in)) match {
+            case BelleProvable(derivation, _) =>
+              try {
+                val value: Expression = instantiator(derivation)
+                val us: USubst = USubst(SubstitutionPair(abbr, value) :: Nil)
+                val backsubst: Provable = derivation(us)
+                BelleProvable(provable(backsubst, 0), lbl)
+              } catch {
+                case e: BelleError => throw e.inContext(expr, "LetInspect backsubstitution failed")
+                case e: ProverException => throw new BelleError("LetInspect backsubstitution failed", e).inContext(expr.toString, "LetInspect backsubstitution failed")
+              }
+            case e => throw new BelleError("LetInspect expected sub-derivation")
+          }
+
         case t@USubstPatternTactic(children) => {
           val provable = v match {
             case BelleProvable(p, _) => p

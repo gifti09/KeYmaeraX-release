@@ -11,9 +11,6 @@ scalaVersion := "2.11.7"
 
 //scalacOptions ++= Seq("-Xno-patmat-analysis")
 
-//parser combinators are not longer included by default.
-libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
-
 libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.11.7"
 
 scalacOptions in (Compile, doc) ++= Seq("-doc-root-content", "rootdoc.txt")
@@ -29,7 +26,7 @@ scalacOptions in (Compile, doc) ++= Seq("-doc-root-content", "rootdoc.txt")
       Some(prop)
     } catch {
       case e: Throwable =>
-        e.printStackTrace()
+        println("local.properties not found: please copy default.properties and adapt the paths to your system")
         None
     }
   }

@@ -6,6 +6,8 @@ package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.DerivationInfo.AxiomNotFoundException
+import edu.cmu.cs.ls.keymaerax.btactics.arithmetic.speculative.ArithmeticSpeculativeSimplification
+import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 import edu.cmu.cs.ls.keymaerax.core._
 
 import scala.collection.immutable.HashMap
@@ -72,43 +74,47 @@ object DerivationInfo {
     * Transferred into subsequent maps etc for efficiency reasons.
     */
   private [btactics] val allInfo: List[DerivationInfo] = convert(Provable.rules) ++ List(
+    new CoreAxiomInfo("DRIStep"
+      , AxiomDisplayInfo("DRIStep", "DRIStep")
+      , "DRIStep"
+      , {case () => DifferentialTactics.DRIStep}),
     // [a] modalities and <a> modalities
     new CoreAxiomInfo("DCi","DCi","DCi",{case () => HilbertCalculus.useAt("DCi")}),
     new CoreAxiomInfo("<> diamond"
-      , AxiomDisplayInfo(("〈·〉", "<.>"), "〈a〉P ↔ ¬[a]¬P")
+      , AxiomDisplayInfo(("〈·〉", "<.>"), "<span class=\"k4-axiom-key\">〈a〉P </span> ↔ ¬[a]¬P")
       , "diamond", {case () => HilbertCalculus.diamond}),
     new DerivedAxiomInfo("[] box", "[.]", "box", {case () => HilbertCalculus.useAt(DerivedAxioms.boxAxiom)}),
     new PositionTacticInfo("assignb"
-      , AxiomDisplayInfo("[:=]", "[x:=c]p(x)↔p(c)")
+      , AxiomDisplayInfo("[:=]", "<span class=\"k4-axiom-key\">[x:=c]p(x)</span>↔p(c)")
       , {case () => TactixLibrary.assignb}),
     new CoreAxiomInfo("[:=] assign", "[:=]", "assignbAxiom", {case () => HilbertCalculus.useAt("[:=] assign")}),
     new CoreAxiomInfo("[:=] self assign", "[:=]", "selfassignb", {case () => HilbertCalculus.useAt("[:=] self assign")}),
     new DerivedAxiomInfo("<:=> assign", "<:=>", "assignd", {case () => HilbertCalculus.assignd}),
     new DerivedAxiomInfo("<:=> assign equality", "<:=>", "assigndEquality", {case () => HilbertCalculus.useAt("<:=> assign equality")}),
     new CoreAxiomInfo("[:=] assign equality", "[:=]=", "assignbeq", {case () => HilbertCalculus.useAt("[:=] assign equality")}),
+    new PositionTacticInfo("assignEquality", "[:=]=", {case () => DLBySubst.assignEquality}),
     new DerivedAxiomInfo("[:=] assign exists", ("[:=]∃","[:=]exists"), "assignbexists", {case () => HilbertCalculus.useAt(DerivedAxioms.assignbImpliesExistsAxiom) }),
     new CoreAxiomInfo("[:=] assign equality exists", ("[:=]","[:=] assign exists"), "assignbequalityexists", {case () => HilbertCalculus.useAt("[:=] assign equality exists") }),
-    //new DerivedAxiomInfo("[:=] assign equality exists", "[:=]", "assignbequalityexists", {case () => HilbertCalculus.useAt("[:=] assign equality exists") }),
     //@todo new DerivedAxiomInfo("<:=> assign equality", "<:=>=", "assigndeq", {case () => ???}),
     new CoreAxiomInfo("[':=] differential assign"
       , AxiomDisplayInfo(("[′:=]","[':=]"), "[x′:=c]p(x′)↔p(c)")
       , "Dassignb", {case () => HilbertCalculus.Dassignb}),
     new CoreAxiomInfo("[:*] assign nondet"
-      , AxiomDisplayInfo("[:*]", "[x:=*]p(x)↔∀x p(x)")
+      , AxiomDisplayInfo("[:*]", "<span class=\"k4-axiom-key\">[x:=*]p(x)</span>↔∀x p(x)")
       , "randomb", {case () => HilbertCalculus.randomb}),
     new CoreAxiomInfo("[?] test"
       , AxiomDisplayInfo("[?]", "[?Q]P↔(Q→P)")
       , "testb", {case () => HilbertCalculus.testb}),
     new DerivedAxiomInfo("<?> test", "<?>", "testd", {case () => HilbertCalculus.testd}),
     new CoreAxiomInfo("[++] choice"
-      , AxiomDisplayInfo(("[∪]", "[++]"), "[a∪b]P↔[a]P∧[b]P"), "choiceb", {case () => HilbertCalculus.choiceb}),
+      , AxiomDisplayInfo(("[∪]", "[++]"), "<span class=\"k4-axiom-key\">[a∪b]P</span>↔[a]P∧[b]P"), "choiceb", {case () => HilbertCalculus.choiceb}),
     new DerivedAxiomInfo("<++> choice", ("<∪>", "<++>"), "choiced", {case () => HilbertCalculus.choiced}),
     new CoreAxiomInfo("[;] compose"
-      , AxiomDisplayInfo("[;]", "[a;b]P↔[a][b]P")
+      , AxiomDisplayInfo("[;]", "<span class=\"k4-axiom-key\">[a;b]P</span>↔[a][b]P")
       , "composeb", {case () => HilbertCalculus.composeb}),
     new DerivedAxiomInfo("<;> compose", "<;>", "composed", {case () => HilbertCalculus.composed}),
     new CoreAxiomInfo("[*] iterate"
-      , AxiomDisplayInfo("[*]", "[a*]P↔P∧[a][a*]P")
+      , AxiomDisplayInfo("[*]", "<span class=\"k4-axiom-key\">[a*]P</span>↔P∧[a][a*]P")
       , "iterateb", {case () => HilbertCalculus.iterateb}),
     new DerivedAxiomInfo("<*> iterate", "<*>", "iterated", {case () => HilbertCalculus.iterated}),
   //@todo if hybrid games enabled
@@ -126,7 +132,7 @@ object DerivationInfo {
     new CoreAxiomInfo("DW", "DW", "DWaxiom", {case () => HilbertCalculus.DW}),
     new PositionTacticInfo("diffWeaken", "DW", {case () => DifferentialTactics.diffWeaken}),
     new CoreAxiomInfo("DC differential cut"
-    , InputAxiomDisplayInfo("DC","([{x′=f(x)&Q}]P↔[{x′=f(x)&Q∧R}]P)←[{x′=f(x)&Q}]R", List(FormulaArg("R")))
+    , InputAxiomDisplayInfo("DC","(<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]P</span>↔[{x′=f(x)&Q∧R}]P)←[{x′=f(x)&Q}]R", List(FormulaArg("R")))
     , "DCaxiom", {case () => HilbertCalculus.useAt("DC differential cut")}),
     new InputPositionTacticInfo("diffCut"
     , RuleDisplayInfo("DC"
@@ -141,7 +147,7 @@ object DerivationInfo {
         "diffGhost",
         ( List("&Gamma;"), List("[{c&H}]P", "&Delta;") ),
         List(
-          (List("&Gamma;", "y=i"), List("[{c,y'=a*y+b&Q}]P", "&Delta;"))
+          (List("&Gamma;", "y=i"), List("[{c,y'=a()*y+b&Q}]P", "&Delta;"))
         )
       ),
       List(VariableArg("y"), TermArg("a()"), TermArg("b"), TermArg("i")),
@@ -150,116 +156,122 @@ object DerivationInfo {
     new InputPositionTacticInfo("DGTactic",
       RuleDisplayInfo(
         "DGTactic",
-        ( List("&Gamma;"), List("∃y [{c, y'=a*y+b&Q}]P", "&Delta;") ),
+        ( List("&Gamma;"), List("∃y [{c, y'=a()*y+b&Q}]P", "&Delta;") ),
         List(
           (List("&Gamma;"), List("[{c&Q}]P", "&Delta;"))
         )
       ),
-      List(VariableArg("y"), TermArg("a"), TermArg("b")),
+      List(VariableArg("y"), TermArg("a()"), TermArg("b")),
       {case () => (y: Variable) => (t1: Term) => (t2: Term) => TactixLibrary.DG(AtomicODE(DifferentialSymbol(y), Plus(Times(t1, y), t2)))}
     ),
 
     new CoreAxiomInfo("DE differential effect"
-      , AxiomDisplayInfo("DE", "[{x′=f(x)&Q}]P↔[x′=f(x)&Q][x′:=f(x)]P")
+      , AxiomDisplayInfo("DE", "<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]P</span>↔[x′=f(x)&Q][x′:=f(x)]P")
       , "DE", {case () => HilbertCalculus.DE}),
     new CoreAxiomInfo("DE differential effect (system)"
-      , AxiomDisplayInfo("DE", "[{x′=F,c&Q}]P↔[{c,x′=F&Q}][x′:=f(x)]P")
+      , AxiomDisplayInfo("DE", "<span class=\"k4-axiom-key\">[{x′=F,c&Q}]P</span>↔[{c,x′=F&Q}][x′:=f(x)]P")
       , "DEs", {case () => HilbertCalculus.DE}),
     new CoreAxiomInfo("DI differential invariance"
-      , AxiomDisplayInfo("DI", "([{x′=f(x)&Q}]P↔[?Q]P)←(Q→[{x′=f(x)&Q}](P)′)")
+      , AxiomDisplayInfo("DI", "(<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]P</span>↔[?Q]P)←(Q→[{x′=f(x)&Q}](P)′)")
       , "DIequiv", {case () => ???}),
     new DerivedAxiomInfo("DI differential invariant"
-      , AxiomDisplayInfo("DI", "[{x′=f(x)&Q}]P←(Q→P∧[{x′=f(x)&Q}](P)′)")
+      , AxiomDisplayInfo("DI", "<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]P</span>←(Q→P∧[{x′=f(x)&Q}](P)′)")
       , "DI", {case () => HilbertCalculus.DI}),
     new CoreAxiomInfo("DG differential ghost"
-      , AxiomDisplayInfo("DG", "[{x′=f(x)&Q}]P↔∃y [{x′=f(x),y′=a*y+b&Q}]P")
+      , AxiomDisplayInfo("DG", "<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]P</span>↔∃y [{x′=f(x),y′=a*y+b&Q}]P")
       , "DG", {case () => HilbertCalculus.useAt("DG differential ghost")}),
     new CoreAxiomInfo("DG differential ghost constant"
-      , AxiomDisplayInfo("DG", "[{x′=f(x)&Q}]P↔∃y [{x′=f(x),y′=g()&Q}]P")
+      , AxiomDisplayInfo("DG", "<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]P</span>↔∃y [{x′=f(x),y′=g()&Q}]P")
       , "DGC", {case () => HilbertCalculus.useAt("DG differential ghost constant")}),
     new CoreAxiomInfo("DG inverse differential ghost", "DG inverse differential ghost", "DGpp", {case () => ???}),
     new CoreAxiomInfo("DG inverse differential ghost implicational", "DG inverse differential ghost implicational", "DGi", {case () => ???}),
     new CoreAxiomInfo(", commute", ",", "commaCommute", {case () => ???}),
     new CoreAxiomInfo("DS& differential equation solution", "DS&", "DS", {case () => HilbertCalculus.DS}),
     new CoreAxiomInfo("DIo open differential invariance >"
-      , AxiomDisplayInfo("DIo", "([{x′=f(x)&Q}]f(x)>g(x)↔[?Q]f(x)>g(x))←(f(x)>g(x)→[{x′=f(x)&Q}](f(x)>g(x)→(f(x)>g(x))′))")
+      , AxiomDisplayInfo("DIo", "(<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]f(x)>g(x)</span>↔[?Q]f(x)>g(x))←(f(x)>g(x)→[{x′=f(x)&Q}](f(x)>g(x)→(f(x)>g(x))′))")
       , "DIogreater", {case () => ???}),
     new DerivedAxiomInfo("DIo open differential invariance <"
-      , AxiomDisplayInfo("DIo", "([{x′=f(x)&Q}]f(x)<g(x)↔[?Q]f(x)<g(x))←(f(x)<g(x)→[{x′=f(x)&Q}](f(x)<g(x)→(f(x)<g(x))′))")
+      , AxiomDisplayInfo("DIo", "(<span class=\"k4-axiom-key\">[{x′=f(x)&Q}]f(x)<g(x)</span>↔[?Q]f(x)<g(x))←(f(x)<g(x)→[{x′=f(x)&Q}](f(x)<g(x)→(f(x)<g(x))′))")
       , "DIoless", {case () => ???}),
+    new CoreAxiomInfo("DV differential variant >="
+      , AxiomDisplayInfo("DVgeq", "todo DVgeq")
+      , "DVgeq", {case () => ???}),
+    new DerivedAxiomInfo("DV differential variant <="
+      , AxiomDisplayInfo("DVleq", "todo DVleq")
+      , "DVleq", {case () => ???}),
 
     new PositionTacticInfo("axiomaticSolve", "axiomaticSolve", {case () => AxiomaticODESolver.apply()}, needsTool = true),
     
     // Differential Axioms
     new CoreAxiomInfo("c()' derive constant fn"
-      , AxiomDisplayInfo(("c()'", "c()′"), "(c)′=0")
+      , AxiomDisplayInfo(("c()'", "c()′"), "<span class=\"k4-axiom-key\">(c)′</span>=0")
       , "Dconst", {case () => HilbertCalculus.Derive.Dconst}),
     new CoreAxiomInfo("x' derive var"
-      ,  AxiomDisplayInfo("x'", "(x)′=x′")
+      ,  AxiomDisplayInfo("x'", "<span class=\"k4-axiom-key\">(x)′</span>=x′")
       , "Dvar", {case () => HilbertCalculus.Derive.Dvar}),
     new DerivedAxiomInfo("x' derive variable"
-      ,  AxiomDisplayInfo(("x′","x'"), "(x)′=x′")
+      ,  AxiomDisplayInfo(("x′","x'"), "<span class=\"k4-axiom-key\">(x)′</span>=x′")
       , "DvariableAxiom", {case () => HilbertCalculus.useAt(DerivedAxioms.Dvariable)}),
     new DerivedAxiomInfo("x' derive var commuted"
-      ,  AxiomDisplayInfo(("x′,C","x',C"), "x′=(x)′")
+      ,  AxiomDisplayInfo(("x′,C","x',C"), "x′=<span class=\"k4-axiom-key\">(x)′</span>")
       , "DvariableCommutedAxiom", {case () => HilbertCalculus.useAt(DerivedAxioms.DvariableCommuted)}),
     new PositionTacticInfo("DvariableTactic"
-      ,  AxiomDisplayInfo(("x′","x'"), "(x)′=x′")
+      ,  AxiomDisplayInfo(("x′","x'"), "<span class=\"k4-axiom-key\">(x)′</span>=x′")
       , {case () => DifferentialTactics.Dvariable}),
     new CoreAxiomInfo("+' derive sum"
-      ,  AxiomDisplayInfo(("+′","+'"), "(f(x)+g(x))′=f(x)′+g(x)′")
+      ,  AxiomDisplayInfo(("+′","+'"), "<span class=\"k4-axiom-key\">(f(x)+g(x))′</span>=f(x)′+g(x)′")
       , "Dplus", {case () => HilbertCalculus.Derive.Dplus}),
     new CoreAxiomInfo("-' derive neg"
-      ,  AxiomDisplayInfo(("-′","-'"),"(-f(x))′=-(f(x))′")
+      ,  AxiomDisplayInfo(("-′","-'"),"<span class=\"k4-axiom-key\">(-f(x))′</span>=-(f(x))′")
       , "Dneg", {case () => HilbertCalculus.Derive.Dneg}),
     new CoreAxiomInfo("-' derive minus"
-      ,  AxiomDisplayInfo(("-′","-'"), "(f(x)-g(x))′=f(x)′-g(x)′")
+      ,  AxiomDisplayInfo(("-′","-'"), "<span class=\"k4-axiom-key\">(f(x)-g(x))′</span>=f(x)′-g(x)′")
       , "Dminus", {case () => HilbertCalculus.Derive.Dminus}),
     new CoreAxiomInfo("*' derive product"
-      ,  AxiomDisplayInfo(("·′","*'"), "(f(x)·g(x))′=(f(x))′·g(x)+f(x)·(g(x))′")
+      ,  AxiomDisplayInfo(("·′","*'"), "<span class=\"k4-axiom-key\">(f(x)·g(x))′</span>=(f(x))′·g(x)+f(x)·(g(x))′")
       , "Dtimes", {case () => HilbertCalculus.Derive.Dtimes}),
     new CoreAxiomInfo("/' derive quotient"
-      ,  AxiomDisplayInfo(("/′","/'"), "(f(g)/g(x))′=(g(x)·(f(x))w-f(x)·(g(x))′)/g(x)^2")
+      ,  AxiomDisplayInfo(("/′","/'"), "<span class=\"k4-axiom-key\">(f(g)/g(x))′</span>=(g(x)·(f(x))w-f(x)·(g(x))′)/g(x)^2")
       , "Dquotient", {case () => HilbertCalculus.Derive.Dquotient}),
     new CoreAxiomInfo("^' derive power"
-      ,  AxiomDisplayInfo(("^′","^'"), "(f(g)^n)′=n·f(g)^(n-1)·(f(g))′←n≠0")
+      ,  AxiomDisplayInfo(("^′","^'"), "<span class=\"k4-axiom-key\">(f(g)^n)′</span>=n·f(g)^(n-1)·(f(g))′←n≠0")
       , "Dpower", {case () => HilbertCalculus.Derive.Dpower}),
     new CoreAxiomInfo("chain rule"
       ,  AxiomDisplayInfo(("∘′","o'"), "[y:=g(x)][y′:=1]((f(g(x)))′=(f(y))′·(g(x))′")
       , "Dcompose", {case () => TactixLibrary.Derive.Dcompose}),
 
     new CoreAxiomInfo("=' derive ="
-      ,  AxiomDisplayInfo(("=′","='"),"(f(x)=g(x))′↔f(x)′=g(x)′")
+      ,  AxiomDisplayInfo(("=′","='"),"<span class=\"k4-axiom-key\">(f(x)=g(x))′</span>↔f(x)′=g(x)′")
       , "Dequal", {case () => HilbertCalculus.Derive.Dequal}),
     new CoreAxiomInfo(">=' derive >="
-      ,  AxiomDisplayInfo(("≥′",">='"), "(f(x)≥g(x))′↔f(x)′≥g(x)′")
+      ,  AxiomDisplayInfo(("≥′",">='"), "<span class=\"k4-axiom-key\">(f(x)≥g(x))′</span>↔f(x)′≥g(x)′")
       , "Dgreaterequal", {case () => HilbertCalculus.Derive.Dgreaterequal}),
     new CoreAxiomInfo(">' derive >"
-      ,  AxiomDisplayInfo((">′",">'"),"(f(x)>g(x))′  f(x)′≥g(x)′")
+      ,  AxiomDisplayInfo((">′",">'"),"<span class=\"k4-axiom-key\">(f(x)>g(x))′</span>↔f(x)′≥g(x)′")
       , "Dgreater", {case () => HilbertCalculus.Derive.Dgreater}),
     new CoreAxiomInfo("<=' derive <="
-      ,  AxiomDisplayInfo(("≤′","<='"), "(f(x)≤g(x))′↔f(x)′≤g(x)′")
+      ,  AxiomDisplayInfo(("≤′","<='"), "<span class=\"k4-axiom-key\">(f(x)≤g(x))′</span>↔f(x)′≤g(x)′")
       , "Dlessequal", {case () => HilbertCalculus.Derive.Dlessequal}),
     new CoreAxiomInfo("<' derive <"
-      ,  AxiomDisplayInfo(("<′","<'"),"(f(x)<g(m))′↔f(x)′≤g(x)′")
+      ,  AxiomDisplayInfo(("<′","<'"),"<span class=\"k4-axiom-key\">(f(x)<g(m))′</span>↔f(x)′≤g(x)′")
       , "Dless", {case () => HilbertCalculus.Derive.Dless}),
     new CoreAxiomInfo("!=' derive !="
-      ,  AxiomDisplayInfo(("≠′","!='"), "(f(x)¬=g(x))′↔f(x)′=g(x)′")
+      ,  AxiomDisplayInfo(("≠′","!='"), "<span class=\"k4-axiom-key\">(f(x)≠g(x))′</span>↔f(x)′=g(x)′")
       , "Dnotequal", {case () => HilbertCalculus.Derive.Dnotequal}),
     new CoreAxiomInfo("&' derive and"
-      ,  AxiomDisplayInfo(("∧′", "&'"),"(P&Q)′↔P′∧Q′")
+      ,  AxiomDisplayInfo(("∧′", "&'"),"<span class=\"k4-axiom-key\">(P&Q)′</span>↔P′∧Q′")
       , "Dand", {case () => HilbertCalculus.Derive.Dand}),
     new CoreAxiomInfo("|' derive or"
-      ,  AxiomDisplayInfo(("∨′", "|'"), "(P|Q)′↔P′∧Q′")
+      ,  AxiomDisplayInfo(("∨′", "|'"), "<span class=\"k4-axiom-key\">(P|Q)′</span>↔P′∧Q′")
       , "Dor", {case () => HilbertCalculus.Derive.Dor}),
     new DerivedAxiomInfo("->' derive imply"
-      ,  AxiomDisplayInfo(("→′","->'"), "(P→Q)′↔(¬P∨Q)′")
+      ,  AxiomDisplayInfo(("→′","->'"), "<span class=\"k4-axiom-key\">(P→Q)′</span>↔(¬P∨Q)′")
       , "Dimply", {case () => HilbertCalculus.Derive.Dimply}),
     new CoreAxiomInfo("forall' derive forall"
-      ,  AxiomDisplayInfo(("∀′","forall'"), "(∀x p(x))′↔∀x (p(x))′")
+      ,  AxiomDisplayInfo(("∀′","forall'"), "<span class=\"k4-axiom-key\">(∀x p(x))′</span>↔∀x (p(x))′")
       , "Dforall", {case () => HilbertCalculus.Derive.Dforall}),
     new CoreAxiomInfo("exists' derive exists"
-      ,  AxiomDisplayInfo(("∃′","exists'"), "(∃x p(x))′↔∀x (p(x))′")
+      ,  AxiomDisplayInfo(("∃′","exists'"), "<span class=\"k4-axiom-key\">(∃x p(x))′</span>↔∀x (p(x))′")
       , "Dexists", {case () => HilbertCalculus.Derive.Dexists}),
 
     new PositionTacticInfo("derive", "'", {case () => HilbertCalculus.derive}),
@@ -306,33 +318,33 @@ object DerivationInfo {
     new DerivedAxiomInfo("' linear", ("l′","l'"), "Dlinear", {case () => useAt(DerivedAxioms.Dlinear)}),
     new DerivedAxiomInfo("' linear right", ("l′","l'"), "DlinearRight", {case () => useAt(DerivedAxioms.DlinearRight)}),
     new DerivedAxiomInfo("!& deMorgan"
-      , AxiomDisplayInfo(("¬∧", "!&"), "¬(p∧q)↔(¬p|¬q)")
+      , AxiomDisplayInfo(("¬∧", "!&"), "<span class=\"k4-axiom-key\">¬(p∧q)</span>↔(¬p|¬q)")
       , "notAnd", {case () => useAt(DerivedAxioms.notAnd)}),
     new DerivedAxiomInfo("!| deMorgan"
-      , AxiomDisplayInfo(("¬∨","!|"), "(¬(p|q))↔(¬p∧¬q)")
+      , AxiomDisplayInfo(("¬∨","!|"), "<span class=\"k4-axiom-key\">(¬(p|q))</span>↔(¬p∧¬q)")
       , "notOr", {case () => useAt(DerivedAxioms.notOr)}),
     new DerivedAxiomInfo("!-> deMorgan"
-      , AxiomDisplayInfo(("¬→","!->"), "¬(p->q)↔(p∧¬q)")
+      , AxiomDisplayInfo(("¬→","!->"), "<span class=\"k4-axiom-key\">¬(p->q)</span>↔(p∧¬q)")
       , "notImply", {case () => useAt(DerivedAxioms.notImply)}),
     new DerivedAxiomInfo("!<-> deMorgan"
-      , AxiomDisplayInfo(("¬↔", "!<->"), "¬(p↔q)↔(p∧¬q)| (¬p∧q)")
+      , AxiomDisplayInfo(("¬↔", "!<->"), "<span class=\"k4-axiom-key\">¬(p↔q)</span>↔(p∧¬q)| (¬p∧q)")
       , "notEquiv", {case () => useAt(DerivedAxioms.notEquiv)}),
     new DerivedAxiomInfo("!all"
-      , AxiomDisplayInfo(("¬∀", "!all"), "¬∀x (p(x)))↔∃x (¬p(x))")
+      , AxiomDisplayInfo(("¬∀", "!all"), "<span class=\"k4-axiom-key\">¬∀x (p(x)))</span>↔∃x (¬p(x))")
       , "notAll", {case () => useAt(DerivedAxioms.notAll)}),
     new DerivedAxiomInfo("!exists"
-      , AxiomDisplayInfo(("¬∃","!exists"), "(¬∃x (p(x)))↔∀x (¬p(x))")
+      , AxiomDisplayInfo(("¬∃","!exists"), "<span class=\"k4-axiom-key\">(¬∃x (p(x)))</span>↔∀x (¬p(x))")
       , "notExists", {case () => useAt(DerivedAxioms.notExists)}),
     new DerivedAxiomInfo("![]", ("¬[]","![]"), "notBox", {case () => useAt(DerivedAxioms.notBox)}),
     new DerivedAxiomInfo("!<>", ("¬<>","!<>"), "notDiamond", {case () => useAt(DerivedAxioms.notDiamond)}),
     new DerivedAxiomInfo("[] split"
-      , AxiomDisplayInfo(("[]∧", "[]^"), "[a](P∧Q)↔[a]P ∧ [a]Q")
+      , AxiomDisplayInfo(("[]∧", "[]^"), "<span class=\"k4-axiom-key\">[a](P∧Q)</span>↔[a]P ∧ [a]Q")
       , "boxAnd", {case () => HilbertCalculus.boxAnd}),
     new DerivedAxiomInfo("[] conditional split"
-      , AxiomDisplayInfo(("[]→∧", "[]->^"), "[a](P→Q∧R) ↔ [a](P→Q) ∧ [a](P→R)")
+      , AxiomDisplayInfo(("[]→∧", "[]->^"), "<span class=\"k4-axiom-key\">[a](P→Q∧R)</span> ↔ [a](P→Q) ∧ [a](P→R)")
       , "boxImpliesAnd", {case () => HilbertCalculus.boxImpliesAnd}),
     new DerivedAxiomInfo("<> split"
-      , AxiomDisplayInfo(("<>∨","<>|"), "<a>(P∨Q)↔<a>P ∨ <a>Q")
+      , AxiomDisplayInfo(("<>∨","<>|"), "<span class=\"k4-axiom-key\">〈a〉(P∨Q)</span>↔〈a〉P ∨ 〈a〉Q")
         , "diamondOr", {case () => useAt(DerivedAxioms.diamondOr)}),
 //    new DerivedAxiomInfo("<> split left", "<>|<-", "diamondSplitLeft", {case () => useAt(DerivedAxioms.diamondSplitLeft)}),
 //    new DerivedAxiomInfo("[] split left", "[]&<-", "boxSplitLeft", {case () => useAt(DerivedAxioms.boxSplitLeft)}),
@@ -341,10 +353,6 @@ object DerivationInfo {
     new DerivedAxiomInfo("<*> stuck", "<*> stuck", "loopStuck", {case () => useAt(DerivedAxioms.loopStuck)}),
     new DerivedAxiomInfo("<'> stuck", ("<′> stuck","<'> stuck"), "odeStuck", {case () => useAt(DerivedAxioms.odeStuck)}),
     new DerivedAxiomInfo("[] post weaken", "[]PW", "postWeaken", {case () => useAt(DerivedAxioms.postconditionWeaken)}),
-    new DerivedAxiomInfo("+<= up", "+<=", "intervalUpPlus", {case () => useAt(DerivedAxioms.intervalUpPlus)}),
-    new DerivedAxiomInfo("-<= up", "-<=", "intervalUpMinus", {case () => useAt(DerivedAxioms.intervalUpMinus)}),
-    new DerivedAxiomInfo("<=+ down", "<=+", "intervalDownPlus", {case () => useAt(DerivedAxioms.intervalDownPlus)}),
-    new DerivedAxiomInfo("<=- down", "<=-", "intervalDownMinus", {case () => useAt(DerivedAxioms.intervalDownMinus)}),
     new DerivedAxiomInfo("<-> reflexive", ("↔R","<->R"), "equivReflexive", {case () => useAt(DerivedAxioms.equivReflexiveAxiom)}),
     new DerivedAxiomInfo("-> distributes over &", ("→∧", "->&"), "implyDistAnd", {case () => useAt(DerivedAxioms.implyDistAndAxiom)}),
     new DerivedAxiomInfo("-> distributes over <->", ("→↔","-><->"), "implyDistEquiv", {case () => useAt(DerivedAxioms.implyDistEquivAxiom)}),
@@ -369,16 +377,16 @@ object DerivationInfo {
     new DerivedAxiomInfo("-> tautology", ("→taut","->taut"), "implyTautology", {case () => useAt(DerivedAxioms.implyTautology)}),
     new DerivedAxiomInfo("\\forall->\\exists", ("∀→∃","all->exists"), "forallThenExists", {case () => useAt(DerivedAxioms.forallThenExistsAxiom)}),
     new DerivedAxiomInfo("->true"
-      , AxiomDisplayInfo(("→⊤","->T"), "(p→⊤)↔⊤")
+      , AxiomDisplayInfo(("→⊤","->T"), "<span class=\"k4-axiom-key\">(p→⊤)</span>↔⊤")
       , "implyTrue", {case () => useAt(DerivedAxioms.impliesTrue)}),
     new DerivedAxiomInfo("true->"
-      , AxiomDisplayInfo(("⊤→", "T->"), "(⊤→p)↔p")
+      , AxiomDisplayInfo(("⊤→", "T->"), "<span class=\"k4-axiom-key\">(⊤→p)</span>↔p")
       , "trueImply", {case () => useAt(DerivedAxioms.trueImplies)}),
     new DerivedAxiomInfo("&true"
-      , AxiomDisplayInfo(("∧⊤","&T"), "(p∧⊤)↔p")
+      , AxiomDisplayInfo(("∧⊤","&T"), "<span class=\"k4-axiom-key\">(p∧⊤)</span>↔p")
       , "andTrue", {case () => useAt(DerivedAxioms.andTrue)}),
     new DerivedAxiomInfo("true&"
-      , AxiomDisplayInfo(("⊤∧","T&"), "(v∧p)↔p")
+      , AxiomDisplayInfo(("⊤∧","T&"), "<span class=\"k4-axiom-key\">(⊤∧p)</span>↔p")
       , "trueAnd", {case () => useAt(DerivedAxioms.trueAnd)}),
     new DerivedAxiomInfo("0*", "0*", "zeroTimes", {case () => useAt(DerivedAxioms.zeroTimes)}),
     new DerivedAxiomInfo("0+", "0+", "zeroPlus", {case () => useAt(DerivedAxioms.zeroPlus)}),
@@ -388,10 +396,10 @@ object DerivationInfo {
     new DerivedAxiomInfo("= commute", "=C", "equalCommute", {case () => useAt(DerivedAxioms.equalCommute)}),
     new DerivedAxiomInfo("<=", "<=", "lessEqual", {case () => useAt(DerivedAxioms.lessEqual)}),
     new DerivedAxiomInfo("! <"
-      , AxiomDisplayInfo(("¬<","!<"), "¬(f<g)↔(f≥g)")
+      , AxiomDisplayInfo(("¬<","!<"), "<span class=\"k4-axiom-key\">¬(f<g)</span>↔(f≥g)")
       , "notLess", {case () => useAt(DerivedAxioms.notLess)}),
     new DerivedAxiomInfo("! >"
-      , AxiomDisplayInfo(("¬>","!>"), "¬(f>g)↔(f≤g)")
+      , AxiomDisplayInfo(("¬>","!>"), "<span class=\"k4-axiom-key\">¬(f>g)</span>↔(f≤g)")
       , "notGreater", {case () => useAt(DerivedAxioms.notGreater)}),
     new DerivedAxiomInfo("< negate", ("¬≤","!<="), "notGreaterEqual", {case () => useAt(DerivedAxioms.notGreaterEqual)}),
     new DerivedAxiomInfo(">= flip", ">=F", "flipGreaterEqual", {case () => useAt(DerivedAxioms.flipGreaterEqual)}),
@@ -401,9 +409,9 @@ object DerivationInfo {
     new DerivedAxiomInfo("<", "<", "less", {case () => useAt(DerivedAxioms.less)}),
     new DerivedAxiomInfo(">", ">", "greater", {case () => useAt(DerivedAxioms.greater)}),
 
-    new DerivedAxiomInfo("!= elimination", ("≠", "!="), "notEqualElim", {case () => useAt(DerivedAxioms.notEqualElim)}),
-    new DerivedAxiomInfo(">= elimination", ("≥", ">="), "greaterEqualElim", {case () => useAt(DerivedAxioms.greaterEqualElim)}),
-    new DerivedAxiomInfo("> elimination", ">", "greaterElim", {case () => useAt(DerivedAxioms.greaterElim)}),
+//    new DerivedAxiomInfo("!= elimination", ("≠", "!="), "notEqualElim", {case () => useAt(DerivedAxioms.notEqualElim)}),
+//    new DerivedAxiomInfo(">= elimination", ("≥", ">="), "greaterEqualElim", {case () => useAt(DerivedAxioms.greaterEqualElim)}),
+//    new DerivedAxiomInfo("> elimination", ">", "greaterElim", {case () => useAt(DerivedAxioms.greaterElim)}),
     new DerivedAxiomInfo("1>0", "1>0", "oneGreaterZero", {case () => useAt(DerivedAxioms.oneGreaterZero)}),
     new DerivedAxiomInfo("nonnegative squares", "^2>=0", "nonnegativeSquares", {case () => useAt(DerivedAxioms.nonnegativeSquares)}),
     new DerivedAxiomInfo(">2!=", ">2!=", "greaterImpliesNotEqual", {case () => useAt(DerivedAxioms.greaterImpliesNotEqual)}),
@@ -412,20 +420,38 @@ object DerivationInfo {
     new DerivedAxiomInfo("abs", "abs", "abs", {case () => useAt(DerivedAxioms.absDef)}),
     new DerivedAxiomInfo("min", "min", "min", {case () => useAt(DerivedAxioms.minDef)}),
     new DerivedAxiomInfo("max", "max", "max", {case () => useAt(DerivedAxioms.maxDef)}),
+    new DerivedAxiomInfo("& recursor", "& recursor", "andRecursor", {case () => useAt(DerivedAxioms.andRecursor)}),
+    new DerivedAxiomInfo("| recursor", "| recursor", "orRecursor", {case () => useAt(DerivedAxioms.orRecursor)}),
+    new DerivedAxiomInfo("<= both", "<= both", "intervalLEBoth", {case () => useAt(DerivedAxioms.intervalLEBoth)}),
+    new DerivedAxiomInfo("< both", "< both", "intervalLBoth", {case () => useAt(DerivedAxioms.intervalLBoth)}),
+    new DerivedAxiomInfo("neg<= up", "neg<=", "intervalUpNeg", {case () => useAt(DerivedAxioms.intervalUpNeg)}),
+    new DerivedAxiomInfo("abs<= up", "abs<=", "intervalUpAbs", {case () => useAt(DerivedAxioms.intervalUpAbs)}),
+    new DerivedAxiomInfo("max<= up", "max<=", "intervalUpMax", {case () => useAt(DerivedAxioms.intervalUpMax)}),
+    new DerivedAxiomInfo("min<= up", "min<=", "intervalUpMin", {case () => useAt(DerivedAxioms.intervalUpMin)}),
+    new DerivedAxiomInfo("+<= up", "+<=", "intervalUpPlus", {case () => useAt(DerivedAxioms.intervalUpPlus)}),
+    new DerivedAxiomInfo("-<= up", "-<=", "intervalUpMinus", {case () => useAt(DerivedAxioms.intervalUpMinus)}),
     new DerivedAxiomInfo("*<= up", "*<=", "intervalUpTimes", {case () => useAt(DerivedAxioms.intervalUpTimes)}),
     new DerivedAxiomInfo("1Div<= up", "1/<=", "intervalUp1Divide", {case () => useAt(DerivedAxioms.intervalUp1Divide)}),
     new DerivedAxiomInfo("Div<= up", "/<=", "intervalUpDivide", {case () => useAt(DerivedAxioms.intervalUpDivide)}),
+    new DerivedAxiomInfo("pow<= up", "pow<=", "intervalUpPower", {case () => useAt(DerivedAxioms.intervalUpPower)}),
+    new DerivedAxiomInfo("<=neg down", "<=neg", "intervalDownNeg", {case () => useAt(DerivedAxioms.intervalDownNeg)}),
+    new DerivedAxiomInfo("<=abs down", "<=abs", "intervalDownAbs", {case () => useAt(DerivedAxioms.intervalDownAbs)}),
+    new DerivedAxiomInfo("<=max down", "<=max", "intervalDownMax", {case () => useAt(DerivedAxioms.intervalDownMax)}),
+    new DerivedAxiomInfo("<=min down", "<=min", "intervalDownMin", {case () => useAt(DerivedAxioms.intervalDownMin)}),
+    new DerivedAxiomInfo("<=+ down", "<=+", "intervalDownPlus", {case () => useAt(DerivedAxioms.intervalDownPlus)}),
+    new DerivedAxiomInfo("<=- down", "<=-", "intervalDownMinus", {case () => useAt(DerivedAxioms.intervalDownMinus)}),
     new DerivedAxiomInfo("<=* down", "<=*", "intervalDownTimes", {case () => useAt(DerivedAxioms.intervalDownTimes)}),
     new DerivedAxiomInfo("<=1Div down", "<=1/", "intervalDown1Divide", {case () => useAt(DerivedAxioms.intervalDown1Divide)}),
     new DerivedAxiomInfo("<=Div down", "<=/", "intervalDownDivide", {case () => useAt(DerivedAxioms.intervalDownDivide)}),
+    new DerivedAxiomInfo("<=pow down", "<=pow", "intervalDownPower", {case () => useAt(DerivedAxioms.intervalDownPower)}),
     new DerivedAxiomInfo("! !="
-      , AxiomDisplayInfo(("¬≠","!!="), "(¬(f≠g)↔(f=g))")
+      , AxiomDisplayInfo(("¬≠","!!="), "<span class=\"k4-axiom-key\">(¬(f≠g)</span>↔(f=g))")
       , "notNotEqual", {case () => useAt(DerivedAxioms.notNotEqual)}),
     new DerivedAxiomInfo("! ="
-      , AxiomDisplayInfo(("¬ =","! ="), "(¬(f=g))↔(f≠g)")
+      , AxiomDisplayInfo(("¬ =","! ="), "<span class=\"k4-axiom-key\">(¬(f=g))</span>↔(f≠g)")
       , "notEqual", {case () => useAt(DerivedAxioms.notEqual)}),
     new DerivedAxiomInfo("! <="
-      , AxiomDisplayInfo(("¬≤","!<="), "(!(f≤g)↔(f>g)")
+      , AxiomDisplayInfo(("¬≤","!<="), "<span class=\"k4-axiom-key\">(¬(f≤g)</span>↔(f>g)")
       , "notLessEqual", {case () => useAt(DerivedAxioms.notLessEqual)}),
     new DerivedAxiomInfo("* associative", "*A", "timesAssociative", {case () => useAt(DerivedAxioms.timesAssociative)}),
     new DerivedAxiomInfo("* commute", "*C", "timesCommute", {case () => useAt(DerivedAxioms.timesCommutative)}),
@@ -548,16 +574,21 @@ object DerivationInfo {
     new PositionTacticInfo("coHideR", "W", {case () => SequentCalculus.cohideR}),
     new PositionTacticInfo("closeFalse"
       , RuleDisplayInfo(("⊥L", "falseL"), (List("⊥","&Gamma;"),List("&Delta;")), List())
-      , {case () => ProofRuleTactics.closeFalse}),
+      , {case () => TactixLibrary.closeF}),
     new PositionTacticInfo("closeTrue"
       , RuleDisplayInfo(("⊤R","trueR"), (List("&Gamma;"), List("⊤","&Delta;")),List())
-        ,{case () => ProofRuleTactics.closeTrue}),
+        ,{case () => TactixLibrary.closeT}),
     new PositionTacticInfo("skolemizeL", "skolem", {case () => ProofRuleTactics.skolemizeL}),
     new PositionTacticInfo("skolemizeR", "skolem", {case () => ProofRuleTactics.skolemizeR}),
     new PositionTacticInfo("skolemize", "skolem", {case () => ProofRuleTactics.skolemize}),
     new PositionTacticInfo("coHide", "W", {case () => SequentCalculus.cohide}),
     new PositionTacticInfo("hide", "W", {case () => SequentCalculus.hide}),
     new PositionTacticInfo("allL2R", "L=R all", {case () => TactixLibrary.exhaustiveEqL2R}),
+    new PositionTacticInfo("allR2L", "R=L all", {case () => TactixLibrary.exhaustiveEqR2L}),
+
+    // proof management tactics
+    new TacticInfo("debug", "debug", {case () => DebuggingTactics.debug("")}),   // turn into input tactic if message should be stored too
+    new TacticInfo("done", "done", {case () => TactixLibrary.done}), // turn into input tactic if message should be stored too
 
     // Proof rule two-position tactics
     new TwoPositionTacticInfo("coHide2", "W", {case () => SequentCalculus.cohide2}),
@@ -565,9 +596,9 @@ object DerivationInfo {
     new TwoPositionTacticInfo("instantiatedEquivRewriting", "instantiatedEquivRewriting", {case () => PropositionalTactics.instantiatedEquivRewriting}),
     //    new TwoPositionTacticInfo("exchangeL", "X", {case () => ProofRuleTactics.exchangeL}),
 //    new TwoPositionTacticInfo("exchangeR", "X", {case () => ProofRuleTactics.exchangeR}),
-    new TwoPositionTacticInfo("closeId",
+    new TacticInfo("closeId",
       RuleDisplayInfo("closeId", (List("&Gamma;", "P"), List("P", "&Delta;")), Nil),
-      {case () => (ante: AntePosition, succ: SuccPosition) => TactixLibrary.close(ante.top, succ.top)}),
+      {case () => TactixLibrary.closeId}),
     new TwoPositionTacticInfo("L2R",
       RuleDisplayInfo("L2R",
         /*conclusion*/ (List("&Gamma;", "x=y", "P(x)"), List("Q(x)", "&Delta;")),
@@ -584,28 +615,12 @@ object DerivationInfo {
           (List("&Gamma;", "P"), List("&Delta;"))))
         ,List(FormulaArg("P")), {case () => (fml:Formula) => ProofRuleTactics.cut(fml)}),
     // Proof rule input position tactics
-    //@todo Move these DependentPositionTactic wrappers to ProofRuleTactics?
     new InputPositionTacticInfo("cutL", "cut", List(FormulaArg("cutFormula")),
-      {case () => (fml:Formula) => new DependentPositionTactic("cutL") {
-        /** Create the actual tactic to be applied at position pos */
-        override def factory(pos: Position): DependentTactic = new DependentTactic("cutL") {
-          ProofRuleTactics.cutL(fml)(pos.checkAnte.top)
-        }
-      }}),
+      {case () => (fml:Formula) => TactixLibrary.cutL(fml)}),
     new InputPositionTacticInfo("cutR", "cut", List(FormulaArg("cutFormula")),
-      {case () => (fml:Formula) => new DependentPositionTactic("cutR") {
-        /** Create the actual tactic to be applied at position pos */
-        override def factory(pos: Position): DependentTactic = new DependentTactic("cutR") {
-          ProofRuleTactics.cutR(fml)(pos.checkSucc.top)
-        }
-      }}),
+      {case () => (fml:Formula) => TactixLibrary.cutR(fml)}),
     new InputPositionTacticInfo("cutLR", "cut", List(FormulaArg("cutFormula")),
-      {case () => (fml:Formula) => new DependentPositionTactic("cutLR") {
-          /** Create the actual tactic to be applied at position pos */
-          override def factory(pos: Position): DependentTactic = new DependentTactic("cutLR") {
-            ProofRuleTactics.cutLR(fml)(pos)
-          }
-        }}),
+      {case () => (fml:Formula) => TactixLibrary.cutLR(fml)}),
     new InputPositionTacticInfo("loop",
       RuleDisplayInfo("loop",(List("&Gamma;"), List("[a*]P", "&Delta;")),
         List(
@@ -613,6 +628,8 @@ object DerivationInfo {
           (List("j(x)"),List("[a]j(x)")),
           (List("j(x)"),List("P"))))
       , List(FormulaArg("j(x)")), {case () => (fml:Formula) => TactixLibrary.loop(fml)}),
+    new PositionTacticInfo("loopauto", RuleDisplayInfo("loopauto",(List("&Gamma;"), List("[a*]P", "&Delta;")),
+      List()), {case () => TactixLibrary.loopauto}, needsGenerator = true),
 
     new InputPositionTacticInfo("generalizeb",
     RuleDisplayInfo("G[]",(List("&Gamma;"), List("[a]P", "&Delta;")),
@@ -622,10 +639,25 @@ object DerivationInfo {
     , List(FormulaArg("Q")), {case () => (fml:Formula) => TactixLibrary.generalize(fml)}),
     new InputPositionTacticInfo("transform", "trafo", List(FormulaArg("toFormula")),
       {case () => (fml:Formula) => TactixLibrary.transform(fml)}),
+    new InputPositionTacticInfo("boundRename"
+      , RuleDisplayInfo(("BR", "BR"), (List("&Gamma;"), List("∀x P(x)","&Delta;")),
+        List((List("&Gamma;"),List("∀y P(y)","&Delta;"))))
+      , List(TermArg("x"),TermArg("y"))
+      , {case () => (x:Term) => (y:Term) => TactixLibrary.boundRename(x.asInstanceOf[Variable],y.asInstanceOf[Variable])}),
+    new InputPositionTacticInfo("stutter"
+      , RuleDisplayInfo(("[:=]", "[:=]"), (List("&Gamma;"), List("P","&Delta;"))
+      , List((List("&Gamma;"),List("[x:=x]P","&Delta;")))), List(TermArg("x"))
+      , {case () => (x:Term) => DLBySubst.stutter(x.asInstanceOf[Variable])}),
 
   //
     new TacticInfo("TrivialCloser", "TrivialCloser", {case () => ProofRuleTactics.trivialCloser}),
     new TacticInfo("nil", "nil", {case () => Idioms.nil}),
+
+    new InputPositionTacticInfo(
+      "transformEquality",
+      "transformEquality",
+      FormulaArg("equality") :: Nil,
+      {case () => (f:Formula) => ArithmeticSimplification.transformEquality(f)}),
 
     /*new TacticInfo("monb", "Box Monotonicity", {case () => TactixLibrary.monb}),
     new TacticInfo("monb2", "Box Monotonicity 2", {case () => DLBySubst.monb2}),
@@ -636,13 +668,16 @@ object DerivationInfo {
     new PositionTacticInfo("step", "step", {case () => TactixLibrary.step}),
     new PositionTacticInfo("stepAt", "stepAt", {case () => HilbertCalculus.stepAt}),
     new PositionTacticInfo("normalize", "normalize", {case () => TactixLibrary.normalize}),
+    new PositionTacticInfo("unfoldProgramNormalize", "unfoldProgramNormalize", {case () => TactixLibrary.unfoldProgramNormalize}),
     new PositionTacticInfo("prop", "prop", {case () => TactixLibrary.prop}),
     new PositionTacticInfo("chase", "chase", {case () => TactixLibrary.chase}),
     // Technically in InputPositionTactic(Generator[Formula, {case () => ???}), but the generator is optional
-    new TacticInfo("master", "master", {case () => (gen:Generator[Formula]) => TactixLibrary.master(gen)}, needsGenerator = true),
+    new TacticInfo("master", "master", {case () => (gen:Generator.Generator[Formula]) => TactixLibrary.master(gen)}, needsGenerator = true),
+    new TacticInfo("auto", "auto", {case () => TactixLibrary.auto}, needsGenerator = true),
     new TacticInfo("QE", "QE",  {case () => TactixLibrary.QE}, needsTool = true),
-    new TacticInfo("MathematicaQE", "MathematicaQE", {case () => TactixLibrary.QE}, needsTool = true),
+    //new TacticInfo("MathematicaQE", "MathematicaQE", {case () => TactixLibrary.QE}, needsTool = true),
     new TacticInfo("pQE", "pQE",  {case () => TactixLibrary.partialQE}, needsTool = true),
+    new TacticInfo("smartQE", "smartQE",  {case () => ArithmeticSpeculativeSimplification.speculativeQE}, needsTool = true),
 
     // Differential tactics
     new PositionTacticInfo("ODE",
@@ -693,19 +728,22 @@ object DerivationInfo {
         List((List("&Gamma;"), List("∀t≥0 ( (∀0≤s≤t q(sol(s))) → [x:=sol(t)]p(x) )")))),
       {case () => AxiomaticODESolver.apply}, needsTool = true),
     new PositionTacticInfo("diffSolve",
-      RuleDisplayInfo("[′]R",
+      RuleDisplayInfo("solve",
         (List("&Gamma;"),List("[{x′ = f(x) & q(x)}]p(x)","&Delta;")),
         List((List("&Gamma;"), List("∀t≥0 ( (∀0≤s≤t q(sol(s))) → [x:=sol(t)]p(x) )")))),
       {case () => TactixLibrary.diffSolve(None)}, needsTool = true), //@todo change the tactic back when we get a chance to implement the new one.
     new PositionTacticInfo("autoDiffSolve",
-    RuleDisplayInfo("[′]R",
+    RuleDisplayInfo("solve",
       (List("&Gamma;"),List("[{x′ = f(x) & q(x)}]p(x)","&Delta;")),
       List((List("&Gamma;", "t≥0"), List("[x:=sol(t)](q(x) → p(x))")))),
     {case () => TactixLibrary.diffSolve(None)}, needsTool = true),
+    new PositionTacticInfo("DGauto",
+      "DGauto",
+      {case () => TactixLibrary.DGauto}, needsTool = true),
     new PositionTacticInfo("Dvariable", "Dvar", {case () => DifferentialTactics.Dvariable}),
 
     // DLBySubst
-    new InputPositionTacticInfo("I", "I", List(FormulaArg("invariant")), {case () => (fml:Formula) => TactixLibrary.loop(fml)}),
+    //new InputPositionTacticInfo("I", "I", List(FormulaArg("invariant")), {case () => (fml:Formula) => TactixLibrary.loop(fml)}),
 
     new PositionTacticInfo("decomposeController","decomposeController",{case () => {HybridProgramTactics.decomposeController}}),
 
@@ -761,9 +799,14 @@ object DerivationInfo {
   def assertValidIdentifier(id:String) = { assert(id.forall{case c => c.isLetterOrDigit}, "valid code name: " + id)}
 
   /** Retrieve meta-information on an inference by the given code name `codeName` */
-  def ofCodeName(codeName:String): DerivationInfo = byCodeName.getOrElse(codeName.toLowerCase,
-    throw new IllegalArgumentException("No such DerivationInfo of identifier " + codeName)
-  )
+  def ofCodeName(codeName:String): DerivationInfo = {
+    assert(byCodeName != null, "byCodeName should not be null.")
+    assert(codeName != null, "codeName should not be null.")
+
+    byCodeName.getOrElse(codeName.toLowerCase,
+      throw new IllegalArgumentException("No such DerivationInfo of identifier " + codeName)
+    )
+  }
 
   def hasCodeName(codeName: String): Boolean = byCodeName.keySet.contains(codeName.toLowerCase)
 }
@@ -829,6 +872,7 @@ sealed trait DerivationInfo {
   val numPositionArgs: Int = 0
   /** Whether the derivation expects the caller to provide it with a way to generate invariants */
   val needsGenerator: Boolean = false
+  override def toString: String = "DerivationInfo(" + canonicalName + "," + codeName + ")"
 }
 
 /** Meta-Information for a (derived) axiom or (derived) axiomatic rule */
@@ -850,6 +894,14 @@ object ProvableInfo {
       case info: ProvableInfo => info
       case info => throw new Exception("Derivation \"" + info.canonicalName + "\" is not an axiom or axiomatic rule, whether derived or not.")
     }
+
+  /** Retrieve meta-information on an inference by the given code name `codeName` */
+  def ofCodeName(codeName:String): ProvableInfo = {
+    DerivationInfo.ofCodeName(codeName) match {
+      case info: ProvableInfo => info
+      case info => throw new Exception("Derivation \"" + info.canonicalName + "\" is not an axiom or axiomatic rule, whether derived or not.")
+    }
+  }
 
   val allInfo:List[ProvableInfo] =  DerivationInfo.allInfo.filter(_.isInstanceOf[ProvableInfo]).map(_.asInstanceOf[ProvableInfo])
 }
