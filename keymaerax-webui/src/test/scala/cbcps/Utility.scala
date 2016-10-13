@@ -7,7 +7,7 @@ import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core.{And, NamedSymbol, StaticSemantics, SuccPos, _}
-import edu.cmu.cs.ls.keymaerax.launcher.{DefaultConfiguration, LemmaDatabaseInitializer}
+import edu.cmu.cs.ls.keymaerax.launcher.{DefaultConfiguration}
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.tools.{KeYmaera, Mathematica, Tool, ToolEvidence}
@@ -28,6 +28,9 @@ import scala.util.Try
 object Utility {
 
   def v(f: Expression): Seq[Variable] =
+    if (f == null)
+      return Seq.empty[Variable]
+    else
     StaticSemantics.vars(f).toSet[NamedSymbol].toSeq.map(v => v match {
       case v: Variable => v
       case d: DifferentialSymbol => d.x
@@ -35,6 +38,9 @@ object Utility {
     })(collection.breakOut)
 
   def fv(f: Expression): Seq[Variable] =
+    if (f == null)
+      return Seq.empty[Variable]
+    else
     StaticSemantics.freeVars(f).toSet[NamedSymbol].toSeq.map(v => v match {
       case v: Variable => v
       case d: DifferentialSymbol => d.x
@@ -42,6 +48,9 @@ object Utility {
     })(collection.breakOut)
 
   def bv(f: Formula): Seq[Variable] =
+    if (f == null)
+      return Seq.empty[Variable]
+    else
     StaticSemantics.boundVars(f).toSet[NamedSymbol].toSeq.map(v => v match {
       case v: Variable => v
       case d: DifferentialSymbol => d.x
@@ -49,11 +58,14 @@ object Utility {
     })(collection.breakOut)
 
   def bv(f: Program): Seq[Variable] =
-    StaticSemantics.boundVars(f).toSet[NamedSymbol].toSeq.map(v => v match {
-      case v: Variable => v
-      case d: DifferentialSymbol => d.x
-      case x => println("Unknown NamedSymbol: " + x); null
-    })(collection.breakOut)
+    if (f == null)
+      return Seq.empty[Variable]
+    else
+      StaticSemantics.boundVars(f).toSet[NamedSymbol].toSeq.map(v => v match {
+        case v: Variable => v
+        case d: DifferentialSymbol => d.x
+        case x => println("Unknown NamedSymbol: " + x); null
+      })(collection.breakOut)
 
   def loadLemma(id: LemmaID): Option[Lemma] = LemmaDBFactory.lemmaDB.get(id)
 
@@ -79,9 +91,9 @@ object Utility {
 object ProofHelper {
   def initProver = {
     PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
-    val generator = new ConfigurableGenerate[Formula]()
-    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p -> inv))
-    TactixLibrary.invGenerator = generator
+//    val generator = new ConfigurableGenerate[Formula]()
+//    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p -> inv))
+//    TactixLibrary.invGenerator = generator
 
 
     val provider = new MathematicaToolProvider(DefaultConfiguration.defaultMathematicaConfig)
@@ -95,7 +107,7 @@ object ProofHelper {
 
   def shutdownProver = {
     ToolProvider.shutdown()
-    TactixLibrary.invGenerator = new NoneGenerate()
+//    TactixLibrary.invGenerator = new NoneGenerate()
   }
 
   def verify(goal: Sequent, t: BelleExpr, baseName: Option[String] = None): Option[Lemma] = {
@@ -230,7 +242,7 @@ object Lemmas {
 
 
       //Remove Differential Equations
-      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) //& print("commuted")
+      t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) & print("commuted")
       t = t & Lemma2Stuff.rotateOrEliminateAll(elim)(pos)
       t
     }
@@ -239,11 +251,11 @@ object Lemmas {
   def lemma2_DC(elim: mutable.Seq[Variable], elimDomain: Formula): DependentPositionTactic = "Lemma2" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
     case Some(Box(p, Box(ODESystem(ode: DifferentialProgram, And(And(d1: Formula, d2: Formula), dt: Formula)), f: Formula))) => {
       val d = if (d1.equals(elimDomain)) {
-        //        println("using domain 2 in cut because elimdomain (" + elimDomain + ") is d1 (" + d1 + ")")
+                println("using domain 2 in cut because elimdomain (" + elimDomain + ") is d1 (" + d1 + ")")
         d2
       }
       else {
-        //        println("using domain 1 in cut because elimdomain (" + elimDomain + ") is d2 (" + d2 + ")")
+                println("using domain 1 in cut because elimdomain (" + elimDomain + ") is d2 (" + d2 + ")")
         d1
       }
       cut(Imply(Box(p, Box(ODESystem(Lemma2Stuff.removeODEs(ode, elim), And(d, dt)), f: Formula)), Box(p, Box(ODESystem(ode, And(And(d1, d2), dt)), f)))) < (
@@ -255,7 +267,7 @@ object Lemmas {
           )
         ,
         //show
-        cohide(seq.succ.size + 1) & implyR('R) & monb & t2_DC(elim, elimDomain)('R) & prop
+        cohide(seq.succ.size + 1) & implyR('R) & monb & t2_DC(elim, elimDomain)('R) & prop & print("Lemma2: PROP")
         ) //& print("lemma 2 done!")
     }
   })
@@ -278,16 +290,16 @@ object Lemmas {
 
     def rotateOrEliminate(elim: mutable.Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
       case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
-        var t: BelleExpr = null
+        var t: BelleExpr = skip
         val v = nextVariable(ode)
         if (elim.contains(v)) {
-          t = //print("elim " + v) &
+          t = t& //print("elim " + v) &
             cut(Forall(Seq(v), sequent.succ(pos.top.getPos - 1))) < (
               allL(v, v)(-sequent.ante.length - 1) & prop, hide(pos.top)
-              ) & useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
+              ) & print("Lemma2: using at DGi") &  useAt("DG inverse differential ghost implicational", PosInExpr(1 :: Nil))(pos)
         }
         else {
-          t = //print("rotate " + v) &
+          t = t& //print("rotate " + v) &
             useAt(", commute", PosInExpr(1 :: Nil))(pos)
         }
         t
@@ -296,9 +308,9 @@ object Lemmas {
 
     def rotateOrEliminateAll(elim: mutable.Seq[Variable]): DependentPositionTactic = "Rotate DG and eliminate Variables until Time is reached" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
       case Some(Box(ODESystem(ode, constraint), f: Formula)) => {
-        var t: BelleExpr = rotateOrEliminate(elim)(pos) //& print("remove 1")
-        (1 to countDiff(ode) - 2) foreach (i => t = t & rotateOrEliminate(elim)(pos)) //& print("remove " + (i + 1)))
-        t //& print("done rotateOrEliminateAll")
+        var t: BelleExpr = print("Lemma2: rotateOrEliminate - elim: "+elim) & rotateOrEliminate(elim)(pos) & print("after remove/skip 1")
+        (1 to countDiff(ode) - 2) foreach (i => t = t & rotateOrEliminate(elim)(pos) & print("after remove/skip " + (i + 1)))
+        t & print("done rotateOrEliminateAll")
       }
     })
 
@@ -598,7 +610,7 @@ object Lemmas {
   def lemma5T(test: Formula): DependentPositionTactic = "Apply Lemma5" by ((pos: Position, seq: Sequent) => {
     seq.sub(pos) match {
       case Some(Box(p: Program, f: Formula)) =>
-        useAt(lemma5, PosInExpr(1 :: 1 :: Nil), (s: Subst) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil))(pos)
+        useAt("ANON",lemma5.fact, PosInExpr(1 :: 1 :: Nil), (s: Subst) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil))(pos)
     }
   })
 
@@ -611,7 +623,7 @@ object Lemmas {
     print("->") & testb('L) & print("HERE 1") & implyL('L) & print("HERE 2") < (closeId, closeId)
     ,
     // <-
-    print("<-") & testb('R) & implyR('R)  & closeId
+    print("<-") & testb('R) & implyR('R) & closeId
     )
   lazy val lemma5L: Lemma = lemma(f5L, n5L, t5L)
 
@@ -626,7 +638,7 @@ object Lemmas {
   def lemma5LT(test: Formula): DependentPositionTactic = "Apply Lemma5" by ((pos: Position, seq: Sequent) => {
     seq.sub(pos) match {
       case Some(f: Formula) =>
-        useAt(lemma5L, PosInExpr(1 :: 1 :: Nil), (s: Subst) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil))(pos)
+        useAt("ANON",lemma5L.fact, PosInExpr(1 :: 1 :: Nil), (s: Subst) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil))(pos)
     }
   })
 
@@ -812,10 +824,10 @@ object Lemmas {
     //      composeb('R) & composeb(1, 1 :: Nil) & lemma1BA(1, 1 :: Nil) & assignb('R) & testb('R) & prop).isProved)
     //    println("Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;?a>0;]a>0 -> [a:=2;b:=4;?a>0;]a>0".asFormula,
     //      implyR('R) & composeb('R) & composeb(1, 1 :: Nil) & lemma1(1, 1 :: Nil) & normalize).isProved)
-    //    println("Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
-    //      implyR('R) & composeb('R) &
-    //        lemma2_DC("b".asVariable :: Nil)('R) & assignb('R) & diffSolve()('R) & QE & print("y")
-    //    ).isProved)
+        println("Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
+          implyR('R) & composeb('R) &
+            lemma2_DC(mutable.Seq("b".asVariable),"b<10".asFormula)('R) & assignb('R) & diffSolve()('R) & QE & print("y")
+        ).isProved)
     //    println("Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & useAt(lemma3, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
     //    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
@@ -864,13 +876,13 @@ object Lemmas {
     //        V('R) & prop
     //        )).isProved)
 
-    println("Test Lemma 5 Left - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
-      implyR('R) & lemma5LT("a>5".asFormula)('R) < (
-        //use test
-        print("use 5") & testb('R) & implyR('R) & assignb('R) & QE,
-        //show
-        print("show 5") & prop
-        )).isProved)
+//    println("Test Lemma 5 Left - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
+//      implyR('R) & lemma5LT("a>5".asFormula)('R) < (
+//        //use test
+//        print("use 5") & testb('R) & implyR('R) & assignb('R) & QE,
+//        //show
+//        print("show 5") & prop
+//        )).isProved)
 
 
     //    println("Test Lemma 6 - proved? " + TactixLibrary.proveBy("([x:=2;][a:=10;](a>5->(a>0&c>0))) -> [x:=2;][a:=10;][?a>5;]a>0".asFormula,

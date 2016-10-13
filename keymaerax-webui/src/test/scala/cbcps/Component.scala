@@ -2,7 +2,7 @@ package cbcps
 
 import java.io._
 
-import edu.cmu.cs.ls.keymaerax.core.{And, AtomicODE, Choice, Compose, DifferentialProduct, ODESystem, PrettyPrinter, Program, Variable}
+import edu.cmu.cs.ls.keymaerax.core.{And, AtomicODE, Choice, Compose, DifferentialProduct, DifferentialProgram, Formula, ODESystem, PrettyPrinter, Program, True, Variable}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import Utility._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
@@ -31,11 +31,11 @@ private class SerializableComponent(c: Component@transient) extends Serializable
   PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
   val _name: String = c.name
   val _ctrl: String = c.ctrl.prettyString
-  val _plant: String = c.plant.prettyString
+  val _plant: String = if (c.plant != null) c.plant.prettyString else null
   val _ports: String = c.ports.prettyString
 
   def component(): Component = {
-    return new Component(_name, _ctrl.asProgram, _plant.asProgram.asInstanceOf[ODESystem], _ports.asProgram)
+    return new Component(_name, _ctrl.asProgram, if(_plant!=null) _plant.asProgram.asInstanceOf[ODESystem] else null, _ports.asProgram)
   }
 }
 
@@ -63,14 +63,57 @@ object Component {
     * @return A new component as the composition of the two received components.
     */
   def compose(c1: Component, c2: Component, ports: Program): Component = {
-    new Component(c1.name + "-" + c2.name,
+    new Component(c1.name + "~" + c2.name,
       Choice(Compose(c1.ctrl, c2.ctrl), Compose(c2.ctrl, c1.ctrl)),
-      ODESystem(DifferentialProduct(c1.plant.ode, c2.plant.ode), composeDomain(c1, c2)),
+      composePlant(c1,c2),
       Compose(Compose(c1.ports, c2.ports), ports)
     )
   }
 
-  def composeDomain(c1: Component, c2: Component) = And(c1.plant.constraint, c2.plant.constraint)
+  private def composePlant(c1: Component, c2: Component) : ODESystem = {
+    if (c1.plant == null) {
+      if (c2.plant == null)
+        null
+      else
+        c2.plant
+    }
+    else {
+      if (c2.plant == null)
+        c1.plant
+      else
+        ODESystem(composeODE(c1,c2), composeDomain(c1, c2))
+    }
+  }
+
+  private def composeODE(c1: Component, c2: Component): DifferentialProgram ={
+    if (c1.plant == null) {
+      if (c2.plant == null)
+        null
+      else
+        c2.plant.ode
+    }
+    else {
+      if (c2.plant == null)
+        c1.plant.ode
+      else
+        DifferentialProduct(c1.plant.ode, c2.plant.ode)
+    }
+  }
+
+  private def composeDomain(c1: Component, c2: Component): Formula = {
+    if (c1.plant == null) {
+      if (c2.plant == null)
+        True
+      else
+        c2.plant.constraint
+    }
+    else {
+      if (c2.plant == null)
+        c1.plant.constraint
+      else
+        And(c1.plant.constraint, c2.plant.constraint)
+    }
+  }
 
   def main(args: Array[String]): Unit = {
     PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)

@@ -2,7 +2,7 @@ package cbcps
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.BelleExpr
 import edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms.LemmaID
-import edu.cmu.cs.ls.keymaerax.btactics.{ConfigurableGenerate, DerivedAxioms, NoneGenerate, TactixLibrary}
+import edu.cmu.cs.ls.keymaerax.btactics.{DerivedAxioms, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}

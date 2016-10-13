@@ -387,7 +387,7 @@ abstract class Contract(
     *
     * @return A [[Formula]] representing the evolution domain of the contracts DE.
     */
-  def contractDomain(): Formula = contractDomain(component.plant.constraint)
+  def contractDomain(): Formula = if(component.plant==null) True else contractDomain(component.plant.constraint)
 
 
   /**
@@ -482,9 +482,12 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   extends Contract(component, interface, pre, post, invariant, baseCaseLemma, useCaseLemma, stepLemma) {
 
   override def contractPlant(thePlant: ODESystem): ODESystem =
-    ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), contractDomain(thePlant.constraint))
+    if (thePlant == null)
+      ODESystem(Globals.plantT, contractDomain(null))
+    else
+      ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), contractDomain(if(thePlant==null) null else thePlant.constraint))
 
-  override def contractDomain(theConst: Formula) = And(theConst, Globals.consT)
+  override def contractDomain(theConst: Formula) = if (theConst == null) Globals.evoDomT else And(theConst, Globals.evoDomT)
 
   override def contract(): Formula = Imply(
     contractPre(),
@@ -695,8 +698,8 @@ object Contract {
     * @return True, if the interface is admissible for the component.
     */
   def admissible(component: Component, interface: Interface): Boolean = {
-    bv(component.ctrl).intersect(interface.vDeltaFlat).isEmpty &&
-      (bv(component.ctrl) ++ bv(component.plant) ++ bv(component.ports)).intersect(interface.vInitFlat).isEmpty &&
+    //    bv(component.ctrl).intersect(interface.vDeltaFlat).isEmpty &&
+    (bv(component.ctrl) ++ bv(component.plant) ++ bv(component.ports)).intersect(interface.vInitFlat).isEmpty &&
       (bv(component.ctrl) ++ bv(component.plant)).intersect(interface.vInFlat).isEmpty
   }
 
@@ -741,7 +744,11 @@ object Contract {
   }
 
   def composeWithLemmas[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma], side1T: mutable.Map[Seq[Variable], Lemma], side2T: mutable.Map[Seq[Variable], Lemma], verify: Boolean = true): C = {
-    compose(ctr1, ctr2, X, cpoT.map { case (k, v) => k -> v.fact }, side1T.map { case (k, v) => k -> v.fact }, side2T.map { case (k, v) => k -> v.fact }, verify)
+    compose(ctr1, ctr2, X,
+      if (cpoT == null) null else cpoT.map { case (k, v) => k -> v.fact },
+      if (side1T == null) null else side1T.map { case (k, v) => k -> v.fact },
+      if (side2T == null) null else side2T.map { case (k, v) => k -> v.fact },
+      verify)
   }
 
   //TODO untested!
@@ -965,7 +972,7 @@ object Contract {
                   & useAt("[;] compose", PosInExpr(1 :: Nil))(1, 1 :: Nil) * (Math.max((ctr1.interface.vIn.toSet -- X.keySet).size - 1, 0))
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in1*;in1*:=*;?in1*;in1*:=*][ports1][ports3]inv1
                   //  introduce tests, move them, weaken them, make assignment non-deterministic and move both to designated position
-                  & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT, ctr3.interface.vIn)('R)
+                  & ComposeProofStuff.introduceAndWeakenForAll(ctr1.interface.piIn, ctr2.interface.piOut, X, cpoT, ctr3.interface.vIn)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1][ports3*]...[ports3*]inv1
                   //cf. 3 - drop remaining parts of ports3 (which are part of component 2)
                   //TODO Check
@@ -974,7 +981,7 @@ object Contract {
                   //cf. 11 - drop plant2
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), ctr2.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -997,7 +1004,7 @@ object Contract {
                     & (if (ctr1.interface.pre.size > 0) (composeb(-1) *) else skip)
                     //close
                     & closeId,
-                  cohide(2) & implyR('R) & useAt(ctr1.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
+                  cohide(2) & implyR('R) & useAt("ANON", ctr1.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
                   )
                 )
               ,
@@ -1008,7 +1015,7 @@ object Contract {
                 & implyR('R)
                 //vaphi2 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout2
                 //(3) cf. 1 - Lemma 2 to remove plant1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)('R)
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1AB('R)
@@ -1066,7 +1073,7 @@ object Contract {
                   //cf. 11 - drop plant2
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), ctr2.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1086,10 +1093,10 @@ object Contract {
                     //split dp1
                     & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr1.interface.pre.size - 1, 0)
                     & (if (ctr1.interface.pre.size > 0) (composeb(-1) *) else skip)
-//                    & composeb(-1) * (ctr1.interface.pre.size - 1)
+                    //                    & composeb(-1) * (ctr1.interface.pre.size - 1)
                     //close
                     & closeId,
-                  cohide(2) & implyR('R) & useAt(ctr1.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
+                  cohide(2) & implyR('R) & useAt("ANON", ctr1.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
                   )
                 )
               ,
@@ -1100,7 +1107,7 @@ object Contract {
                 & implyR('R)
                 //vaphi2 ==> [dp][ctrl2;ctrl1][told][{plant1,plant2}]piout2
                 //(3) cf. 1 - Lemma 2 to remove plant1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)('R)
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1160,7 +1167,7 @@ object Contract {
                   //cf. 11 - drop plant1
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1181,10 +1188,10 @@ object Contract {
                     //split dp2
                     & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr2.interface.pre.size - 1, 0)
                     & (if (ctr2.interface.pre.size > 0) (composeb(-1) *) else skip)
-//                    & composeb(-1) * (ctr2.interface.pre.size - 1)
+                    //                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
-                  cohide(2) & implyR('R) & useAt(ctr2.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
+                    cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
                   )
                 )
               ,
@@ -1195,7 +1202,7 @@ object Contract {
                 & implyR('R)
                 //vaphi1 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout1
                 //(3) cf. 1 - Lemma 2 to remove plant2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), ctr2.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)('R)
                 //vaphi1 ==> [dp;ctrl1;ctrl2;told][{plant1}]piout1
                 //(4) cf. 2 - Lemma 1 to remove ctrl2
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1253,7 +1260,7 @@ object Contract {
                   //cf. 11 - drop plant1
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), ctr1.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant2][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1274,10 +1281,10 @@ object Contract {
                     //split dp2
                     & (composeb(-1) & (composeb(-1, 1 :: Nil) *)) * Math.max(ctr2.interface.pre.size - 1, 0)
                     & (if (ctr2.interface.pre.size > 0) (composeb(-1) *) else skip)
-//                    & composeb(-1) * (ctr2.interface.pre.size - 1)
+                    //                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
-                  cohide(2) & implyR('R) & useAt(ctr2.stepLemma.get, PosInExpr(1 :: Nil))(1) & prop
+                    cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
                   )
                 )
               ,
@@ -1288,7 +1295,7 @@ object Contract {
                 & implyR('R)
                 //vaphi1 ==> [dp][ctrl2;ctrl1][told][{plant1,plant2}]piout1
                 //(3) cf. 1 - Lemma 2 to remove plant2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), ctr2.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)('R)
                 //vaphi1 ==> [dp;ctrl2;ctrl1;told][{plant1}]piout1
                 //(4) cf. 2 - Lemma 1 to remove ctrl2
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1333,11 +1340,11 @@ object Contract {
         var h = oneList(0)
         var cnt = 0
         vDelta.foreach((vs: Seq[Variable]) => {
-          t = t & print("recomposing single dp -> "+vs) & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, h) * (vs.size-1) & print("done")
+          t = t & print("recomposing single dp -> " + vs) & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, h) * (vs.size - 1) & print("done")
           h = 1 :: h
         })
-        t = t & print("recomposing dmps") & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos) * Math.max(vDelta.size-1,0)
-        t&print("done recomposing dp")
+        t = t & print("recomposing dmps") & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos) * Math.max(vDelta.size - 1, 0)
+        t & print("done recomposing dp")
     })
 
     def dropDeltaParts(remEmpty: Boolean, keepEmpty: Boolean, remInit: Seq[Variable], dCnt: Int, sCnt: Int): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
@@ -1459,13 +1466,13 @@ object Contract {
         require(s.size == 1, "Wrong number of side conditions (" + s.size + ") for out=" + out)
         val p = side(s.last)
         print("CLOSE SIDE 1") & composeb('R) * 3 &
-          print("CLOSE SIDE 2 - " + p) & useAt(p, PosInExpr(1 :: Nil))('R) &
+          print("CLOSE SIDE 2 - " + p) & useAt("ANON", p, PosInExpr(1 :: Nil))('R) &
           print("CLOSE SIDE 3") & closeId &
           print("CLOSE SIDE 4")
       }
     })
 
-    def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable],vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in, Box(ports, Box(ports3, _))))) =>
         var t: BelleExpr = skip & print("introduceAndWeakenForAll")
         val vInCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => X.keySet.contains(e._1))
@@ -1537,28 +1544,30 @@ object Contract {
           //[p][random-in-1]...[random-in-1][test-in-1]...[random-in-nIn]...[random-in-nIn][test-in-nIn][ports-1]...[ports-nPorts][mports3-1]...[mports3-nPorts3]A
           var donePorts = Seq.empty[Seq[Variable]]
           vInCon.foreach((e) => {
-//            val inPos = if (piIn.keys.toSeq.indexOf(e._1) == 0) 0 else piIn.keys.toSeq.take(piIn.keys.toSeq.indexOf(e._1) - 1).flatten.size
-            val currIn=piIn.keys.toSeq.intersect(vIn3++donePorts++Seq(e._1))
-            println("currIn: "+currIn)
-            println("looking for position of "+e._1)
-            println("currIn.indexOf(e._1)="+currIn.indexOf(e._1))
-            println("currIn.take(currIn.indexOf(e._1) - 1)="+currIn.take(currIn.indexOf(e._1)))
-            val inPos = if (currIn.indexOf(e._1) == 0) 0 else currIn.take(currIn.indexOf(e._1)).flatten.size+currIn.take(currIn.indexOf(e._1)).size
-            println("and inPos="+inPos)
+            //            val inPos = if (piIn.keys.toSeq.indexOf(e._1) == 0) 0 else piIn.keys.toSeq.take(piIn.keys.toSeq.indexOf(e._1) - 1).flatten.size
+            val currIn = piIn.keys.toSeq.intersect(vIn3 ++ donePorts ++ Seq(e._1))
+            println("currIn: " + currIn)
+            println("looking for position of " + e._1)
+            println("currIn.indexOf(e._1)=" + currIn.indexOf(e._1))
+            println("currIn.take(currIn.indexOf(e._1) - 1)=" + currIn.take(currIn.indexOf(e._1)))
+            val inPos = if (currIn.indexOf(e._1) == 0) 0 else currIn.take(currIn.indexOf(e._1)).flatten.size + currIn.take(currIn.indexOf(e._1)).size
+            println("and inPos=" + inPos)
             val portPos = X.keys.toSeq.diff(donePorts).indexOf(e._1)
             val cntIn = vInOpen.keySet.flatten.size + vInOpen.size + donePorts.flatten.size + donePorts.size
             val cntPorts = if (nPorts == 0) 1 else nPorts
             val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
-            t = t & ComposeProofStuff.introduceTestFor(e._1, e._2, X.get(e._1).get, vOutCon.get(X.get(e._1).get).get,
+            t = t & printIndexed("HERE A - " + pos.top.getPos) & ComposeProofStuff.introduceTestFor(e._1, e._2, X.get(e._1).get, vOutCon.get(X.get(e._1).get).get,
               nIn, cntIn, nPorts, cntPorts, nPorts3, cntPorts3,
               inPos, portPos, cpoT((e._1, X(e._1))),
-              Seq(X.keys.filter(v => !donePorts.contains(v)).toSeq: _*))(pos)
+              Seq(X.keys.filter(v => !donePorts.contains(v)).toSeq: _*))(pos.top.getPos) & print("HERE B")
             donePorts = donePorts ++ Seq(e._1)
             nIn = nIn + 1
             nPorts3 = nPorts3 - 1
           })
         }
         t & print("done with introduceAndWeakenForAll")
+
+      case _ => print("ERROR ALL")
     })
 
 
@@ -1575,7 +1584,7 @@ object Contract {
         //        val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
 
         //introduce test using lemma 5
-        var t: BelleExpr = print("start introduceTestFor: vIn=" + vIn + "(vOut=" + vOut + ") --> " + tIn + "(tOut="+tOut+") @pos=" + pos+", with: nIn="+nIn+", cntIn="+cntIn+", nPorts="+nPorts+", cntPorts="+cntPorts+", nPorts3="+nPorts3+", inPos="+inPos+", portPos="+portPos)
+        var t: BelleExpr = print("start introduceTestFor: vIn=" + vIn + "(vOut=" + vOut + ") --> " + tIn + "(tOut=" + tOut + ") @pos=" + pos + ", with: nIn=" + nIn + ", cntIn=" + cntIn + ", nPorts=" + nPorts + ", cntPorts=" + cntPorts + ", nPorts3=" + nPorts3 + ", inPos=" + inPos + ", portPos=" + portPos)
         //if nIn is zero, we have just a ?true test as in3 -> remove this test, it will be replaced with actual ports
         if (nIn == 0) {
           t = t & print("remove empty in3") & Lemmas.lemma1(1, 1 :: Nil)
@@ -1632,8 +1641,8 @@ object Contract {
           // multiport I am commuting with
           val vCurr = Xin(i - (1 + cntIn + cntPorts))
           // split multiport assignments
-          t = t & print("splitting, i="+i+", vCurr="+vCurr)
-          t = t & composeb(pos.top.getPos, oneList(i+1)) * (vCurr.size - 1)
+          t = t & print("splitting, i=" + i + ", vCurr=" + vCurr)
+          t = t & composeb(pos.top.getPos, oneList(i + 1)) * (vCurr.size - 1)
           t = t & print("split")
           // commute test with all assignments
           (i until (i + vCurr.size)) foreach (j => {
@@ -1651,12 +1660,12 @@ object Contract {
 
         //weaken test
         t = t & print("weakening test")
-        t = t & Lemmas.lemma6T(tIn)(pos.top.getPos, oneList(assPos+1)) < (
+        t = t & Lemmas.lemma6T(tIn)(pos.top.getPos, oneList(assPos + 1)) < (
           skip
           ,
           (useAt("[;] compose", PosInExpr(1 :: Nil))('R) *) & composeb('R)
             & print("using cpo=" + cpo)
-            & useAt(cpo, PosInExpr(1 :: Nil))(1, 1 :: Nil)
+            & useAt("ANON", cpo, PosInExpr(1 :: Nil))(1, 1 :: Nil)
             & print("used cpo")
             //[dp3;(ctrl1;ctrl2);told;plant3;in;ports;ports3*]A
             //remove all remaining parts of ports3*, and all of ports and in, and plant3, told and (ctrl1;ctr2).
@@ -1680,7 +1689,8 @@ object Contract {
         t = t & print("split")
         // commute test with all assignments
         (assPos until (assPos + vIn.size)) foreach (j => {
-          t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(j))
+          //          t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(j))
+          t = t & useAt("ANON", Lemmas.lemma3.fact, PosInExpr(1 :: Nil))(1, oneList(j))
           t = t & print("made non-det...")
         })
         //        t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(assPos))
@@ -1695,18 +1705,18 @@ object Contract {
           (k + cntIn + cntPorts + portPos).until(k + cntIn + cntPorts, -1) foreach (i => {
 
             // multiport I am commuting with
-            val vCurr = MultiPort.multiportAtPosition(Xin, i - (k + cntIn + cntPorts +1))
+            val vCurr = MultiPort.multiportAtPosition(Xin, i - (k + cntIn + cntPorts + 1))
             // split multiport assignments
             t = t & print("splitting - vCurr=" + vCurr + ", i=" + i)
             t = t & composeb(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
             t = t & print("split")
             // commute test with all assignments
-            (i+vCurr.size-1).until(i-1, -1) foreach (j => {
+            (i + vCurr.size - 1).until(i - 1, -1) foreach (j => {
               t = t & Lemmas.lemma4_3T(pos.top.getPos, oneList(j))
               t = t & print("commuted...")
             })
             // reconnect multiport assignments
-            t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i+1)) * (vCurr.size - 1)
+            t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i + 1)) * (vCurr.size - 1)
             t = t & print("reconnected")
 
             //            t = t & Lemmas.lemma4_3T(1, oneList(i))
@@ -1752,12 +1762,12 @@ object Contract {
           t = t & composeb(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
           t = t & print("split")
           // commute test with all assignments
-          (i+vCurr.size-1).until(i -1, -1) foreach (j => {
+          (i + vCurr.size - 1).until(i - 1, -1) foreach (j => {
             t = t & Lemmas.lemma4_5T(pos.top.getPos, oneList(j))
             t = t & print("commuted...")
           })
           // reconnect multiport assignments
-          t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i+1)) * (vCurr.size - 1)
+          t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i + 1)) * (vCurr.size - 1)
           t = t & print("reconnected")
 
           //          t = t & Lemmas.lemma4_5T(1, oneList(i))
@@ -1792,6 +1802,8 @@ object Contract {
         t = t & print("done commute test to designated position")
 
         t & print("done with introduceTestFor")
+
+      case _ => print("ERROR")
     })
 
     def posOf[C <: Program](b: Box, t: C => Boolean): Int = {

@@ -523,5 +523,17 @@ End.
       ((f(x))' = 0 -> [{x' = t(||) & f(x)=0 & q(||)}](f(x))'=0) */
    )
  End.
+
+
+/* AM Axioms */
+Axiom "DCi".
+  [{c&H(||)}]p(||) -> [{c&H(||)&r(||)}]p(||)
+End.
+
+/* DOES NOT PARSE
+Axiom "DGiA".
+  [{c{|y_,z_|}&q(|y_,z_|)}]p(|y_,z_|)  ->  \forall y \forall z [{y_'=a(||),z_'=b(||),c{|y_,z_|}&q(|y_,z_|)}]p(|y_,z_|)
+End.
+*/
 """
 }

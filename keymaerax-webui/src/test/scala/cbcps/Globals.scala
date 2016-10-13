@@ -20,7 +20,7 @@ object Globals {
   private var _prop: Option[Formula] = None
   val t = "t".asVariable
   val t0 = "tOld".asVariable
-  val eps = "eps".asVariable
+  val eps = "ep".asVariable
 
 
   def addGlobalVariable(v: Variable) = {
@@ -51,13 +51,18 @@ object Globals {
     case _ => True
   }
 
+  //TODO initialize t0!
   def initT: Formula = Equal(t, "0".asTerm)
+
+  def initEps: Formula = Greater(eps, "0".asTerm)
+
+  def runT: String = "(" + t.prettyString + "-" + t0.prettyString + ")"
 
   def oldT: Program = Assign(t0, t)
 
   def plantT: AtomicODE = AtomicODE(DifferentialSymbol(t), "1".asTerm)
 
-  def consT: Formula = LessEqual(t, eps)
+  def evoDomT: Formula = LessEqual(Minus(t,t0), eps)
 
   def appendGlobalPropertyToFormula(p: Formula): And = {
     _prop match {

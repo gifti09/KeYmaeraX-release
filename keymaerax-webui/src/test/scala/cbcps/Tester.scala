@@ -3,15 +3,17 @@ package cbcps
 import java.io.FileInputStream
 import java.time.DayOfWeek
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, PosInExpr}
+import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, DependentPositionTactic, Find, PosInExpr}
 import edu.cmu.cs.ls.keymaerax.btactics.{DerivedAxioms, TactixLibrary}
-import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core.{DifferentialProgram, ODESystem, Program}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics._
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
-import testHelper.ParserFactory._
+import edu.cmu.cs.ls.keymaerax.bellerophon._
+import edu.cmu.cs.ls.keymaerax.btactics.ArithmeticSimplification._
+import edu.cmu.cs.ls.keymaerax.btactics.arithmetic.speculative.ArithmeticSpeculativeSimplification._
+import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 
 import scala.collection.immutable._
 import scala.collection.mutable.LinkedHashMap
@@ -65,32 +67,35 @@ object Tester {
     //    tacticTest()
 
 
-    val t1 = test1(false)
-    val bt = bigTest(false)
-    val t2 = test2(false)
-    val t3 = test3(false)
-    val td4 = testD4(false)
-    val bdt = bigTestDelta(false)
-    val td5 = testD5(false)
-    val td6 = testD6(false)
+    //    val t1 = test1(false)
+    //    val bt = bigTest(false)
+    //    val t2 = test2(false)
+    //    val t3 = test3(false)
+    //    val td4 = testD4(false)
+    //    val bdt = bigTestDelta(false)
+    //    val td5 = testD5(false)
+    //    val td6 = testD6(false)
+    //    val tm7 = testM7(false)
+    //    val tmd8 = testMD8(false)
 
-    val tm7 = testM7(false)
-    val tmd8 = testMD8(false)
+    //    val tr = testRobix(false)
+    val tetcs = testEtcs(false)
 
+    //    println("--- SUMMARY ---")
+    //    println("===============")
+    //    println("test1 done? " + t1)
+    //    println("bigTest done? " + bt)
+    //    println("test2 done? " + t2)
+    //    println("test3 done? " + t3)
+    //    println("testD4 done? " + td4)
+    //    println("bigDeltaTest done? " + bdt)
+    //    println("testD5 done? " + td5)
+    //    println("testD6 done? " + td6)
+    //    println("testM7 done? " + tm7)
+    //    println("testMD8 done? " + tmd8)
 
-    println("--- SUMMARY ---")
-    println("===============")
-    println("test1 done? " + t1)
-    println("bigTest done? " + bt)
-    println("test2 done? " + t2)
-    println("test3 done? " + t3)
-    println("testD4 done? " + td4)
-    println("bigDeltaTest done? " + bdt)
-    println("testD5 done? " + td5)
-    println("testD6 done? " + td6)
-
-    println("testM7 done? " + tm7)
-    println("testMD8 done? " + tmd8)
+    //    println("testRobix done? " + tr)
+    println("testEtcs done? " + tetcs)
 
     ProofHelper.shutdownProver
     System.exit(0)
@@ -927,13 +932,13 @@ object Tester {
       val c2 = new Component(name + "-C2", "u:=-1;?y<42;".asProgram, ODESystem("v'=-1".asDifferentialProgram, "v>0".asFormula))
       val i1 = new Interface(
         mutable.LinkedHashMap(Seq("mi1".asVariable, "mi2".asVariable, "mi3".asVariable) -> "mi1+mi2+mi3=0".asFormula, Seq("zmi1".asVariable, "zmi2".asVariable) -> "zmi1>zmi2".asFormula),
-        mutable.LinkedHashMap(Seq("a".asVariable) -> "a>5".asFormula, Seq("b".asVariable) -> "b<1".asFormula, Seq("x1d1".asVariable,"x1d2".asVariable)->"x1d1+x1d2>=x1d10+x1d20".asFormula),
-        mutable.LinkedHashMap(Seq("x1d1".asVariable,"x1d2".asVariable)->Seq("x1d10".asVariable,"x1d20".asVariable))
+        mutable.LinkedHashMap(Seq("a".asVariable) -> "a>5".asFormula, Seq("b".asVariable) -> "b<1".asFormula, Seq("x1d1".asVariable, "x1d2".asVariable) -> "x1d1+x1d2>=x1d10+x1d20".asFormula),
+        mutable.LinkedHashMap(Seq("x1d1".asVariable, "x1d2".asVariable) -> Seq("x1d10".asVariable, "x1d20".asVariable))
       )
       val i2 = new Interface(
-        mutable.LinkedHashMap(Seq("y".asVariable) -> "y>0".asFormula,Seq("x2d1".asVariable,"x2d2".asVariable)->"x2d1+x2d2>=x2d10+x2d20".asFormula),
+        mutable.LinkedHashMap(Seq("y".asVariable) -> "y>0".asFormula, Seq("x2d1".asVariable, "x2d2".asVariable) -> "x2d1+x2d2>=x2d10+x2d20".asFormula),
         mutable.LinkedHashMap(Seq("mo1".asVariable, "mo2".asVariable, "mo3".asVariable) -> "mo1+mo2+mo3=0".asFormula),
-        mutable.LinkedHashMap(Seq("x2d1".asVariable,"x2d2".asVariable)->Seq("x2d10".asVariable,"x2d20".asVariable))
+        mutable.LinkedHashMap(Seq("x2d1".asVariable, "x2d2".asVariable) -> Seq("x2d10".asVariable, "x2d20".asVariable))
       )
       val ctr1 = new DelayContract(c1, i1, "a=6 & b=0 & x>42 & mi1+mi2+mi3=0 & x1d1+x1d2>=x1d10+x1d20".asFormula, "b<a".asFormula, "a>5 & b<1 & mi1+mi2+mi3=0 & x1d1+x1d2>=x1d10+x1d20".asFormula)
       val ctr2 = new DelayContract(c2, i2, "mo1+mo2+mo3=0 & x2d1+x2d2>=x2d10+x2d20".asFormula, "true".asFormula, "mo1+mo2+mo3=0 & x2d1+x2d2>=x2d10+x2d20".asFormula)
@@ -995,7 +1000,7 @@ object Tester {
     val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
       Seq("y".asVariable) -> Seq("a".asVariable),
       Seq("mi1".asVariable, "mi2".asVariable, "mi3".asVariable) -> Seq("mo1".asVariable, "mo2".asVariable, "mo3".asVariable),
-      Seq("x2d1".asVariable,"x2d2".asVariable)->Seq("x1d1".asVariable,"x1d2".asVariable)
+      Seq("x2d1".asVariable, "x2d2".asVariable) -> Seq("x1d1".asVariable, "x1d2".asVariable)
     )
 
     if (initialize) {
@@ -1020,6 +1025,463 @@ object Tester {
     return ctr3.isVerified()
   }
 
+  def testRobix(initialize: Boolean = true, name: String = "robix"): Boolean = {
+    if (initialize) {
+
+      val t = Globals.runT
+
+      //COMPONENT 1 - ROBOT
+      val c1 = new Component(name + "-Robot",
+        (
+          """{ /* brake on current curve or remain stopped */
+            | { a := -B; }
+            | ++
+            | { ?v = 0; a := 0; w := 0; }
+            | ++
+            | /* or choose a new safe curve */
+            | { a :=*; ?-B <= a & a <= A;
+            |   k :=*;
+            |   w :=*; ?v * k = w;
+            |
+            | /* use that curve, if it is a safe one (admissible velocities) */
+            | ? abs(x-xoIn) > v^2/(2*B) + V*v/B + (A/B + 1) * (A/2 * ep^2 + ep*(v+V))
+            |              | abs(y-yoIn) > v^2/(2*B) + V*v/B + (A/B + 1) * (A/2 * ep^2 + ep*(v+V));
+            | }
+            |}"""
+          ).stripMargin.asProgram,
+        ODESystem(
+          (
+            """x' = v * dx,
+              |y' = v * dy,
+              |dx' = -w * dy,
+              |dy' = w * dx,
+              |v' = a,
+              |w' = a*k""").stripMargin.asDifferentialProgram,
+          "t <= ep & v >= 0".asFormula)
+      )
+      val i1 = new Interface(
+        mutable.LinkedHashMap(
+          Seq("xoIn".asVariable) -> ("-V*" + t + " <= xoIn-xoIn0 & xoIn-xoIn0 <= V*" + t).asFormula,
+          Seq("yoIn".asVariable) -> ("-V*" + t + " <= yoIn-yoIn0 & yoIn-yoIn0 <= V*" + t).asFormula
+        ),
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(Seq("xoIn".asVariable) -> Seq("xoIn0".asVariable), Seq("yoIn".asVariable) -> Seq("yoIn0".asVariable))
+      )
+      val ctr1 = new DelayContract(c1, i1,
+        (
+          """ v >= 0
+            | & ( abs(x-xoIn) > v^2 / (2*B) + V*(v/B)
+            |               | abs(y-yoIn) > v^2 / (2*B) + V*(v/B))
+            | & dx^2 + dy^2 = 1
+            | & A >= 0
+            | & B > 0
+            | & V >= 0
+            | & ep > 0
+            | & xoIn0 = xoIn
+            | & yoIn0 = yoIn
+            | & t=tOld"""
+          ).stripMargin.asFormula,
+        "(v > 0 -> (x - xoIn)^2 + (y - yoIn)^2 > 0)".asFormula,
+        s"""v >= 0
+            | & A >= 0
+            | & B > 0
+            | & V >= 0
+            | & ep > 0
+            | & dx^2+dy^2 = 1
+            | & 0 <= $t & $t <= ep
+            | & -V*($t) <= xoIn-xoIn0 & xoIn-xoIn0 <= V*($t) & -V*($t) <= yoIn-yoIn0 & yoIn-yoIn0 <= V*($t)
+            | & (v = 0 | abs(x-xoIn) > v^2 / (2*B) + V*(v/B)
+            |          | abs(y-yoIn) > v^2 / (2*B) + V*(v/B))""".stripMargin.asFormula)
+
+      println("Ctr1 - Robot: " + ctr1.contract())
+      println("ProofGoals1:\n" + ctr1.proofGoals().mkString("\n"))
+
+      def di1(a: String, t: String): DependentPositionTactic = diffInvariant(
+        s"0<=$t".asFormula,
+        "dx^2 + dy^2 = 1".asFormula,
+        s"v = old(v) + $a*($t)".asFormula,
+        s"-($t) * (v - $a/2*($t)) <= x - old(x) & x - old(x) <= ($t) * (v - $a/2*($t))".asFormula,
+        s"-($t) * (v - $a/2*($t)) <= y - old(y) & y - old(y) <= ($t) * (v - $a/2*($t))".asFormula)
+
+      val dw1: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 3 /* 3 old(...) in DI */ & (andL('_) *) &
+        print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
+
+      def accArithTactic1: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
+        replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-10) & print("After replaceTransform") &
+        speculativeQE & print("Proved acc arithmetic")
+
+      val st1 = print("Induction step") & (andL('L) *) & chase(1) & print("After chase") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & printIndexed("After normalize") < (
+        print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+        print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(andR('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+        print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
+          di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
+          hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
+          hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
+          ) & print("Acceleration branch done")
+        ) & print("Induction step done")
+
+      val bct1 = print("Base case...") & (andL('L) *) & speculativeQE & print("Base case done")
+      val uct1 = print("Use case...") & (andL('L) *) & speculativeQE & print("Use case done")
+      //      val st1 = print("Induction step") & chase(1) & normalize(composeb('R) | assignb('R), skip, skip) & printIndexed("After normalize") &
+      //        chase(1) & normalize(andR('R), skip, skip) & printIndexed("After normalize2") < (
+      //        print("Braking branch") &
+      //          normalize(composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R), skip, skip) & printIndexed("After normalize brake1") &
+      //          //          normalize(andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & printIndexed("After normalize brake2") &
+      //          di1("-B")(1) & dw1 &
+      //          OnAll(speculativeQE) & print("Braking branch done"),
+      //        print("Stopped branch") & di1("0")(1) & dw1 & normalize(andR('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+      //        print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
+      //          di1("a")(1) & dw1 & normalize(betaRule, skip, skip) & OnAll(hideFactsAbout("dx", "dy", "dxo", "dyo", "k", "k_0") partial) < (
+      //          hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
+      //          hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
+      //          ) & print("Acceleration branch done")
+      //        )
+
+      if (ctr1.verifyBaseCase(bct1).isEmpty)
+        println("ctr1-baseCase NOT verified!")
+      if (ctr1.verifyUseCase(uct1).isEmpty)
+        println("ctr1-useCase NOT verified!")
+      //      if (ctr1.verifyStep(st1).isEmpty)
+      //        println("ctr1-step NOT verified!")
+
+
+      //COMPONENT 2 - OBSTACLE
+      val c2 = new Component(name + "-Obstacle",
+        """dxo :=*;
+          |dyo :=*;
+          |?dxo^2 + dyo^2 <= V^2;""".stripMargin.asProgram,
+        ODESystem(
+          """xo' = dxo,
+            |yo' = dyo""".stripMargin.asDifferentialProgram)
+      )
+      val i2 = new Interface(
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(
+          Seq("xo".asVariable) -> s"-V*$t <= xo-xo0 & xo-xo0 <= V*$t".asFormula,
+          Seq("yo".asVariable) -> s"-V*$t <= yo-yo0 & yo-yo0 <= V*$t".asFormula
+        ),
+        mutable.LinkedHashMap(
+          Seq("xo".asVariable) -> Seq("xo0".asVariable),
+          Seq("yo".asVariable) -> Seq("yo0".asVariable)
+        )
+      )
+      val ctr2 = new DelayContract(c2, i2,
+        """ep > 0
+          |& t = tOld
+          |& V >= 0
+          |& xo = xo0
+          |& yo = yo0""".stripMargin.asFormula,
+        "true".asFormula,
+        s"""V >= 0
+            |& 0 <= $t
+            |& $t <= ep
+            |& -V*$t <= xo-xo0
+            |& xo-xo0 <= V*$t
+            |& -V*$t <= yo-yo0
+            |& yo-yo0 <= V*$t""".stripMargin.asFormula)
+
+      println("Ctr2 - Obstacle: " + ctr2.contract())
+      println("ProofGoals2:\n" + ctr2.proofGoals().mkString("\n"))
+
+      val bct2 = print("Base case...") & speculativeQE & print("Base case done")
+      val uct2 = print("Use case...") & speculativeQE & print("Use case done")
+      val st2 = print("Induction step") & chase(1) & normalize(composeb('R) | assignb('R), skip, skip) & printIndexed("After normalize1") &
+        chase(1) & normalize(andR('R), skip, skip) & printIndexed("After normalize2") &
+        diffSolve()('R) & master()
+
+      if (ctr2.verifyBaseCase(bct2).isEmpty)
+        println("ctr2-baseCase NOT verified!")
+      if (ctr2.verifyUseCase(uct2).isEmpty)
+        println("ctr2-useCase NOT verified!")
+      if (ctr2.verifyStep(st2).isEmpty)
+        println("ctr2-step NOT verified!")
+
+      println("Ctr1 verified? " + ctr1.isVerified())
+      println("Ctr2 verified? " + ctr2.isVerified())
+
+      //      require(ctr1.isVerified(), "ctr1 must be verified!")
+      //      require(ctr1.isVerified(), "ctr2 must be verified!")
+
+      Contract.save(ctr1, name + "-1.cbcps")
+      Contract.save(ctr2, name + "-2.cbcps")
+      println("Saved both contracts!")
+    }
+
+    val lctr1 = Contract.load(name + "-1.cbcps")
+    println("Loaded Robot! verified? " + lctr1.isVerified())
+    println("LCtr1-Robot: " + lctr1.contract())
+    val lctr2 = Contract.load(name + "-2.cbcps")
+    println("Loaded Obstacle! verified? " + lctr2.isVerified())
+    println("LCtr2-Obstacle: " + lctr2.contract())
+
+    println("verify obstacle step test: " + TactixLibrary.proveBy(lctr2.proofGoals()(2), TactixLibrary.by(lctr2.stepLemma.get) & prop))
+
+    if (initialize) {
+      val sct = normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R), skip, skip) &
+        diffSolve()('R) & master()
+      //Verify lemmas for side conditions
+      println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
+      lctr1.sideConditions().foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, sct, Some(name + "-side1-" + v))
+        println("side condition '" + name + "-side1-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+      println("Obstacle sideConditions: " + lctr2.sideConditions().mkString("\n"))
+      lctr2.sideConditions().foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, sct, Some(name + "-side2-" + v))
+        println("side condition '" + name + "-side2-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+    }
+    //    Reuse previously verified lemmas for side condition
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
+    }
+    }.toSeq: _*)
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
+    }
+    }.toSeq: _*)
+
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
+      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
+    )
+
+    if (initialize) {
+      //Verify lemmas for cpo
+      println("Robix cpo: " + lctr1.cpo(lctr2, X).mkString("\n"))
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
+        println("cpo '" + name + "-cpo-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+    }
+
+    //Reuse previously verified lemmas for cpo
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "-cpo-" + v).get
+    }
+    }.toSeq: _*)
+
+    var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, null, null, null, false)
+    println("Ctr3: " + ctr3.contract())
+    ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+    println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
+  }
+
+  def testEtcs(initialize: Boolean = true, name: String = "etcs"): Boolean = {
+    if (initialize) {
+
+      val t = Globals.runT
+
+      //COMPONENT 1 - RBC
+      val c1 = new Component(name + "-rbc",
+        (
+          """state := drive; m :=*; d :=*; vdes :=*; ?d >= 0 & d0^2 - d^2 <= 2*b*(m-m0) & vdes >= 0;
+            |++ state := brake;"""
+          ).stripMargin.asProgram,
+        ODESystem("H'=0".asDifferentialProgram)
+      )
+      val i1 = new Interface(
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(
+          Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable) -> ("(state=brake & m0=m & d0=d) | (state=drive & d >= 0 & d0^2 - d^2 <= 2*b*(m-m0) & vdes >= 0)").asFormula
+        ),
+        mutable.LinkedHashMap(Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable) -> Seq("state0".asVariable, "m0".asVariable, "d0".asVariable, "vdes0".asVariable))
+      )
+      val ctr1 = new DelayContract(c1, i1,
+        ("""b>0
+           | & drive=0
+           | & brake=1
+           | & state=drive
+           | & vdes=0
+           | & state0=state
+           | & vdes0=vdes
+           | & d0=d
+           | & m0=m
+           | & ep>0
+           | & d>=0"""
+          ).stripMargin.asFormula,
+        True,
+        """b>0
+          | & drive=0
+          | & brake=1
+          | & ep>0
+          |& ((
+          |  state=brake
+          |  & m0=m & d0=d
+          |) | (
+          |  state=drive
+          |  & d >= 0
+          |  & d0^2 - d^2 <= 2*b*(m-m0)
+          |  & vdes >= 0
+          |))""".stripMargin.asFormula)
+      println("Ctr1 - rbc: " + ctr1.contract())
+      println("ProofGoals1:\n" + ctr1.proofGoals().mkString("\n"))
+
+      val bct1 = print("Base case") & QE & print("Base case done")
+      val uct1 = print("Use case") & QE & print("Use case done")
+      val st1 = print("Induction step") & implyR('R) & (andL('L) *) & print("Induction step Go...") &
+        chase(1) & normalize(andR('R), skip, skip) & print("chased and normalized...") &
+        OnAll(diffSolve()(1) partial) & print("diffsolved...") &
+        OnAll(speculativeQE) & printIndexed("Induction step done")
+
+
+      if (ctr1.verifyBaseCase(bct1).isEmpty)
+        println("ctr1-baseCase NOT verified!")
+      if (ctr1.verifyUseCase(uct1).isEmpty)
+        println("ctr1-useCase NOT verified!")
+      if (ctr1.verifyStep(st1).isEmpty)
+        println("ctr1-step NOT verified!")
+
+
+      //COMPONENT 2 - TRAIN
+      val c2 = new Component(name + "-train",
+        """{
+          |    ?v <= vdesIn; a:=*; ?-b <= a & a <= A;
+          | ++ ?v >= vdesIn; a:=*; ?-b <= a & a <  0;
+          |}
+          |SB := (v^2 - dIn^2)/(2*b) + (A/b+1)*(A/2*ep^2+ep*v);
+          |{
+          |    ?  mIn-z<=SB | stateIn=brake; a := -b;
+          | ++ ?!(mIn-z<=SB | stateIn=brake);
+          |}""".stripMargin.asProgram,
+        ODESystem(
+          s"""z'=v,
+              |v' = a""".stripMargin.asDifferentialProgram, s"v >= 0".asFormula)
+      )
+      val i2 = new Interface(
+        mutable.LinkedHashMap(
+          Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> ("(stateIn=brake & mIn0=mIn & dIn0=dIn) | (stateIn=drive & dIn >= 0 & dIn0^2 - dIn^2 <= 2*b*(mIn-mIn0) & vdesIn >= 0)").asFormula
+        ),
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("stateIn0".asVariable, "mIn0".asVariable, "dIn0".asVariable, "vdesIn0".asVariable))
+      )
+      val ctr2 = new DelayContract(c2, i2,
+        """A>=0
+          | & b>0
+          | & drive=0
+          | & brake=1
+          | & stateIn=drive
+          | & vdesIn=0
+          | & dIn=0
+          | & v=0
+          | & z<=mIn
+          | & dIn0=dIn
+          | & mIn0=mIn
+          | & stateIn0=stateIn
+          | & vdesIn0=vdesIn
+          | & ep>0""".stripMargin.asFormula,
+        "z >= mIn -> v <= dIn".asFormula,
+        """v^2 - dIn^2 <= 2*b*(mIn-z)
+          |& dIn >= 0
+          |& drive=0
+          |& brake=1
+          |& b>0
+          |& ep>0
+          |& A>=0""".stripMargin.asFormula)
+
+      println("Ctr2 - Train: " + ctr2.contract())
+      println("ProofGoals2:\n" + ctr2.proofGoals().mkString("\n"))
+
+
+      val bct2 = print("Base case") & master() & print("Base case done")
+      val uct2 = print("Use case") & master() & print("Use case done")
+      //@todo proves only when notL is disabled in normalize, because diffSolve hides facts
+      val st2 = print("Induction step") & implyR('R) & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve()('R) & print("Foo") partial) &
+        printIndexed("After diffSolve") & OnAll(normalize partial) & printIndexed("After normalize") & OnAll(speculativeQE) & printIndexed("Induction step done")
+
+
+      if (ctr2.verifyBaseCase(bct2).isEmpty)
+        println("ctr2-baseCase NOT verified!")
+      if (ctr2.verifyUseCase(uct2).isEmpty)
+        println("ctr2-useCase NOT verified!")
+      if (ctr2.verifyStep(st2).isEmpty)
+        println("ctr2-step NOT verified!")
+
+      println("Ctr1 verified? " + ctr1.isVerified())
+      println("Ctr2 verified? " + ctr2.isVerified())
+
+      //      require(ctr1.isVerified(), "ctr1 must be verified!")
+      //      require(ctr1.isVerified(), "ctr2 must be verified!")
+
+      Contract.save(ctr1, name + "-1.cbcps")
+      Contract.save(ctr2, name + "-2.cbcps")
+      println("Saved both contracts!")
+    }
+
+    val lctr1 = Contract.load(name + "-1.cbcps")
+    println("Loaded Robot! verified? " + lctr1.isVerified())
+    println("LCtr1-Robot: " + lctr1.contract())
+    val lctr2 = Contract.load(name + "-2.cbcps")
+    println("Loaded Obstacle! verified? " + lctr2.isVerified())
+    println("LCtr2-Obstacle: " + lctr2.contract())
+
+    if (initialize) {
+      val sct = print("sideT") & master()
+      implyR('R) & (andL('L) *) & print("sideT - implyR/andL") &
+        chase(1) & print("sideT - chased") &
+        normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) & print("sideT - normalized") &
+        diffSolve()('R) & master()
+      //Verify lemmas for side conditions
+      println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
+      lctr1.sideConditions().foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, sct, Some(name + "-side1-" + v))
+        println("side condition '" + name + "-side1-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+      println("Obstacle sideConditions: " + lctr2.sideConditions().mkString("\n"))
+      lctr2.sideConditions().foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, sct, Some(name + "-side2-" + v))
+        println("side condition '" + name + "-side2-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+    }
+    //Reuse previously verified lemmas for side condition
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
+    }
+    }.toSeq: _*)
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
+    }
+    }.toSeq: _*)
+
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable))
+
+    if (initialize) {
+      //Verify lemmas for cpo
+      println("Robix cpo: " + lctr1.cpo(lctr2, X).mkString("\n"))
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
+        println("cpo '" + name + "-cpo-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+    }
+
+    //Reuse previously verified lemmas for cpo
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "-cpo-" + v).get
+    }
+    }.toSeq: _*)
+
+    var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, null, null, null, false)
+    println("Ctr3: " + ctr3.contract())
+    ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+    println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
+  }
 
   def tacticTest() = {
     val t = ((composeb('R) *) & (((assignb('R) & print("assigned")) | (testb('R) & print("tested") & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) *))
