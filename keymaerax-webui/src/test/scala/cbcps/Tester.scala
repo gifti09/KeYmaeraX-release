@@ -79,7 +79,9 @@ object Tester {
     //    val tmd8 = testMD8(false)
 
     //    val tr = testRobix(false)
-    val tetcs = testEtcs(false)
+    //    val tetcs = testEtcs(false)
+
+    val trun = testRunning(false)
 
     //    println("--- SUMMARY ---")
     //    println("===============")
@@ -95,7 +97,7 @@ object Tester {
     //    println("testMD8 done? " + tmd8)
 
     //    println("testRobix done? " + tr)
-    println("testEtcs done? " + tetcs)
+    //    println("testEtcs done? " + tetcs)
 
     ProofHelper.shutdownProver
     System.exit(0)
@@ -1482,6 +1484,123 @@ object Tester {
 
     return ctr3.isVerified()
   }
+
+  def testRunning(initialize: Boolean = true, name: String = "running"): Boolean = {
+    val t = Globals.runT
+    if (initialize) {
+      val c1 = new Component(name + "-C1", "d:=*;?abs(d-d0)<=D;so:=*;?(0<=so&so<=S);".asProgram, ODESystem("po'=so".asDifferentialProgram))
+      val c2 = new Component(name + "-C2", "{?abs(poIn-pr)>dIn*ep+S*ep;sr:=dIn;} ++ {?abs(poIn-pr)<=dIn*ep+S*ep;sr:=0;}".asProgram, ODESystem("pr'=sr".asDifferentialProgram))
+      val i1 = new Interface(
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(Seq("d".asVariable) -> "abs(d-d0)<=D".asFormula, Seq("po".asVariable) -> s"abs(po-po0)<=S*$t".asFormula),
+        mutable.LinkedHashMap(Seq("d".asVariable) -> Seq("d0".asVariable), Seq("po".asVariable) -> Seq("po0".asVariable)))
+      val i2 = new Interface(
+        mutable.LinkedHashMap(Seq("dIn".asVariable) -> "abs(dIn-dIn0)<=D".asFormula, Seq("poIn".asVariable) -> s"abs(poIn-poIn0)<=S*$t".asFormula),
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(Seq("dIn".asVariable) -> Seq("dIn0".asVariable), Seq("poIn".asVariable) -> Seq("poIn0".asVariable), Seq("pr".asVariable) -> Seq("pr0".asVariable)))
+      val ctr1 = new DelayContract(c1, i1, And(Globals.initTOld, "D>=0 & d=d0 & S>=0 & po=po0 & so=0".asFormula), True, s"D>=0 & S>=0 & 0<=so&so<=S & abs(d-d0)<=D & abs(po-po0)<=S*$t".asFormula)
+      val ctr2 = new DelayContract(c2, i2,
+        And(Globals.initTOld, "ep>0 & D>=0 & dIn=dIn0 & S>=0 & poIn=poIn0 & sr=0".asFormula),
+        "sr>0 -> poIn!=pr".asFormula,
+        s"ep>0 & D>=0 & S>=0 & abs(dIn-dIn0)<=D & abs(poIn-poIn0)<=S*$t & (sr>0 -> poIn!=pr)".asFormula)
+      println("Ctr1: " + ctr1.contract())
+      println("Ctr2: " + ctr2.contract())
+
+      if (ctr1.verifyBaseCase(QE).isEmpty)
+        println(c1.name + " contract baseCase NOT verified!")
+      else
+        println(c1.name + " contract baseCase verified!")
+      if (ctr1.verifyUseCase(QE).isEmpty)
+        println(c1.name + " contract useCase NOT verified!")
+      else
+        println(c1.name + " contract useCase verified!")
+      if (ctr1.verifyStep(master()).isEmpty)
+        println(c1.name + " contract step NOT verified!")
+      else
+        println(c1.name + " contract step verified!")
+      println("Ctr1 verified? " + ctr1.isVerified())
+
+      if (ctr2.verifyBaseCase(QE).isEmpty)
+        println(c2.name + " contract baseCase NOT verified!")
+      else
+        println(c2.name + " contract baseCase verified!")
+      if (ctr2.verifyUseCase(QE).isEmpty)
+        println(c2.name + " contract useCase NOT verified!")
+      else
+        println(c2.name + " contract useCase verified!")
+      if (ctr2.verifyStep(master()).isEmpty)
+        println(c2.name + " contract step NOT verified!")
+      else
+        println(c2.name + " contract step verified!")
+
+      println("Ctr2 verified? " + ctr2.isVerified())
+
+      require(ctr1.isVerified(), "ctr1 must be verified!")
+      require(ctr1.isVerified(), "ctr2 must be verified!")
+
+      Contract.save(ctr1, name + "-1.cbcps")
+      Contract.save(ctr2, name + "-2.cbcps")
+      println("Saved both contracts!")
+    }
+
+    val lctr1 = Contract.load(name + "-1.cbcps")
+    println("Loaded ctr2! verified? " + lctr1.isVerified())
+    println("LCtr1: " + lctr1.contract())
+    val lctr2 = Contract.load(name + "-2.cbcps")
+    println("Loaded ctr2! verified? " + lctr2.isVerified())
+    println("LCtr2: " + lctr2.contract())
+
+    if (initialize) {
+      //Verify lemmas for side conditions
+      lctr1.sideConditions().foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "-side1-" + v))
+        require(Utility.loadLemma(name + "-side1-" + v).nonEmpty,"could not verify sideCondition "+f)
+      }
+      }
+      lctr2.sideConditions().foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "-side2-" + v))
+        require(Utility.loadLemma(name + "-side2-" + v).nonEmpty,"could not verify sideCondition "+f)
+      }
+      }
+    }
+    //Reuse previously verified lemmas for side condition
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
+    }
+    }.toSeq: _*)
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
+    }
+    }.toSeq: _*)
+
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("dIn".asVariable) -> Seq("d".asVariable),
+      Seq("poIn".asVariable) -> Seq("po".asVariable)
+    )
+
+    if (initialize) {
+      //Verify lemmas for cpo
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
+      }
+      }
+    }
+
+    //Reuse previously verified lemmas for cpo
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "-cpo-" + v).get
+    }
+    }.toSeq: _*)
+
+
+    var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, false)
+    println("Ctr3: " + ctr3.contract())
+    ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+    println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
+  }
+
 
   def tacticTest() = {
     val t = ((composeb('R) *) & (((assignb('R) & print("assigned")) | (testb('R) & print("tested") & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) *))
