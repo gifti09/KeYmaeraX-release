@@ -647,6 +647,7 @@ object Lemmas {
   val f6 = "(F(||)->G(||)) -> (([?G(||);]A(||)) -> [?F(||);]A(||))".asFormula
   val n6 = "Proof of Lemma6 - Weaken Test"
   val t6 = implyR('R) & implyR('R) & testb('R) & testb('L) & prop
+  val l6=lemma(f6,n6,t6)
 
   /**
     * Applies Lemma 6 to weaken a test.
@@ -824,10 +825,10 @@ object Lemmas {
     //      composeb('R) & composeb(1, 1 :: Nil) & lemma1BA(1, 1 :: Nil) & assignb('R) & testb('R) & prop).isProved)
     //    println("Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;?a>0;]a>0 -> [a:=2;b:=4;?a>0;]a>0".asFormula,
     //      implyR('R) & composeb('R) & composeb(1, 1 :: Nil) & lemma1(1, 1 :: Nil) & normalize).isProved)
-        println("Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
-          implyR('R) & composeb('R) &
-            lemma2_DC(mutable.Seq("b".asVariable),"b<10".asFormula)('R) & assignb('R) & diffSolve()('R) & QE & print("y")
-        ).isProved)
+//        println("Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
+//          implyR('R) & composeb('R) &
+//            lemma2_DC(mutable.Seq("b".asVariable),"b<10".asFormula)('R) & assignb('R) & diffSolve()('R) & QE & print("y")
+//        ).isProved)
     //    println("Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & useAt(lemma3, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
     //    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
@@ -885,11 +886,13 @@ object Lemmas {
 //        )).isProved)
 
 
-    //    println("Test Lemma 6 - proved? " + TactixLibrary.proveBy("([x:=2;][a:=10;](a>5->(a>0&c>0))) -> [x:=2;][a:=10;][?a>5;]a>0".asFormula,
-    //      implyR('R) & lemma6T("a>0".asFormula)(1, 1 :: 1 :: Nil) & print("after lemma6") < (
-    //        print("use") & monb & monb & testb('R) & prop & print("use done?"),
-    //        print("show") & hideL(-1) & assignb('R) & assignb('R) & QE & print("show done?")
-    //        )).isProved)
+        println("Test Lemma 6 - proved? " + TactixLibrary.proveBy("([x:=2;][a:=10;](a>5->(a>0&c>0))) -> [x:=2;][a:=10;][?a>5;]a>0".asFormula,
+          implyR('R) & useAt("ANON",l6.fact,PosInExpr(1::0::Nil),us=>us)(1, 1 :: 1 :: Nil)&
+//            lemma6T("a>0".asFormula)(1, 1 :: 1 :: Nil) &
+            print("after lemma6") < (
+            print("use") & monb & monb & testb('R) & prop & print("use done?"),
+            print("show") & hideL(-1) & assignb('R) & assignb('R) & QE & print("show done?")
+            )).isProved)
     //    println("Test Lemma 7 - proved? " + TactixLibrary.proveBy("([a:=42;](a>5->(a>0&c>0))) -> [a:=42;][?a>5;]a>0".asFormula,
     //      implyR('R) & lemma7T("a>0".asFormula)('R) < (
     //        monb & QE,

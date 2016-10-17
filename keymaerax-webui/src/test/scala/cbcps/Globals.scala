@@ -52,7 +52,7 @@ object Globals {
   }
 
   //TODO initialize t0!
-  def initT: Formula = Equal(t, "0".asTerm) //And initTOld?
+  def initT: Formula = Equal(t, "0".asTerm) //And initTOld? And initEps?
 
   def initTOld: Formula = Equal(t0, t)
 

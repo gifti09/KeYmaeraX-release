@@ -80,8 +80,9 @@ object Tester {
 
     //    val tr = testRobix(false)
     //    val tetcs = testEtcs(false)
+    val tetcs = testLlc(true)
 
-    val trun = testRunning(false)
+    //    val trun = testRunning(true)
 
     //    println("--- SUMMARY ---")
     //    println("===============")
@@ -1485,6 +1486,200 @@ object Tester {
     return ctr3.isVerified()
   }
 
+  def testLlc(initialize: Boolean = true, name: String = "llc"): Boolean = {
+    val t = Globals.runT
+
+    if (initialize) {
+      //
+      //      //COMPONENT 1 - LEADER
+      //      val c1 = new Component(name + "-leader",
+      //        "al :=*; ?-B <= al & al <= A;".asProgram,
+      //        ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
+      //      )
+      //      val i1 = new Interface(
+      //        mutable.LinkedHashMap.empty,
+      //        mutable.LinkedHashMap(
+      //          Seq("xl".asVariable, "vl".asVariable) -> (s"0 <= vl & -B*$t <= vl-vl0 & vl-vl0 <= A*$t & xl-xl0 >= (vl+vl0)/2*$t").asFormula
+      //        ),
+      //        mutable.LinkedHashMap(Seq("xl".asVariable, "vl".asVariable) -> Seq("xl0".asVariable, "vl0".asVariable))
+      //      )
+      //      val ctr1 = new DelayContract(c1, i1,
+      //        ("""ep > 0
+      //           | & A >= 0
+      //           | & B > 0
+      //           | & xl = xl0
+      //           | & vl = vl0
+      //           | & 0 <= vl
+      //           | & t=tOld"""
+      //          ).stripMargin.asFormula,
+      //        True,
+      //        s"""ep > 0
+      //            | & A >= 0
+      //            | & B > 0
+      //            | & 0 <= $t & $t <= ep
+      //            | & xl-xl0 >= (vl+vl0)/2*$t
+      //            | & 0 <= vl
+      //            | & -B*$t <= vl-vl0
+      //            | & vl-vl0 <= A*$t""".stripMargin.asFormula)
+      //      println("Ctr1 - leader: " + ctr1.contract())
+      //
+      //      val bct1 = print("Base case") & QE & print("Base case done")
+      //      val uct1 = print("Use case") & QE & print("Use case done")
+      //      val st1 = print("Induction step") & master() & printIndexed("Induction step done")
+      //
+      //
+      //      if (ctr1.verifyBaseCase(bct1).isEmpty)
+      //        println("ctr1-baseCase NOT verified!")
+      //      if (ctr1.verifyUseCase(uct1).isEmpty)
+      //        println("ctr1-useCase NOT verified!")
+      //      if (ctr1.verifyStep(st1).isEmpty)
+      //        println("ctr1-step NOT verified!")
+      //
+      //      println("Ctr1 verified? " + ctr1.isVerified())
+      //      Contract.save(ctr1, name + "-1.cbcps")
+
+      //COMPONENT 2 - FOLLOWER
+      val c2 = new Component(name + "-follower",
+        """{
+          | af := -B;
+          |  ++ ?vf=0; af:=0;
+          |  ++ ?xf + vf^2/(2*B) + (A/B+1)*(A/2*ep^2 + ep*vf) < xlIn + vlIn^2/(2*B); af :=*; ?-B <= af & af <= A;
+          | }""".stripMargin.asProgram,
+        ODESystem(
+          "xf' = vf,vf' = af".asDifferentialProgram, s"vf >= 0".asFormula)
+      )
+      val i2 = new Interface(
+        mutable.LinkedHashMap(
+          Seq("xlIn".asVariable, "vlIn".asVariable) -> (s"0 <= vlIn & -B*$t <= vlIn-vlIn0 & vlIn-vInl0 <= A*$t & xlIn-xInl0 >= (vlIn+vlIn0)/2*$t").asFormula
+        ),
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xlIn0".asVariable, "vlIn0".asVariable))
+      )
+      val ctr2 = new DelayContract(c2, i2,
+        """ep > 0
+          | & A >= 0
+          | & B > 0
+          | & t = 0
+          | & vf >= 0
+          | & xf < xlIn & xf + vf^2/(2*B) < xlIn + vlIn^2/(2*B)
+          | & xlIn = xlIn0
+          | & vlIn = vlIn0
+          | & t = tOld
+          | & 0 <= vlIn""".stripMargin.asFormula,
+        "xf < xlIn".asFormula,
+        s"""ep > 0
+            | & A >= 0
+            | & B > 0
+            | & 0<= vf & xf < xlIn
+            | & xf+vf^2/(2*B) < xlIn + vlIn^2/(2*B)
+            | & 0 <= $t & $t <= ep
+            | & 0 <= vlIn
+            | & -B*$t <= vlIn-vlIn0
+            | & vlIn-vlIn0 <= A*$t
+            | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t""".stripMargin.asFormula)
+
+      println("Ctr2 - Follower: " + ctr2.contract())
+      println("vars: "+ctr2.variables())
+
+      val bct2 = print("Base case") & master() & print("Base case done")
+      val uct2 = print("Use case") & master() & print("Use case done")
+      val st2 = print("Induction step") & chase(1) & normalize(andR('R) | andL('L) | composeb('R) | assignb('R) | testb('R) | implyR('R) | randomb('R) | choiceb('R) | boxAnd('R), skip, skip) & print("after normalize") &
+        OnAll(diffSolve()(1) partial) < (
+          print("Braking branch") & normalize & OnAll(speculativeQE) & print("Braking branch done"),
+          print("Stopped branch") & normalize & OnAll(speculativeQE) & print("Stopped branch done"),
+          printIndexed("Acceleration branch") &
+            hideL(Find.FindL(0, Some("xf_0+vf_0^2/(2*B) < xlIn+vlIn^2/(2*B)".asFormula))) &
+            (alphaRule *) &
+            replaceTransform("ep".asTerm, s"$t".asTerm)(Find.FindL(0, Some("xf_0+vf_0^2/(2*B)+(A/B+1)*(A/2*ep^2+ep*vf_0) < xlIn + vlIn^2/(2*B)".asFormula))) &
+            //@todo does not yet prove
+            OnAll(normalize partial) & printIndexed("Now what?") & OnAll(
+            speculativeQE) & print("Acceleration branch done")
+          ) & print("Induction step done")
+
+
+      if (ctr2.verifyBaseCase(bct2).isEmpty)
+        println("ctr2-baseCase NOT verified!")
+      if (ctr2.verifyUseCase(uct2).isEmpty)
+        println("ctr2-useCase NOT verified!")
+      if (ctr2.verifyStep(st2).isEmpty)
+        println("ctr2-step NOT verified!")
+
+      println("Ctr2 verified? " + ctr2.isVerified())
+
+      //      require(ctr1.isVerified(), "ctr1 must be verified!")
+      //      require(ctr1.isVerified(), "ctr2 must be verified!")
+
+      Contract.save(ctr2, name + "-2.cbcps")
+      println("Saved both contracts!")
+    }
+
+    val lctr1 = Contract.load(name + "-1.cbcps")
+    println("Loaded Robot! verified? " + lctr1.isVerified())
+    println("LCtr1-Robot: " + lctr1.contract())
+    val lctr2 = Contract.load(name + "-2.cbcps")
+    println("Loaded Obstacle! verified? " + lctr2.isVerified())
+    println("LCtr2-Obstacle: " + lctr2.contract())
+
+    if (initialize) {
+      val sct = print("sideT") & master()
+      implyR('R) & (andL('L) *) & print("sideT - implyR/andL") &
+        chase(1) & print("sideT - chased") &
+        normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) & print("sideT - normalized") &
+        diffSolve()('R) & master()
+      //Verify lemmas for side conditions
+      println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
+      lctr1.sideConditions().foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, sct, Some(name + "-side1-" + v))
+        println("side condition '" + name + "-side1-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+      println("Obstacle sideConditions: " + lctr2.sideConditions().mkString("\n"))
+      lctr2.sideConditions().foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, sct, Some(name + "-side2-" + v))
+        println("side condition '" + name + "-side2-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+    }
+    //Reuse previously verified lemmas for side condition
+    val sc1: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr1.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side1-" + v).get
+    }
+    }.toSeq: _*)
+    val sc2: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](lctr2.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma(name + "-side2-" + v).get
+    }
+    }.toSeq: _*)
+
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable))
+
+    if (initialize) {
+      //Verify lemmas for cpo
+      println("Robix cpo: " + lctr1.cpo(lctr2, X).mkString("\n"))
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        val p = ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
+        println("cpo '" + name + "-cpo-" + v + "' verified? " + p.nonEmpty)
+        v -> p
+      }
+      }
+    }
+
+    //Reuse previously verified lemmas for cpo
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](lctr1.cpo(lctr2, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma(name + "-cpo-" + v).get
+    }
+    }.toSeq: _*)
+
+    var ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, null, null, null, false)
+    println("Ctr3: " + ctr3.contract())
+    ctr3 = Contract.composeWithLemmas(lctr1, lctr2, X, cpo, sc1, sc2, true)
+    println("Ctr3 verified? " + ctr3.isVerified())
+
+    return ctr3.isVerified()
+  }
+
   def testRunning(initialize: Boolean = true, name: String = "running"): Boolean = {
     val t = Globals.runT
     if (initialize) {
@@ -1554,12 +1749,12 @@ object Tester {
       //Verify lemmas for side conditions
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
         v -> ProofHelper.verify(f, master(), Some(name + "-side1-" + v))
-        require(Utility.loadLemma(name + "-side1-" + v).nonEmpty,"could not verify sideCondition "+f)
+        require(Utility.loadLemma(name + "-side1-" + v).nonEmpty, "could not verify sideCondition " + f)
       }
       }
       lctr2.sideConditions().foreach { case (v, f: Formula) => {
         v -> ProofHelper.verify(f, master(), Some(name + "-side2-" + v))
-        require(Utility.loadLemma(name + "-side2-" + v).nonEmpty,"could not verify sideCondition "+f)
+        require(Utility.loadLemma(name + "-side2-" + v).nonEmpty, "could not verify sideCondition " + f)
       }
       }
     }
