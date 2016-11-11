@@ -75,11 +75,11 @@ object Component {
       if (c2.plant == null)
         null
       else
-        c2.plant
+        ODESystem(c2.plant.ode, And(True, c2.plant.constraint))
     }
     else {
       if (c2.plant == null)
-        c1.plant
+        ODESystem(c1.plant.ode, And(c1.plant.constraint, True))
       else
         ODESystem(composeODE(c1,c2), composeDomain(c1, c2))
     }
@@ -105,11 +105,11 @@ object Component {
       if (c2.plant == null)
         True
       else
-        c2.plant.constraint
+        And(True,c2.plant.constraint)
     }
     else {
       if (c2.plant == null)
-        c1.plant.constraint
+        And(c1.plant.constraint,True)
       else
         And(c1.plant.constraint, c2.plant.constraint)
     }

@@ -67,6 +67,15 @@ abstract class Contract(
     case _ =>
   }
 
+  def tactic(bcl: Lemma, ucl: Lemma, sl: Lemma): BelleExpr = implyR('R) & loop(invariant)('R) < ( //& andL('L) *@ TheType()
+    (andLi *) & cut(contractPre()) <
+      (hideL(-1) & implyRi & by(bcl), hideR(1) & QE), //& print("Base case")
+    (andLi *) & cut(invariant) <
+      (hideL(-1) & implyRi & by(ucl), hideR(1) & QE), //& print("Use Case")
+    (andLi *) & cut(invariant) <
+      (hideL(-1) & implyRi & by(sl), hideR(1) & QE) //& print("Step")
+    )
+
   /**
     * Returns a list of proof goals that have to be verified to proof the components contract.
     * Should be avoided, rather use [[baseCaseProofGoal()]], [[useCaseProofGoal()]] and [[stepProofGoal()]].
@@ -387,7 +396,7 @@ abstract class Contract(
     *
     * @return A [[Formula]] representing the evolution domain of the contracts DE.
     */
-  def contractDomain(): Formula = if(component.plant==null) True else contractDomain(component.plant.constraint)
+  def contractDomain(): Formula = if (component.plant == null) True else contractDomain(component.plant.constraint)
 
 
   /**
@@ -485,9 +494,9 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
     if (thePlant == null)
       ODESystem(Globals.plantT, contractDomain(null))
     else
-      ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), contractDomain(if(thePlant==null) null else thePlant.constraint))
+      ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), contractDomain(if (thePlant == null) null else thePlant.constraint))
 
-  override def contractDomain(theConst: Formula) = if (theConst == null) Globals.evoDomT else And(theConst, Globals.evoDomT)
+  override def contractDomain(theConst: Formula) = if (theConst == null) And(True,Globals.evoDomT) else And(theConst, Globals.evoDomT)
 
   override def contract(): Formula = Imply(
     contractPre(),
@@ -605,6 +614,20 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
   * Helper functions used in contracts.
   */
 object Contract {
+  val PRINT_BC = false
+  val PRINT_UC = false
+  val PRINT_STEP = false
+  val PRINT_RECOMPOSE_DP = PRINT_STEP
+  val PRINT_DROP_DELTA_PARTS = PRINT_STEP
+  val PRINT_DROP_DELTA_PART_FOR_PORT = PRINT_STEP
+  val PRINT_DROP_OR_SKIP_DELTA_PART = PRINT_STEP
+  val PRINT_DROP_REMAINING_PORTS3 = PRINT_STEP
+  val PRINT_DROP_FROM_PORTS3 = PRINT_STEP
+  val PRINT_DROP_IN = PRINT_STEP
+  val PRINT_DROP_OR_MERGE = PRINT_STEP
+  val PRINT_CLOSE_SIDE = PRINT_STEP
+  val PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL = PRINT_STEP
+  val PRINT_INTRODUCE_AND_WEAKEN_FOR = PRINT_STEP
 
   /**
     * Creates the side condition F used in the proof of Theorem1 (for delay contracts!)
@@ -777,7 +800,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The verified composit contract.
     */
-  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], side1: mutable.Map[Seq[Variable], Provable], side2: mutable.Map[Seq[Variable], Provable], verify: Boolean = true): C = {
+  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], side1: mutable.Map[Seq[Variable], Provable], side2: mutable.Map[Seq[Variable], Provable], verify: Boolean = true, check:Boolean =false): C = {
     //Initial checks
     require(ctr1.getClass.equals(ctr2.getClass), "only contracts of the same type can be composed")
     require(!verify || (ctr1.isVerified() && ctr2.isVerified()), "only verified contracts can be composed and verified")
@@ -796,55 +819,58 @@ object Contract {
 
     if (!verify) return ctr3
 
-    // Verify CPO
-    require(ctr1.cpo(ctr2, X).forall { case ((vi: Seq[Variable], vo: Seq[Variable]), f: Formula) => {
-      TactixLibrary.proveBy(f, byUS(cpoT(vi, vo))).isProved
-    }
-    }, "cpoT must proof cpo")
+    if (check) {
+      // Verify CPO
+      require(ctr1.cpo(ctr2, X).forall { case ((vi: Seq[Variable], vo: Seq[Variable]), f: Formula) => {
+        TactixLibrary.proveBy(f, byUS(cpoT(vi, vo))).isProved
+      }
+      }, "cpoT must proof cpo")
 
-    // Verify side condition
-    require(ctr1.sideConditions().forall { case (vs: Seq[Variable], f: Formula) => {
-      TactixLibrary.proveBy(f, byUS(side1(vs))).isProved
+      // Verify side condition
+      require(ctr1.sideConditions().forall { case (vs: Seq[Variable], f: Formula) => {
+        TactixLibrary.proveBy(f, byUS(side1(vs))).isProved
+      }
+      }, "side1 must proof sideconditions of ctr1")
+      require(ctr2.sideConditions().forall { case (vs: Seq[Variable], f: Formula) => {
+        TactixLibrary.proveBy(f, byUS(side2(vs))).isProved
+      }
+      }, "side2 must proof sideconditions of ctr2")
     }
-    }, "side1 must proof sideconditions of ctr1")
-    require(ctr2.sideConditions().forall { case (vs: Seq[Variable], f: Formula) => {
-      TactixLibrary.proveBy(f, byUS(side2(vs))).isProved
-    }
-    }, "side2 must proof sideconditions of ctr2")
+
 
     //Automatically verify composite contract, following theorem from my thesis using CPO, side conditions and component proofs
     ctr3.verifyBaseCase(
       implyR('R) & andR('R) < (andR('R) < (andR('R) < (
         //... |- inv1
-        print("inv1") &
+        (if (PRINT_BC) print("BC-inv1") else skip) &
           andL('L) * 3 & hide(-4) & andL(-3) & hideL(-4) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
           implyRi & by(ctr1.baseCaseLemma.get)
         ,
         //... |- inv2
-        print("inv2") &
+        (if (PRINT_BC) print("BC-inv2") else skip) &
           andL('L) * 3 & hide(-4) & andL(-3) & hideL(-3) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
           implyRi & by(ctr2.baseCaseLemma.get)
         ),
         //... |- composedBootstrap
-        print("bootstrap") &
+        (if (PRINT_BC) print("BC-bootstrap") else skip) &
           andL('L) * 3 & hide(-1) * 3 & close(-1, 1)
         ),
         //... |- globalProperty
-        print("global") &
+        (if (PRINT_BC) print("BC-global") else skip) &
           andL('L) * 3 & hide(-2) * 3 & close(-1, 1)
         )
-        & print("base case done?")
+        & (if (PRINT_BC) print("BC-done?") else skip)
     )
 
     //Tactic for the output-port conditions of useCase
     var outTactic = skip
     if (ctr1.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
       if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
-        outTactic = print("both have out ports!")
+        outTactic = (if (PRINT_UC) print("UC-outTactic: both have out ports!") else skip)
         (0 until ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).size) foreach (i => {
           outTactic = outTactic & andR('R) < (
             //remaining ports
@@ -882,7 +908,7 @@ object Contract {
       }
       else {
         //... |- out1
-        outTactic = print("only c1 has out ports!") & hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+        outTactic = (if (PRINT_UC) print("UC-outTactic: only c1 has out ports!") else skip) & hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
           //use cut
           prop,
           //show cut
@@ -893,7 +919,7 @@ object Contract {
     else {
       if (ctr2.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).nonEmpty) {
         //... |- out2
-        outTactic = print("only c2 has out ports!") & hideL(-1) * 3 & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
+        outTactic = (if (PRINT_UC) print("UC-outTactic: only c2 has out ports!") else skip) & hideL(-1) * 3 & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
           //use cut
           prop,
           //show cut
@@ -901,11 +927,11 @@ object Contract {
           )
       }
       else {
-        outTactic = print("none has out ports!") & prop
+        outTactic = (if (PRINT_UC) print("UC-outTactic: none has out ports!") else skip) & prop
       }
     }
 
-    ctr3.verifyUseCase(print("usecase") & implyR('R) & andL('L) * 3 & andR('R) < (andR('R) < (
+    ctr3.verifyUseCase((if (PRINT_UC) print("UC: usecase") else skip) & implyR('R) & andL('L) * 3 & andR('R) < (andR('R) < (
       //... |- post1
       hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
         //use cut
@@ -925,7 +951,7 @@ object Contract {
       // ...|- out
       outTactic
       )
-      & print("use case done?")
+      & (if (PRINT_UC) print("UC: done?") else skip)
     )
 
     //    return null.asInstanceOf[C]
@@ -941,10 +967,10 @@ object Contract {
       boxAnd('R) & andR('R) < (
         boxAnd('R) & andR('R) < (
           //inv1 - DONE
-          print("inv1")
+          (if (PRINT_STEP) print("inv1") else skip)
             & composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
             //inv1-C1;C2 - DONE
-            print("inv1-C1;C2")
+            (if (PRINT_STEP) print("inv1-C1;C2") else skip)
               //cf. 1 - cut F2out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(1)) < (
               //use cut
@@ -981,7 +1007,7 @@ object Contract {
                   //cf. 11 - drop plant2
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1015,7 +1041,7 @@ object Contract {
                 & implyR('R)
                 //vaphi2 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout2
                 //(3) cf. 1 - Lemma 2 to remove plant1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)('R)
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1AB('R)
@@ -1036,10 +1062,10 @@ object Contract {
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
-              ) & print("C1;C2 done!")
+              ) & (if (PRINT_STEP) print("C1;C2 done!") else skip)
             ,
             //inv1-C2;C1 - DONE
-            print("inv1-C2;C1")
+            (if (PRINT_STEP) print("inv1-C2;C1") else skip)
               //cf. 1 - cut F2out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(0)) < (
               //use cut
@@ -1073,7 +1099,7 @@ object Contract {
                   //cf. 11 - drop plant2
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1107,7 +1133,7 @@ object Contract {
                 & implyR('R)
                 //vaphi2 ==> [dp][ctrl2;ctrl1][told][{plant1,plant2}]piout2
                 //(3) cf. 1 - Lemma 2 to remove plant1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)('R)
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1126,14 +1152,14 @@ object Contract {
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
-              ) & print("C2;C1 done!")
+              ) & (if (PRINT_STEP) print("C2;C1 done!") else skip)
             )
           ,
           //inv2 - DONE
-          print("inv2 ")
+          (if (PRINT_STEP) print("inv2 ") else skip)
             & composeb('R) * 5 & choiceb(1, List(1)) & boxAnd('R) & andR('R) < (
             //inv2-C1;C2 - DONE
-            print("inv2-C1;C2")
+            (if (PRINT_STEP) print("inv2-C1;C2") else skip)
               //cf. 1 - cut F1out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(3)) < (
               //use cut
@@ -1167,7 +1193,7 @@ object Contract {
                   //cf. 11 - drop plant1
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1191,7 +1217,7 @@ object Contract {
                     //                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
-                    cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
+                  cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
                   )
                 )
               ,
@@ -1202,7 +1228,7 @@ object Contract {
                 & implyR('R)
                 //vaphi1 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout1
                 //(3) cf. 1 - Lemma 2 to remove plant2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)('R)
                 //vaphi1 ==> [dp;ctrl1;ctrl2;told][{plant1}]piout1
                 //(4) cf. 2 - Lemma 1 to remove ctrl2
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1223,10 +1249,10 @@ object Contract {
                   & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
               //closed!
-              ) & print("C1;C2 done!")
+              ) & (if (PRINT_STEP) print("C1;C2 done!") else skip)
             ,
             //inv2-C2;C1 - DONE
-            print("inv2-C2;C1")
+            (if (PRINT_STEP) print("inv2-C2;C1") else skip)
               //cf. 1 - cut F1out
               & cut(sideConditionsProofDelay(ctr1, ctr2, X)(2)) < (
               //use cut
@@ -1260,13 +1286,12 @@ object Contract {
                   //cf. 11 - drop plant1
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if(ctr1.component.plant==null) null else ctr1.component.plant.constraint)(1)
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant2][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
                   //cf. 13 - drop dp1
                   & ComposeProofStuff.dropDeltaParts(ctr1.interface.vDelta.isEmpty, ctr2.interface.vDelta.isEmpty, ctr1.interface.vInitFlat, ctr3.interface.vDelta.size, ctr3.interface.vDeltaFlat.size)(1)
-                  & print("before")
                   //CLOSE - cut lemma formula and close branches
                   & cut(ctr2.stepLemma.get.fact.conclusion.succ(0)) < (
                   hide(-1) * 4 & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & hide(-1)
@@ -1284,7 +1309,7 @@ object Contract {
                     //                    & composeb(-1) * (ctr2.interface.pre.size - 1)
                     //close
                     & closeId,
-                    cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
+                  cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
                   )
                 )
               ,
@@ -1295,7 +1320,7 @@ object Contract {
                 & implyR('R)
                 //vaphi1 ==> [dp][ctrl2;ctrl1][told][{plant1,plant2}]piout1
                 //(3) cf. 1 - Lemma 2 to remove plant2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if(ctr2.component.plant==null) null else ctr2.component.plant.constraint)('R)
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)('R)
                 //vaphi1 ==> [dp;ctrl2;ctrl1;told][{plant1}]piout1
                 //(4) cf. 2 - Lemma 1 to remove ctrl2
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1315,7 +1340,7 @@ object Contract {
                   & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
               //closed!
-              ) & print("C2;C1 done!")
+              ) & (if (PRINT_STEP) print("C2;C1 done!") else skip)
             )
 
           ),
@@ -1324,9 +1349,9 @@ object Contract {
         hideL(-1) & composeb('R) & G('R) & master() //& print("boot closed?")
         ),
       //global - DONE
-      V('R) & prop //& print("global closed?")
+      V('R) & prop & (if (PRINT_STEP) print("global closed?") else skip)
       )
-      & print("step done?")
+      & (if (PRINT_STEP) print("step done?") else skip)
     )
 
     //Return verified composite contract
@@ -1334,17 +1359,22 @@ object Contract {
   }
 
   object ComposeProofStuff {
+
+
     def recomposeDP(vDelta: Seq[Seq[Variable]]): DependentPositionTactic = "Recompose Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(_, _)) =>
-        var t: BelleExpr = skip & print("recomposing dp")
+        var t: BelleExpr = (if (PRINT_RECOMPOSE_DP) print("recomposeDP: recomposing dp") else skip)
         var h = oneList(0)
         var cnt = 0
         vDelta.foreach((vs: Seq[Variable]) => {
-          t = t & print("recomposing single dp -> " + vs) & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, h) * (vs.size - 1) & print("done")
+          t = t & (if (PRINT_RECOMPOSE_DP) print("recomposeDP: recomposing single dp -> " + vs) else skip) &
+            useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, h) * (vs.size - 1) &
+            (if (PRINT_RECOMPOSE_DP) print("recomposeDP: done") else skip)
           h = 1 :: h
         })
-        t = t & print("recomposing dmps") & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos) * Math.max(vDelta.size - 1, 0)
-        t & print("done recomposing dp")
+        t = t & (if (PRINT_RECOMPOSE_DP) print("recomposeDP: recomposing dmps") else skip) &
+          useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos) * Math.max(vDelta.size - 1, 0)
+        t & (if (PRINT_RECOMPOSE_DP) print("recomposeDP: done recomposing dp") else skip)
     })
 
     def dropDeltaParts(remEmpty: Boolean, keepEmpty: Boolean, remInit: Seq[Variable], dCnt: Int, sCnt: Int): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
@@ -1356,25 +1386,28 @@ object Contract {
           if (keepEmpty) {
             //empty keepDP, so drop all and introduce ?true;
             //TODO UNTESTED!
-            t = t & Lemmas.lemma1(1) & print("???") & Lemmas.lemma5LT("true".asFormula)(1) & print("???") //< (skip & print("hihi1"), boxTrue(1)& print("hihi2"))
+            t = t & Lemmas.lemma1(1) & (if (PRINT_DROP_DELTA_PARTS) print("dropDeltaParts: ???") else skip) &
+              Lemmas.lemma5LT("true".asFormula)(1) & (if (PRINT_DROP_DELTA_PARTS) print("dropDeltaParts: ???") else skip) //< (skip & print("hihi1"), boxTrue(1)& print("hihi2"))
           }
           else {
             //there is something in remDP and keepDP, so we have to check what to remove
-            t = t & print("dropping dp: " + remInit) & ComposeProofStuff.dropDeltaPartForPort(remInit, dCnt, sCnt)(1)
+            t = t & (if (PRINT_DROP_DELTA_PARTS) print("dropDeltaParts: dropping dp: " + remInit) else skip) & ComposeProofStuff.dropDeltaPartForPort(remInit, dCnt, sCnt)(1)
           }
         }
         t
     })
 
-    def dropDeltaPartForPort(vInit: Seq[Variable], dCnt: Int, sCnt: Int): DependentPositionTactic = "Drop Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def dropDeltaPartForPort(vInit: Seq[Variable], dCnt: Int, sCnt: Int): DependentPositionTactic = "Drop Delta Part For Port" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(dp: Compose, b: Box)) =>
         //        val cnt: Int = countBinary[Compose](dp)
-        var t: BelleExpr = print("composing " + dCnt) & (composeb(pos.top.getPos) & (composeb(pos.top.getPos, 1 :: Nil) *)) * Math.max(dCnt - 1, 0) & (composeb(pos.top.getPos) *)
-        t = t & print("dropOrSkip " + sCnt)
+        var t: BelleExpr = (if (PRINT_DROP_DELTA_PART_FOR_PORT) print("dropDeltaPartForPort: composing " + dCnt) else skip) &
+          (composeb(pos.top.getPos) &
+            (composeb(pos.top.getPos, 1 :: Nil) *)) * Math.max(dCnt - 1, 0) & (composeb(pos.top.getPos) *)
+        t = t & (if (PRINT_DROP_DELTA_PART_FOR_PORT) print("dropDeltaPartForPort: dropOrSkip " + sCnt) else skip)
         ((sCnt - 1).until(0, -1)) foreach (i => {
           t = t & dropOrSkipDeltaPart(vInit)(pos.top.getPos, oneList(i))
         })
-        t = t & print("last one...")
+        t = t & (if (PRINT_DROP_DELTA_PART_FOR_PORT) print("dropDeltaPartForPort: last one...") else skip)
         t = t & dropOrSkipDeltaPart(vInit)(pos.top.getPos)
         t
     })
@@ -1383,17 +1416,17 @@ object Contract {
     def dropOrSkipDeltaPart(vInit: Seq[Variable]): DependentPositionTactic = "Drop From Delta Part" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(a: Assign, _)) =>
         if (vInit.contains(a.x)) {
-          print("removing dp '" + a.x + "'") & Lemmas.lemma1(pos) & print("done removing")
+          (if (PRINT_DROP_OR_SKIP_DELTA_PART) print("dropOrSkipDeltaPart: removing dp '" + a.x + "'") else skip) & Lemmas.lemma1(pos) & (if (PRINT_DROP_OR_SKIP_DELTA_PART) print("dropOrSkipDeltaPart: done removing") else skip)
         }
         else {
-          print("skipping dp '" + a.x + "'") & skip
+          (if (PRINT_DROP_OR_SKIP_DELTA_PART) print("dropOrSkipDeltaPart: skipping dp '" + a.x + "'") else skip)
           //          useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos)
         }
     })
 
     def dropRemainingPorts3(vIn: Seq[Seq[Variable]], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]]): DependentPositionTactic = "Drop Remaining Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, b: Box)) =>
-        var t: BelleExpr = skip
+        var t: BelleExpr = (if (PRINT_DROP_REMAINING_PORTS3) print("dropRemainingPorts3: dropping p3...") else skip)
         vIn.foreach(vi => {
           if (X.contains(vi)) {
             t = t & dropFromPorts3(vi, X(vi))(pos)
@@ -1404,7 +1437,7 @@ object Contract {
 
     def dropFromPorts3(vi: Seq[Variable], vo: Seq[Variable]): DependentPositionTactic = "Drop From Ports3" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, b: Box)) =>
-        var t: BelleExpr = skip & print("dropping reamining ports3, port=" + vi)
+        var t: BelleExpr = (if (PRINT_DROP_FROM_PORTS3) print("dropFromPorts3: dropping reamining ports3, port=" + vi) else skip)
         //TODO check
         //remove all ports from front to back
         // because this way, the removal of a port does not change the position of the other ports
@@ -1414,7 +1447,7 @@ object Contract {
         //                    val assPos = posOfAssign(b, v)
         if (assPos > 0) {
           //the assignment was found
-          t = t & print("dropping at " + assPos) & Lemmas.lemma1(1, oneList(assPos)) & print("dropped")
+          t = t & (if (PRINT_DROP_FROM_PORTS3) print("dropFromPorts3: dropping at " + assPos) else skip) & Lemmas.lemma1(1, oneList(assPos)) & (if (PRINT_DROP_FROM_PORTS3) print("dropFromPorts3: dropped") else skip)
         }
         //        })
         t
@@ -1429,17 +1462,15 @@ object Contract {
         if (n > 1) {
           //          t = t & composeb(pos.top.getPos, 1 :: Nil) * (n / 2)
           //          t = t & (dropOrMerge(vInDrop)(pos.top.getPos) * ((n / 2) + 1))
-          t = t & print("HERE 1")
           t = t & composeb(pos.top.getPos, 1 :: Nil) * (n - 1)
-          t = t & print("HERE 2")
           t = t & dropOrMerge(vInDrop)(pos.top.getPos) * n
-          t = t & print("HERE 3")
         }
         else {
           t = t & (dropOrMerge(vInDrop)(pos.top.getPos) * n)
         }
         if (n == vInDrop.size && vInDrop.nonEmpty) {
-          t = t & print("introduceEmptyTest in dropIn, n=" + n + ", vIn.size=" + vInDrop.size + ", vIn=" + vInDrop) & Lemmas.lemma5T("true".asFormula)(pos.top) < (skip, boxTrue(1))
+          t = t & (if (PRINT_DROP_IN) print("dropIn: introduceEmptyTest in dropIn, n=" + n + ", vIn.size=" + vInDrop.size + ", vIn=" + vInDrop) else skip) &
+            Lemmas.lemma5T("true".asFormula)(pos.top) < (skip, boxTrue(1))
         }
         t
       //no inputs --> let the test stay there
@@ -1448,33 +1479,35 @@ object Contract {
 
     def dropOrMerge(vIn: mutable.Seq[Seq[Variable]]): DependentPositionTactic = "Drop Or Merge" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(_, Box(b, _))) =>
+        var t: BelleExpr = (if (PRINT_DROP_OR_MERGE) print("dropOrMerge: ...") else skip)
         if (v(b).intersect(vIn.flatten).nonEmpty) {
-          Lemmas.lemma1AB(pos.top.getPos)
+          t = t & Lemmas.lemma1AB(pos.top.getPos)
         }
         else {
-          useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos)
+          t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos)
         }
+        t
     })
 
     def closeSide(side: mutable.Map[Seq[Variable], Provable]): DependentPositionTactic = "Close With Sidecondition" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(Compose(Compose(Compose(dp, ctrl), told), plant), True)) =>
-        print("CLOSE SIDE 0 - true") & boxTrue
+        (if (PRINT_CLOSE_SIDE) print("CLOSE SIDE 0 - true") else skip) & boxTrue
       case Some(Box(Compose(Compose(Compose(dp, ctrl), told), plant), out)) => {
         val s = side.keySet.filter((vs: Seq[Variable]) => {
           vs.intersect(v(out)).nonEmpty
         })
         require(s.size == 1, "Wrong number of side conditions (" + s.size + ") for out=" + out)
         val p = side(s.last)
-        print("CLOSE SIDE 1") & composeb('R) * 3 &
-          print("CLOSE SIDE 2 - " + p) & useAt("ANON", p, PosInExpr(1 :: Nil))('R) &
-          print("CLOSE SIDE 3") & closeId &
-          print("CLOSE SIDE 4")
+        (if (PRINT_CLOSE_SIDE) print("CLOSE SIDE 1") else skip) & composeb('R) * 3 &
+          (if (PRINT_CLOSE_SIDE) print("CLOSE SIDE 2 - " + p) else skip) & useAt("ANON", p, PosInExpr(1 :: Nil))('R) &
+          (if (PRINT_CLOSE_SIDE) print("CLOSE SIDE 3") else skip) & closeId &
+          (if (PRINT_CLOSE_SIDE) print("CLOSE SIDE 4") else skip)
       }
     })
 
     def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in, Box(ports, Box(ports3, _))))) =>
-        var t: BelleExpr = skip & print("introduceAndWeakenForAll")
+        var t: BelleExpr = skip & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll") else skip)
         val vInCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => X.keySet.contains(e._1))
         val vOutCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piOut.filter((e) => X.values.toSet.contains(e._1))
         val vInOpen: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => !X.keySet.contains(e._1))
@@ -1489,7 +1522,7 @@ object Contract {
         var nPorts3 = X.size
         val hPorts3 = oneList(3)
         if (nPorts3 > 1) {
-          t = t & print("goPorts3 - " + Math.max(0, nPorts3 - 1) + " times") & composeb(pos.top.getPos, hPorts3) * Math.max(0, nPorts3 - 1) & print("wentPorts3")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: goPorts3 - " + Math.max(0, nPorts3 - 1) + " times") else skip) & composeb(pos.top.getPos, hPorts3) * Math.max(0, nPorts3 - 1) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: wentPorts3") else skip)
         }
 
         //[p][in][ports][ports3-1]...[ports3-nPorts3]A
@@ -1512,7 +1545,7 @@ object Contract {
           //            t = t & print("goPorts " + i) & composeb(pos.top.getPos, hPorts1) & print("wentPorts " + i)
           //            //            hPorts = 1 :: hPorts
           //          })
-          t = t & print("goPorts - " + Math.max(0, nPorts - 1) + " times") & composeb(pos.top.getPos, hPorts1) * Math.max(0, nPorts - 1) & print("wentPorts")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: goPorts - " + Math.max(0, nPorts - 1) + " times") else skip) & composeb(pos.top.getPos, hPorts1) * Math.max(0, nPorts - 1) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: wentPorts") else skip)
         }
 
         //[p][in][ports-1]...[ports-nPorts][ports3-1]...[ports3-nPorts3]A
@@ -1531,12 +1564,12 @@ object Contract {
           (0 until nIn - 1) foreach (i => {
             //TODO Check
             //            t = t & (print("goIn" + i) & composeb(pos.top.getPos, hIn)) * 2
-            t = t & ((print("goIn" + i) & composeb(pos.top.getPos, hIn)) *)
+            t = t & (((if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: goIn" + i) else skip) & composeb(pos.top.getPos, hIn)) *)
             hIn = 1 :: 1 :: hIn
           })
           //TODO Check
           //          t = t & print("go last") & composeb(pos.top.getPos, hIn) & print("go done") & print("done with introduceAndWeakenForAll")
-          t = t & ((print("goIn last") & composeb(pos.top.getPos, hIn)) *) & print("goIn done")
+          t = t & (((if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: goIn last") else skip) & composeb(pos.top.getPos, hIn)) *) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: goIn done") else skip)
         }
 
         //ports connected --> something to do!
@@ -1546,28 +1579,31 @@ object Contract {
           vInCon.foreach((e) => {
             //            val inPos = if (piIn.keys.toSeq.indexOf(e._1) == 0) 0 else piIn.keys.toSeq.take(piIn.keys.toSeq.indexOf(e._1) - 1).flatten.size
             val currIn = piIn.keys.toSeq.intersect(vIn3 ++ donePorts ++ Seq(e._1))
-            println("currIn: " + currIn)
-            println("looking for position of " + e._1)
-            println("currIn.indexOf(e._1)=" + currIn.indexOf(e._1))
-            println("currIn.take(currIn.indexOf(e._1) - 1)=" + currIn.take(currIn.indexOf(e._1)))
             val inPos = if (currIn.indexOf(e._1) == 0) 0 else currIn.take(currIn.indexOf(e._1)).flatten.size + currIn.take(currIn.indexOf(e._1)).size
-            println("and inPos=" + inPos)
+            if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) {
+              println("--- introduceAndWeakenForAll ---")
+              println("currIn: " + currIn)
+              println("looking for position of " + e._1)
+              println("currIn.indexOf(e._1)=" + currIn.indexOf(e._1))
+              println("currIn.take(currIn.indexOf(e._1) - 1)=" + currIn.take(currIn.indexOf(e._1)))
+              println("and inPos=" + inPos)
+            }
             val portPos = X.keys.toSeq.diff(donePorts).indexOf(e._1)
             val cntIn = vInOpen.keySet.flatten.size + vInOpen.size + donePorts.flatten.size + donePorts.size
             val cntPorts = if (nPorts == 0) 1 else nPorts
             val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
-            t = t & printIndexed("HERE A - " + pos.top.getPos) & ComposeProofStuff.introduceTestFor(e._1, e._2, X.get(e._1).get, vOutCon.get(X.get(e._1).get).get,
+            t = t & ComposeProofStuff.introduceTestFor(e._1, e._2, X.get(e._1).get, vOutCon.get(X.get(e._1).get).get,
               nIn, cntIn, nPorts, cntPorts, nPorts3, cntPorts3,
               inPos, portPos, cpoT((e._1, X(e._1))),
-              Seq(X.keys.filter(v => !donePorts.contains(v)).toSeq: _*))(pos.top.getPos) & print("HERE B")
+              Seq(X.keys.filter(v => !donePorts.contains(v)).toSeq: _*))(pos.top.getPos)
             donePorts = donePorts ++ Seq(e._1)
             nIn = nIn + 1
             nPorts3 = nPorts3 - 1
           })
         }
-        t & print("done with introduceAndWeakenForAll")
+        t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll: done with introduceAndWeakenForAll") else skip)
 
-      case _ => print("ERROR ALL")
+      case _ => print("introduceAndWeakenForAll: ERROR ALL")
     })
 
 
@@ -1584,35 +1620,35 @@ object Contract {
         //        val cntPorts3 = if (nPorts3 == 0) 1 else nPorts3
 
         //introduce test using lemma 5
-        var t: BelleExpr = print("start introduceTestFor: vIn=" + vIn + "(vOut=" + vOut + ") --> " + tIn + "(tOut=" + tOut + ") @pos=" + pos + ", with: nIn=" + nIn + ", cntIn=" + cntIn + ", nPorts=" + nPorts + ", cntPorts=" + cntPorts + ", nPorts3=" + nPorts3 + ", inPos=" + inPos + ", portPos=" + portPos)
+        var t: BelleExpr = (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: start introduceTestFor: vIn=" + vIn + "(vOut=" + vOut + ") --> " + tIn + "(tOut=" + tOut + ") @pos=" + pos + ", with: nIn=" + nIn + ", cntIn=" + cntIn + ", nPorts=" + nPorts + ", cntPorts=" + cntPorts + ", nPorts3=" + nPorts3 + ", inPos=" + inPos + ", portPos=" + portPos) else skip)
         //if nIn is zero, we have just a ?true test as in3 -> remove this test, it will be replaced with actual ports
         if (nIn == 0) {
-          t = t & print("remove empty in3") & Lemmas.lemma1(1, 1 :: Nil)
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: remove empty in3") else skip) & Lemmas.lemma1(1, 1 :: Nil)
         }
-        t = t & print("introduce test") & Lemmas.lemma5T(tOut)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop) & print("done introducing")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: introduce test") else skip) & Lemmas.lemma5T(tOut)(pos) < (skip, hide(-2) * 4 & implyRi & CMon(PosInExpr(1 :: Nil)) & prop) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done introducing") else skip)
         //split test from p
         t = t & composeb(pos)
         //now: [p][test][in...][ports...][ports3...]A
 
         //commute test through in3
-        t = t & print("commute through in3, nIn=" + nIn + ", cntIn=" + cntIn)
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute through in3, nIn=" + nIn + ", cntIn=" + cntIn) else skip)
         var h = 1 :: Nil
         if (nIn != 0) {
           //there are some ports in in3, so we commute randomb;...;randomb;testb;...
           (0 until cntIn) foreach (_ => {
-            t = t & (Lemmas.lemma4_4T(pos.top.getPos, h) | Lemmas.lemma4_6T(pos.top.getPos, h)) & print("commuted in3")
+            t = t & (Lemmas.lemma4_4T(pos.top.getPos, h) | Lemmas.lemma4_6T(pos.top.getPos, h)) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commuted in3") else skip)
             h = 1 :: h
           })
         }
         else {
           //there is no port in in3, so nothing to do, since we removed ?true
         }
-        t = t & print("done with in3")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done with in3") else skip)
 
         //commute test with ports
         //TODO test case with actual portsX!
         require(nPorts == 0, "so far only atomic components can be composed")
-        t = t & print("commute through portsX, nPortsX=" + nPorts + ", cntPortsX=" + cntPorts + " --> assumed to be empty!")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute through portsX, nPortsX=" + nPorts + ", cntPortsX=" + cntPorts + " --> assumed to be empty!") else skip)
         h = oneList(1 + cntIn)
         t = t & Lemmas.lemma4_6T(pos.top.getPos, h)
 
@@ -1628,96 +1664,96 @@ object Contract {
         //          //there is no port in portsX, so we just commute the ?true;
         //          t = t & print("d") & Lemmas.lemma4_6T(pos.top.getPos, h)
         //        }
-        t = t & print("done with portsX")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done with portsX") else skip)
 
         //locate v in ports and move test there
         //        val assPos = posOfAssign(seq.sub(pos).get.asInstanceOf[Box], vIn.last) - (if (nIn == 0) 1 else 0)
         //position of assignment group of multiport--> if in3 was just an empty test, this test has been removed --> reduce by 1
         val assPos = 1 + cntIn + cntPorts + portPos
-        t = t & print("commute to position in ports3, cntIn=" + cntIn + ", cntPorts=" + cntPorts + ", portPos=" + portPos + ", assPos=" + assPos)
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute to position in ports3, cntIn=" + cntIn + ", cntPorts=" + cntPorts + ", portPos=" + portPos + ", assPos=" + assPos) else skip)
         //TODO check
         //      h = oneList(1 + cntIn + cntPorts)
         (1 + cntIn + cntPorts to assPos) foreach (i => {
           // multiport I am commuting with
           val vCurr = Xin(i - (1 + cntIn + cntPorts))
           // split multiport assignments
-          t = t & print("splitting, i=" + i + ", vCurr=" + vCurr)
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: splitting, i=" + i + ", vCurr=" + vCurr) else skip)
           t = t & composeb(pos.top.getPos, oneList(i + 1)) * (vCurr.size - 1)
-          t = t & print("split")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: split") else skip)
           // commute test with all assignments
           (i until (i + vCurr.size)) foreach (j => {
             t = t & Lemmas.lemma4_5T(pos.top.getPos, oneList(j))
-            t = t & print("commuted ports3...")
+            t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commuted ports3...") else skip)
           })
           // reconnect multiport assignments
           t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
-          t = t & print("reconnected")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: reconnected") else skip)
 
           // go to next multiport
           //          h = 1 :: h
         })
-        t = t & print("done moving to position in ports3")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done moving to position in ports3") else skip)
 
         //weaken test
-        t = t & print("weakening test")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: weakening test") else skip)
         t = t & Lemmas.lemma6T(tIn)(pos.top.getPos, oneList(assPos + 1)) < (
           skip
           ,
           (useAt("[;] compose", PosInExpr(1 :: Nil))('R) *) & composeb('R)
-            & print("using cpo=" + cpo)
+            & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: using cpo=" + cpo) else skip)
             & useAt("ANON", cpo, PosInExpr(1 :: Nil))(1, 1 :: Nil)
-            & print("used cpo")
+            & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: used cpo") else skip)
             //[dp3;(ctrl1;ctrl2);told;plant3;in;ports;ports3*]A
             //remove all remaining parts of ports3*, and all of ports and in, and plant3, told and (ctrl1;ctr2).
             & ((composeb('R) & Lemmas.lemma1AB(1)) * (assPos + 2))
-            & print("removed remaining parts")
+            & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: removed remaining parts") else skip)
             //next, apply all assignments in dp3
-            & (((composeb('R) | assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) & print("step...")) *)
+            & (((composeb('R) | assignb('R) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("step...") else skip)) *)
             //            & ((composeb('R) *) & (( ( (composeb(1,1::Nil)*) & (assignb('R)*) ) | (testb('R) & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R))) *))
             //            & ((( (composeb('R)&print("composed"))  | (skip&print("skipped")) ) & ( (assignb('R)&print("assigned")) | (testb('R)&print("tested") & useAt(DerivedAxioms.trueImplies, PosInExpr(0 :: Nil))('R)))) *)
             //now QE should close the thing
             //TODO DOES IT?
             & hide(-1)
             & QE
-          ) & print("done weakening")
+          ) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done weakening") else skip)
 
         //[p][in...][ports...][ports3*...]A
         //make assignment non-deterministic
-        t = t & print("make non-det")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: make non-det") else skip)
         // split multiport assignments
         t = t & composeb(pos.top.getPos, oneList(assPos)) * (vIn.size - 1)
-        t = t & print("split")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: split") else skip)
         // commute test with all assignments
         (assPos until (assPos + vIn.size)) foreach (j => {
           //          t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(j))
           t = t & useAt("ANON", Lemmas.lemma3.fact, PosInExpr(1 :: Nil))(1, oneList(j))
-          t = t & print("made non-det...")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: made non-det...") else skip)
         })
         //        t = t & useAt(Lemmas.lemma3, PosInExpr(1 :: Nil))(1, oneList(assPos))
-        t = t & print("done making non-det")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done making non-det") else skip)
 
         //[p][in...][ports...][ports3*...]A
         //rotate new non-det assignments to designated position
-        t = t & print("commute new non-det ports to designated position")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute new non-det ports to designated position") else skip)
         (0 until vIn.size) foreach (k => {
-          t = t & print("commute - " + k)
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute - " + k) else skip)
           //  1) commute non-det assign with remaining ports3
           (k + cntIn + cntPorts + portPos).until(k + cntIn + cntPorts, -1) foreach (i => {
 
             // multiport I am commuting with
             val vCurr = MultiPort.multiportAtPosition(Xin, i - (k + cntIn + cntPorts + 1))
             // split multiport assignments
-            t = t & print("splitting - vCurr=" + vCurr + ", i=" + i)
+            t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: splitting - vCurr=" + vCurr + ", i=" + i) else skip)
             t = t & composeb(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
-            t = t & print("split")
+            t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: split") else skip)
             // commute test with all assignments
             (i + vCurr.size - 1).until(i - 1, -1) foreach (j => {
               t = t & Lemmas.lemma4_3T(pos.top.getPos, oneList(j))
-              t = t & print("commuted...")
+              t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commuted...") else skip)
             })
             // reconnect multiport assignments
             t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i + 1)) * (vCurr.size - 1)
-            t = t & print("reconnected")
+            t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: reconnected") else skip)
 
             //            t = t & Lemmas.lemma4_3T(1, oneList(i))
           })
@@ -1751,31 +1787,31 @@ object Contract {
 
 
         //rotate test to designated position
-        t = t & print("commute test to designated position")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute test to designated position") else skip)
         //  1) commute test with remaining ports3
         (cntIn + cntPorts + portPos + vIn.size).until(cntIn + cntPorts + vIn.size, -1) foreach (i => {
 
           // multiport I am commuting with
           val vCurr = MultiPort.multiportAtPosition(Xin, i - (cntIn + cntPorts + vIn.size) - 1)
           // split multipornt assignments
-          t = t & print("splitting - vCurr=" + vCurr + ", i=" + i)
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: splitting - vCurr=" + vCurr + ", i=" + i) else skip)
           t = t & composeb(pos.top.getPos, oneList(i)) * (vCurr.size - 1)
-          t = t & print("split")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: split") else skip)
           // commute test with all assignments
           (i + vCurr.size - 1).until(i - 1, -1) foreach (j => {
             t = t & Lemmas.lemma4_5T(pos.top.getPos, oneList(j))
-            t = t & print("commuted...")
+            t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commuted...") else skip)
           })
           // reconnect multiport assignments
           t = t & useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top.getPos, oneList(i + 1)) * (vCurr.size - 1)
-          t = t & print("reconnected")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: reconnected") else skip)
 
           //          t = t & Lemmas.lemma4_5T(1, oneList(i))
         })
         //  2) commute test with ports
         if (nPorts == 0) {
           //its just a test
-          t = t & print("commuting test with ports")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commuting test with ports") else skip)
           t = t & Lemmas.lemma4_6T(1, oneList(cntIn + cntPorts + vIn.size))
         }
         else {
@@ -1788,20 +1824,20 @@ object Contract {
         }
         //  3) commute test with in
         if (nIn != 0) {
-          t = t & print("commuting test with in")
+          t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commuting test with in") else skip)
           //there are actual open ports
           //TODO check
           //          (cntIn + 1).until(inPos * 2 + 1, -2) foreach (i => {
           //            t = t & Lemmas.lemma4_6T(1, oneList(i)) & Lemmas.lemma4_4T(1, oneList(i - 1))
           //          })
           (cntIn + vIn.size).until(inPos + vIn.size, -1) foreach (i => {
-            t = t & print("commute " + i)
+            t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: commute " + i) else skip)
             t = t & (Lemmas.lemma4_6T(1, oneList(i)) | Lemmas.lemma4_4T(1, oneList(i)))
           })
         }
-        t = t & print("done commute test to designated position")
+        t = t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done commute test to designated position") else skip)
 
-        t & print("done with introduceTestFor")
+        t & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done with introduceTestFor") else skip)
 
       case _ => print("ERROR")
     })

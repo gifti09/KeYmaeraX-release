@@ -67,35 +67,36 @@ object Tester {
     //    tacticTest()
 
 
-    //    val t1 = test1(false)
-    //    val bt = bigTest(false)
-    //    val t2 = test2(false)
-    //    val t3 = test3(false)
-    //    val td4 = testD4(false)
-    //    val bdt = bigTestDelta(false)
-    //    val td5 = testD5(false)
-    //    val td6 = testD6(false)
-    //    val tm7 = testM7(false)
-    //    val tmd8 = testMD8(false)
+        val t1 = test1(true)
+        val bt = bigTest(true)
+        val t2 = test2(true)
+        val t3 = test3(true)
+        val td4 = testD4(true)
+        val bdt = bigTestDelta(true)
+        val td5 = testD5(true)
+        val td6 = testD6(true)
+        val tm7 = testM7(true)
+        val tmd8 = testMD8(true)
 
     //    val tr = testRobix(false)
-    //    val tetcs = testEtcs(false)
-    val tetcs = testLlc(true)
+//        val tetcs = testEtcs(false)
+//    val tetcs = testLlc(true)
 
-    //    val trun = testRunning(true)
+        val trun = testRunning(true)
 
-    //    println("--- SUMMARY ---")
-    //    println("===============")
-    //    println("test1 done? " + t1)
-    //    println("bigTest done? " + bt)
-    //    println("test2 done? " + t2)
-    //    println("test3 done? " + t3)
-    //    println("testD4 done? " + td4)
-    //    println("bigDeltaTest done? " + bdt)
-    //    println("testD5 done? " + td5)
-    //    println("testD6 done? " + td6)
-    //    println("testM7 done? " + tm7)
-    //    println("testMD8 done? " + tmd8)
+        println("--- SUMMARY ---")
+        println("===============")
+        println("test1 done? " + t1)
+        println("bigTest done? " + bt)
+        println("test2 done? " + t2)
+        println("test3 done? " + t3)
+        println("testD4 done? " + td4)
+        println("bigDeltaTest done? " + bdt)
+        println("testD5 done? " + td5)
+        println("testD6 done? " + td6)
+        println("testM7 done? " + tm7)
+        println("testMD8 done? " + tmd8)
+        println("testRunning done? " + trun)
 
     //    println("testRobix done? " + tr)
     //    println("testEtcs done? " + tetcs)
@@ -1490,53 +1491,53 @@ object Tester {
     val t = Globals.runT
 
     if (initialize) {
-      //
-      //      //COMPONENT 1 - LEADER
-      //      val c1 = new Component(name + "-leader",
-      //        "al :=*; ?-B <= al & al <= A;".asProgram,
-      //        ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
-      //      )
-      //      val i1 = new Interface(
-      //        mutable.LinkedHashMap.empty,
-      //        mutable.LinkedHashMap(
-      //          Seq("xl".asVariable, "vl".asVariable) -> (s"0 <= vl & -B*$t <= vl-vl0 & vl-vl0 <= A*$t & xl-xl0 >= (vl+vl0)/2*$t").asFormula
-      //        ),
-      //        mutable.LinkedHashMap(Seq("xl".asVariable, "vl".asVariable) -> Seq("xl0".asVariable, "vl0".asVariable))
-      //      )
-      //      val ctr1 = new DelayContract(c1, i1,
-      //        ("""ep > 0
-      //           | & A >= 0
-      //           | & B > 0
-      //           | & xl = xl0
-      //           | & vl = vl0
-      //           | & 0 <= vl
-      //           | & t=tOld"""
-      //          ).stripMargin.asFormula,
-      //        True,
-      //        s"""ep > 0
-      //            | & A >= 0
-      //            | & B > 0
-      //            | & 0 <= $t & $t <= ep
-      //            | & xl-xl0 >= (vl+vl0)/2*$t
-      //            | & 0 <= vl
-      //            | & -B*$t <= vl-vl0
-      //            | & vl-vl0 <= A*$t""".stripMargin.asFormula)
-      //      println("Ctr1 - leader: " + ctr1.contract())
-      //
-      //      val bct1 = print("Base case") & QE & print("Base case done")
-      //      val uct1 = print("Use case") & QE & print("Use case done")
-      //      val st1 = print("Induction step") & master() & printIndexed("Induction step done")
-      //
-      //
-      //      if (ctr1.verifyBaseCase(bct1).isEmpty)
-      //        println("ctr1-baseCase NOT verified!")
-      //      if (ctr1.verifyUseCase(uct1).isEmpty)
-      //        println("ctr1-useCase NOT verified!")
-      //      if (ctr1.verifyStep(st1).isEmpty)
-      //        println("ctr1-step NOT verified!")
-      //
-      //      println("Ctr1 verified? " + ctr1.isVerified())
-      //      Contract.save(ctr1, name + "-1.cbcps")
+
+            //COMPONENT 1 - LEADER
+            val c1 = new Component(name + "-leader",
+              "al :=*; ?-B <= al & al <= A;".asProgram,
+              ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
+            )
+            val i1 = new Interface(
+              mutable.LinkedHashMap.empty,
+              mutable.LinkedHashMap(
+                Seq("xl".asVariable, "vl".asVariable) -> (s"0 <= vl & -B*$t <= vl-vl0 & vl-vl0 <= A*$t & xl-xl0 >= (vl+vl0)/2*$t").asFormula
+              ),
+              mutable.LinkedHashMap(Seq("xl".asVariable, "vl".asVariable) -> Seq("xl0".asVariable, "vl0".asVariable))
+            )
+            val ctr1 = new DelayContract(c1, i1,
+              ("""ep > 0
+                 | & A >= 0
+                 | & B > 0
+                 | & xl = xl0
+                 | & vl = vl0
+                 | & 0 <= vl
+                 | & t=tOld"""
+                ).stripMargin.asFormula,
+              True,
+              s"""ep > 0
+                  | & A >= 0
+                  | & B > 0
+                  | & 0 <= $t & $t <= ep
+                  | & xl-xl0 >= (vl+vl0)/2*$t
+                  | & 0 <= vl
+                  | & -B*$t <= vl-vl0
+                  | & vl-vl0 <= A*$t""".stripMargin.asFormula)
+            println("Ctr1 - leader: " + ctr1.contract())
+
+            val bct1 = print("Base case") & QE & print("Base case done")
+            val uct1 = print("Use case") & QE & print("Use case done")
+            val st1 = print("Induction step") & master() & printIndexed("Induction step done")
+
+
+            if (ctr1.verifyBaseCase(bct1).isEmpty)
+              println("ctr1-baseCase NOT verified!")
+            if (ctr1.verifyUseCase(uct1).isEmpty)
+              println("ctr1-useCase NOT verified!")
+            if (ctr1.verifyStep(st1).isEmpty)
+              println("ctr1-step NOT verified!")
+
+            println("Ctr1 verified? " + ctr1.isVerified())
+            Contract.save(ctr1, name + "-1.cbcps")
 
       //COMPONENT 2 - FOLLOWER
       val c2 = new Component(name + "-follower",
@@ -1775,10 +1776,10 @@ object Tester {
 
     if (initialize) {
       //Verify lemmas for cpo
-      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
-        v -> ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
-      }
-      }
+        lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+          v -> ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
+        }
+        }
     }
 
     //Reuse previously verified lemmas for cpo
