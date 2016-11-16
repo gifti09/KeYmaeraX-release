@@ -661,10 +661,10 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
   lazy val alphaRule: BelleExpr = (andL('_) ) |
     ((orR('_) ) |
       ((implyR('_) ) |
-        //((notL('_) ) |
+        ((notL('_) ) |
           (notR('_) )
           )
-        //)
+        )
       )
   /** Beta rules are propositional rules that split */
   lazy val betaRule: BelleExpr = (andR('_) ) |
