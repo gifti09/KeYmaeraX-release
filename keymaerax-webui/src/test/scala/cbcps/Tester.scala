@@ -79,8 +79,8 @@ object Tester {
         val tmd8 = testMD8(true)
 
     //    val tr = testRobix(false)
-//        val tetcs = testEtcs(false)
-//    val tetcs = testLlc(true)
+        val tetcs = testEtcs(false)
+//    val tllc = testLlc(true)
 
         val trun = testRunning(true)
 
@@ -100,6 +100,7 @@ object Tester {
 
     //    println("testRobix done? " + tr)
     //    println("testEtcs done? " + tetcs)
+    //    println("testLlc done? " + tllc)
 
     ProofHelper.shutdownProver
     System.exit(0)
