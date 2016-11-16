@@ -28,9 +28,9 @@ private object DLBySubst {
 
   /** @see [[HilbertCalculus.G]] */
   lazy val G: BelleExpr = {
-    val pattern = SequentType(Sequent(IndexedSeq(), IndexedSeq("[a_;]p_(||)".asFormula)))
+    val pattern = SequentType(Sequent(IndexedSeq(), IndexedSeq("[a_{|^@|};]p_(||)".asFormula)))
     //@todo ru.getRenamingTactic should be trivial so can be optimized away with a corresponding assert
-    if (isGame)
+    if (false && isGame) //@note true changes the shape maybe?
       USubstPatternTactic(
         (pattern, (ru:RenUSubst) =>
           cut(ru.substitution.usubst("[a_;]true".asFormula)) <(
@@ -40,7 +40,7 @@ private object DLBySubst {
               hideL(-1, True)
               partial
             ,
-            dualFree(2)
+            hide(1) & boxTrue(1)
             ))::Nil)
     else
       USubstPatternTactic(
@@ -89,11 +89,10 @@ private object DLBySubst {
     */
   def stutter(x: Variable): DependentPositionTactic = "stutter" byWithInput (x, (pos: Position, sequent: Sequent) => sequent.at(pos) match {
     case (ctx, f: Formula) =>
-      val commute = if (pos.isAnte) commuteEquivR(1) else skip
+      val (hidePos, commute) = if (pos.isAnte) (SuccPosition.base0(sequent.succ.size), commuteEquivR(1)) else (pos.topLevel, skip)
       cutLR(ctx(Box(Assign(x, x), f)))(pos) <(
         skip,
-        cohide('Rlast) & equivifyR(1) & commute & CE(pos.inExpr) &
-          byUS("[:=] self assign")
+        cohide(hidePos) & equivifyR(1) & commute & CE(pos.inExpr) & byUS("[:=] self assign") & done
       )
   })
 
@@ -206,7 +205,7 @@ private object DLBySubst {
    * @note Uses K modal modus ponens, which is unsound for hybrid games.
    */
   def postCut(C: Formula): DependentPositionTactic = useAt("K modal modus ponens &", PosInExpr(1::Nil),
-    (us: Subst) => us ++ RenUSubst(("p_(||)".asFormula, C)::Nil))
+    (us: Option[Subst]) => us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in postCut")) ++ RenUSubst(("p_(||)".asFormula, C)::Nil))
 
   private def constAnteConditions(sequent: Sequent, taboo: Set[Variable]): IndexedSeq[Formula] = {
     sequent.ante.filter(f => StaticSemantics.freeVars(f).intersect(taboo).isEmpty)
@@ -218,22 +217,25 @@ private object DLBySubst {
     (alphaRule*) & ("doLoop" byWithInput(invariant, (pos, sequent) => {
        sequent.sub(pos) match {
           case Some(b@Box(Loop(a), p)) =>
-            val consts = constAnteConditions(sequent, StaticSemantics(a).bv.toSet)
-            val q =
-              if (consts.size > 1) And(invariant, consts.reduceRight(And))
-              else if (consts.size == 1) And(invariant, consts.head)
-              else And(invariant, True)
-            cutR(Box(Loop(a), q))(pos.checkSucc.top) <(
-              /* c */ useAt("I induction")(pos) & andR(pos) <(
+            if (!FormulaTools.dualFree(a)) loopRule(invariant)(pos)
+            else {
+              val consts = constAnteConditions(sequent, StaticSemantics(a).bv.toSet)
+              val q =
+                if (consts.size > 1) And(invariant, consts.reduceRight(And))
+                else if (consts.size == 1) And(invariant, consts.head)
+                else And(invariant, True)
+              cutR(Box(Loop(a), q))(pos.checkSucc.top) <(
+                /* c */ useAt("I induction")(pos) & andR(pos) <(
                 andR(pos) <(ident /* indInit */, ((andR(pos) <(closeIdWith(pos), ident))*(consts.size-1) & closeIdWith(pos)) | closeT) partial(initCase),
                 cohide(pos) & G & implyR(1) & boxAnd(1) & andR(1) <(
                   (if (consts.nonEmpty) andL('Llast)*consts.size else andL('Llast) & hide('Llast,True)) partial(indStep),
                   andL(-1) & hide(Fixed(-1,Nil,Some(invariant)))/*hide(-1,invariant)*/ & V(1) & ProofRuleTactics.trivialCloser) partial
-              ) partial,
-              /* c -> d */ cohide(pos) & CMon(pos.inExpr++1) & implyR(1) &
+                ) partial,
+                /* c -> d */ cohide(pos) & CMon(pos.inExpr++1) & implyR(1) &
                 (if (consts.nonEmpty) andL('Llast)*consts.size else andL('Llast) & hide('Llast, True)) partial(useCase)
-            )
-        }}))(pos)})
+                )
+            }
+       }}))(pos)})
   /**
     * Loop induction wiping all context.
     * {{{
@@ -246,6 +248,7 @@ private object DLBySubst {
     * @param invariant The invariant.
     */
   def loopRule(invariant: Formula) = "loopRule" byWithInput(invariant, (pos, sequent) => {
+    //@todo maybe augment with constant conditions?
     require(pos.isTopLevel && pos.isSucc, "loopRule only at top-level in succedent, but got " + pos)
     require(sequent(pos) match { case Box(Loop(_),_)=>true case _=>false}, "only applicable for [a*]p(||)")
     val alast = AntePosition(sequent.ante.length)
@@ -281,8 +284,9 @@ private object DLBySubst {
   def discreteGhost(t: Term, ghost: Option[Variable]): DependentPositionWithAppliedInputTactic = "discreteGhost" byWithInputs (
       //@todo figure out how to serialize None when adding to AxiomInfo
       ghost match { case Some(g) => List(t, g) case _ => List(t) }, (pos: Position, seq: Sequent) => {
-    seq.at(pos) match {
-      case (ctx, f: Formula) =>
+    require(ghost match { case Some(g) => g != t case None => true }, "Expected ghost different from t, use stutter instead")
+    seq.sub(pos) match {
+      case Some(f: Formula) =>
         // check specified name, or construct a new name for the ghost variable if None
         def ghostV(f: Formula): Variable = ghost match {
           case Some(gv) => require(gv == t || (!StaticSemantics.symbols(f).contains(gv))); gv
@@ -292,10 +296,15 @@ private object DLBySubst {
           }
         }
         val theGhost = ghostV(f)
-        cutLR(ctx(Box(Assign(theGhost, t), f.replaceFree(t, theGhost))))(pos.topLevel) <(
-          /* use */ ident,
-          /* show */ cohide('Rlast) & CMon(pos.inExpr) & equivifyR(1) & byUS("[:=] assign")
-          )
+
+        val subst = (us: Option[Subst]) => RenUSubst(
+          ("x_".asVariable, theGhost) ::
+          ("f()".asTerm, t) ::
+          ("p(.)".asFormula, f.replaceFree(t, DotTerm())) ::
+          Nil
+        )
+
+        useAt("[:=] assign", PosInExpr(1::Nil), subst)(pos)
     }
   })
 
@@ -310,13 +319,30 @@ private object DLBySubst {
    * @param f The right-hand side term of the assignment chosen as a witness for the existential quantifier.
    * @return The tactic.
    */
-  def assignbExists(f: Term): DependentPositionTactic = "[:=] assign exists" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+  def assignbExists(f: Term): DependentPositionTactic = "[:=] assign exists" byWithInput (f, (pos: Position, sequent: Sequent) => sequent.sub(pos) match {
     case Some(Exists(vars, p)) =>
       require(vars.size == 1, "Cannot handle existential lists")
-      val x = vars.head
-      cutR(Box(Assign(x, f), p))(pos.checkSucc.top) <(
-        skip,
-        cohide(pos.top) & byUS("[:=] assign exists")
-        )
+      val subst = (s: Option[Subst]) =>
+        s.getOrElse(throw BelleUserGeneratedError("Expected unification in assignbExists")) ++ RenUSubst(USubst("f_()".asTerm ~> f :: Nil))
+      useAt("[:=] assign exists", PosInExpr(1::Nil), subst)(pos)
+  })
+
+  /**
+    * Turns a universal quantifier into an assignment.
+    *
+    * @example{{{
+    *         [t:=f;][x:=t;]x>=0 |-
+    *         -------------------------assignbAll(f)(-1)
+    *         \forall t [x:=t;]x>=0 |-
+    * }}}
+    * @param f The right-hand side term of the assignment chosen as a witness for the universal quantifier.
+    * @return The tactic.
+    */
+  def assignbAll(f: Term): DependentPositionTactic = "[:=] assign all" byWithInput (f, (pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+    case Some(Forall(vars, p)) =>
+      require(vars.size == 1, "Cannot handle universal lists")
+      val subst = (s: Option[Subst]) =>
+        s.getOrElse(throw BelleUserGeneratedError("Expected unification in assignbExists")) ++ RenUSubst(USubst("f_()".asTerm ~> f :: Nil))
+      useAt("[:=] assign all", PosInExpr(0::Nil), subst)(pos)
   })
 }

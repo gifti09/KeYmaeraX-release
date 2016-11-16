@@ -59,27 +59,27 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
   /** step: one canonical simplifying proof step at the indicated formula/term position (unless @invariant etc needed) */
   val step          : DependentPositionTactic = "step" by ((pos: Position) =>
     //@note AxiomIndex (basis for HilbertCalculus.stepAt) hands out assignment axioms, but those fail in front of an ODE -> try assignb if that happens
-    (if (pos.isTopLevel) stepAt(sequentStepIndex(pos.isAnte)(_))(pos) partial
-     else HilbertCalculus.stepAt(pos) partial)
-    | (assignb(pos) partial))
+    (if (pos.isTopLevel) stepAt(sequentStepIndex(pos.isAnte)(_))(pos)
+     else HilbertCalculus.stepAt(pos))
+    | assignb(pos))
 
   /** Normalize to sequent form, keeping branching factor down by precedence */
   lazy val normalize: BelleExpr = normalize(betaRule, step('L), step('R))
   /** Normalize to sequent form, customize branching with `beta`, customize simplification steps in antecedent/succedent with `stepL` and `stepR` */
   def normalize(beta: BelleExpr, stepL: BelleExpr, stepR: BelleExpr): BelleExpr = NamedTactic("normalize", {
     (OnAll(?(
-              (alphaRule partial)
+              alphaRule
                 | (closeId
-                | ((allR('R) partial)
-                | ((existsL('L) partial)
+                | (allR('R)
+                | (existsL('L)
                 | (close
-                | ((beta partial)
-                | ((stepL partial)
-                | ((stepR partial) partial) partial) partial) partial) partial) partial) partial) partial) partial))*
+                | (beta
+                | (stepL
+                | (stepR))))))))))*
     })
 
   /** Follow program structure when normalizing but avoid branching in typical safety problems (splits andR but nothing else). */
-  val unfoldProgramNormalize = "unfoldProgramNormalize" by chase('R) & normalize(andR('R), Idioms.ident, Idioms.ident)
+  val unfoldProgramNormalize = "unfold" by chase('R) & normalize(andR('R), Idioms.ident, Idioms.ident)
 
   /** prop: exhaustively apply propositional logic reasoning and close if propositionally possible. */
   val prop                    : BelleExpr = NamedTactic("prop", {
@@ -97,7 +97,8 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
             | (must(normalize)
             | (loop(gen)('R)
             | (ODE('R)
-            | exhaustiveEqL2R('L) ) ) ) ) ) ))*) &
+            | (diffSolve('L) // somehow ODE aborts before even trying diffSolve
+            | exhaustiveEqL2R('L) ) ) ) ) ) ) ))*) &
       ?(OnAll(QE))
   }
 
@@ -109,7 +110,8 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
         | (must(normalize)
         | (loopauto('R)
         | (ODE('R)
-        | exhaustiveEqL2R('L) ) ) ) ) ) ))*) &
+        | (diffSolve('L) // somehow ODE aborts before even trying diffSolve
+        | exhaustiveEqL2R('L) ) ) ) ) ) ) ))*) &
       ?(OnAll(QE)) & done
   }
 
@@ -270,19 +272,7 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
 
   /** diffSolve: solve a differential equation `[x'=f]p(x)` to `\forall t>=0 [x:=solution(t)]p(x)`.
     * Similarly, `[x'=f(x)&q(x)]p(x)` turns to `\forall t>=0 (\forall 0<=s<=t q(solution(s)) -> [x:=solution(t)]p(x))`. */
-  def diffSolve(solution: Option[Formula] = None): DependentPositionTactic = (ToolProvider.odeTool(), ToolProvider.qeTool()) match {
-    case (Some(odeTool), Some(qeTool)) =>
-      DifferentialTactics.diffSolve(solution)(new ODESolverTool with QETool {
-        override def odeSolve(diffSys: DifferentialProgram, diffArg: Variable, iv: Map[Variable, Variable]): Option[Formula] =
-          odeTool.odeSolve(diffSys, diffArg, iv)
-        override def qeEvidence(formula: Formula): (Formula, Evidence) =
-          qeTool.qeEvidence(formula)
-      })
-    case (None, _) => throw new BelleError("diffSol requires a DiffSolutionTool, but got None")
-    case (_, None) => throw new BelleError("qeEvidence requires a QETool, but got None")
-  }
-
-
+  lazy val diffSolve: DependentPositionTactic = AxiomaticODESolver.axiomaticSolve()
 
   /** DW: Differential Weakening uses evolution domain constraint so `[{x'=f(x)&q(x)}]p(x)` reduces to `\forall x (q(x)->p(x))`.
     * @note FV(post)/\BV(x'=f(x)) subseteq FV(q(x)) usually required to have a chance to succeed. */
@@ -616,7 +606,7 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
     */
   def transform(to: Formula): DependentPositionTactic = ToolTactics.transform(to)(new QETool with CounterExampleTool {
     override def qeEvidence(formula: Formula): (Formula, Evidence) = ToolProvider.qeTool().getOrElse(throw new BelleError("transform requires a QETool, but got None")).qeEvidence(formula)
-    override def findCounterExample(formula: Formula): Option[Map[NamedSymbol, Term]] = ToolProvider.cexTool().getOrElse(throw new BelleError("transform requires a CounterExampleTool, but got None")).findCounterExample(formula)
+    override def findCounterExample(formula: Formula): Option[Map[NamedSymbol, Expression]] = ToolProvider.cexTool().getOrElse(throw new BelleError("transform requires a CounterExampleTool, but got None")).findCounterExample(formula)
   })
 
   //
@@ -766,6 +756,9 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
   private def sequentStepIndex(isAnte: Boolean)(expr: Expression): Option[String] = (expr, isAnte) match {
     case (True, false) => Some("closeTrue")
     case (False, true) => Some("closeFalse")
+    // prefer simplification over left-right-swaps
+    case (Not(Box(_,Not(_))), _) => Some("<> diamond")
+    case (Not(Diamond(_,Not(_))), _) => Some("[] box")
     case (_: Not, true) => Some("notL")
     case (_: Not, false) => Some("notR")
     case (_: And, true) => Some("andL")

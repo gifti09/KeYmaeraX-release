@@ -12,13 +12,15 @@ package edu.cmu.cs.ls.keymaerax.hydra
 
 import _root_.edu.cmu.cs.ls.keymaerax.btactics._
 import _root_.edu.cmu.cs.ls.keymaerax.core.{Expression, Formula}
-import edu.cmu.cs.ls.keymaerax.bellerophon.{Fixed, PosInExpr, PositionLocator}
+import edu.cmu.cs.ls.keymaerax.bellerophon.{Fixed, PosInExpr, PositionLocator, TacticDiff}
 import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.parser.Location
+import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXPrettyPrinter, Location}
 import spray.json._
 import java.io.{PrintWriter, StringWriter}
 
 import Helpers._
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BellePrettyPrinter
+import edu.cmu.cs.ls.keymaerax.codegen.CGenerator
 
 import scala.collection.mutable.ListBuffer
 
@@ -143,6 +145,36 @@ class GetModelTacticResponse(model : ModelPOJO) extends Response {
     "modelId" -> JsString(model.modelId.toString),
     "modelName" -> JsString(model.name),
     "tacticBody" -> JsString(model.tactic.getOrElse(""))
+  )
+}
+
+class ModelPlexMandatoryVarsResponse(model: ModelPOJO, vars: Set[Variable]) extends Response {
+  def getJson = JsObject(
+    "modelid" -> JsString(model.modelId.toString),
+    "mandatoryVars" -> JsArray(vars.map(v => JsString(v.prettyString)).toVector)
+  )
+}
+
+class ModelPlexResponse(model: ModelPOJO, monitor: Formula) extends Response {
+  val fmlHtml = JsString(UIKeYmaeraXPrettyPrinter("", plainText=false)(monitor))
+  val fmlString = JsString(UIKeYmaeraXPrettyPrinter("", plainText=true)(monitor))
+  val fmlPlainString = JsString(KeYmaeraXPrettyPrinter(monitor))
+
+  def getJson = JsObject(
+    "modelid" -> JsString(model.modelId.toString),
+    "monitor" -> JsObject(
+      "html" -> fmlHtml,
+      "string" -> fmlString,
+      "plainString" -> fmlPlainString
+    )
+  )
+}
+
+class ModelPlexCCodeResponse(model: ModelPOJO, monitor: Formula) extends Response {
+  def getJson = JsObject(
+    "modelid" -> JsString(model.modelId.toString),
+    "modelname" -> JsString(model.name),
+    "code" -> JsString(CGenerator(monitor))
   )
 }
 
@@ -574,7 +606,7 @@ class PruneBelowResponse(item:AgendaItem) extends Response {
   )
 }
 
-class CounterExampleResponse(kind: String, fml: Formula = True, cex: Map[NamedSymbol, Term] = Map()) extends Response {
+class CounterExampleResponse(kind: String, fml: Formula = True, cex: Map[NamedSymbol, Expression] = Map()) extends Response {
   def getJson = JsObject(
     "result" -> JsString(kind),
     "origFormula" -> JsString(fml.prettyString),
@@ -587,12 +619,16 @@ class CounterExampleResponse(kind: String, fml: Formula = True, cex: Map[NamedSy
     )
   )
 
-  private def createCexFormula(fml: Formula, cex: Map[NamedSymbol, Term]): Formula = {
+  private def createCexFormula(fml: Formula, cex: Map[NamedSymbol, Expression]): Formula = {
     ExpressionTraversal.traverse(new ExpressionTraversal.ExpressionTraversalFunction {
       override def preT(p: PosInExpr, t: Term): Either[Option[ExpressionTraversal.StopTraversal], Term] = t match {
-        case v: Variable => Right(cex(v))
-        case FuncOf(fn, _) => Right(cex(fn))
+        case v: Variable => Right(cex(v).asInstanceOf[Term])
+        case FuncOf(fn, _) => Right(cex(fn).asInstanceOf[Term])
         case tt => Right(tt)
+      }
+      override def preF(p: PosInExpr, f: Formula): Either[Option[ExpressionTraversal.StopTraversal], Formula] = f match {
+        case PredOf(fn, _) => Right(cex(fn).asInstanceOf[Formula])
+        case ff => Right(ff)
       }
     }, fml).get
   }
@@ -782,6 +818,14 @@ class NodeResponse(tree : String) extends Response {
 class ExtractTacticResponse(tacticText: String) extends Response {
   def getJson = JsObject(
     "tacticText" -> JsString(tacticText)
+  )
+}
+
+class TacticDiffResponse(diff: TacticDiff.Diff) extends Response {
+  def getJson = JsObject(
+    "context" -> JsString(BellePrettyPrinter(diff._1.t)),
+    "replOld" -> JsArray(diff._2.map({ case (dot, repl) => JsObject("dot" -> JsString(BellePrettyPrinter(dot)), "repl" -> JsString(BellePrettyPrinter(repl))) }).toVector),
+    "replNew" -> JsArray(diff._3.map({ case (dot, repl) => JsObject("dot" -> JsString(BellePrettyPrinter(dot)), "repl" -> JsString(BellePrettyPrinter(repl))) }).toVector)
   )
 }
 

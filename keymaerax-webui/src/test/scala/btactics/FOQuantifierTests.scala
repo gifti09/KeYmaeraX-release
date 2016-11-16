@@ -221,6 +221,14 @@ class FOQuantifierTests extends TacticTestBase {
     result.subgoals.head.succ shouldBe empty
   }
 
+  it should "instantiate ODE" ignore {
+    val result = proveBy(Sequent(IndexedSeq("\\forall t_ [{x'=2,t_'=1&true}]x>b".asFormula), IndexedSeq()),
+      allInstantiate(None, Some("0".asTerm))(-1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain only "t_=0->[{x'=2,t_'=1&true}]x>b".asFormula
+    result.subgoals.head.succ shouldBe empty
+  }
+
   "existsR" should "instantiate simple formula" in {
     val result = proveBy(
       Sequent(IndexedSeq(), IndexedSeq("\\exists x x>0".asFormula)),
@@ -257,6 +265,14 @@ class FOQuantifierTests extends TacticTestBase {
     result.subgoals.head.succ should contain only "[{x'=2,y'=0*y+1&true}]x>0".asFormula
   }
 
+  it should "instantiate ODE" in {
+    val result = proveBy("\\exists t_ (t_=0&![{x'=2,t_'=1&true}]x>b)".asFormula,
+      existsInstantiate(None, Some("0".asTerm))(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain only "t_=0".asFormula
+    result.subgoals.head.succ should contain only "t_=0&![{x'=2,t_'=1&true}]x>b".asFormula
+  }
+
   "exists generalize" should "only generalize the specified occurrences of t" in {
     val result = proveBy(Sequent(IndexedSeq("a+b=a+b".asFormula), IndexedSeq()),
       existsGeneralize(Variable("z"), PosInExpr(0 :: Nil) :: Nil)(-1))
@@ -284,6 +300,22 @@ class FOQuantifierTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "\\forall z \\forall x x^2 >= -z^2".asFormula
+  }
+
+  it should "introduce a new universal quantifier in context" in {
+    val result = proveBy("a=2 -> [x:=3;]\\forall x x^2 >= -f()^2".asFormula,
+      universalGen(Some(Variable("z")), FuncOf(Function("f", None, Unit, Real), Nothing))(1, 1::1::Nil))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "a=2 -> [x:=3;]\\forall z \\forall x x^2 >= -z^2".asFormula
+  }
+
+  it should "introduce a new universal quantifier in context before an ODE" in {
+    val result = proveBy("a=2 -> [x:=3;][{x'=5}]x>0".asFormula,
+      universalGen(Some(Variable("x")), Variable("x"))(1, 1::1::Nil))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "a=2 -> [x:=3;]\\forall x [{x'=5}]x>0".asFormula
   }
 
   it should "generalize terms" in {
@@ -428,5 +460,29 @@ class FOQuantifierTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante should contain only ("x_0>0".asFormula, "x>0".asFormula)
     result.subgoals.head.succ shouldBe empty
+  }
+
+  "quantifier rules" should "not prove false \\forall x \\exists y p(x,y) -> \\exists y \\forall x p(x,y)" in {
+    val result = proveBy("\\forall x \\exists y p(x,y) -> \\exists y \\forall x p(x,y)".asFormula,
+      implyR(1) & existsR(1) & allL(-1) & allR(1) & existsL(-1) & (close | skip)
+    )
+    result should not be 'proved
+    result.isProved shouldBe false
+  }
+
+  it should "not prove false \\forall x \\exists y p(x,y) -> \\exists y \\forall x p(x,y) with insts" in {
+    val result = proveBy("\\forall x \\exists y p(x,y) -> \\exists y \\forall x p(x,y)".asFormula,
+      implyR(1) & existsR(Variable("y"),Variable("y"))(1) & allL(Variable("x"),Variable("x"))(-1) & allR(1) & existsL(-1) & (close | skip)
+    )
+    result should not be 'proved
+    result.isProved shouldBe false
+  }
+
+  it should "not prove false \\forall x \\exists y p(x,y) -> \\exists y \\forall x p(x,y) with vars" in {
+    val result = proveBy("\\forall x \\exists y p(x,y) -> \\exists y \\forall x p(x,y)".asFormula,
+      implyR(1) & existsR(Variable("y"))(1) & allL(Variable("x"))(-1) & allR(1) & existsL(-1) & (close | skip)
+    )
+    result should not be 'proved
+    result.isProved shouldBe false
   }
 }

@@ -157,7 +157,7 @@ trait HilbertCalculus extends UnifyUSCalculus {
   lazy val assignd            : DependentPositionTactic = new DependentPositionTactic("assignd") {
     override def factory(pos: Position): DependentTactic = new DependentTactic(name) {
       override def computeExpr(v: BelleValue): BelleExpr = {
-        useAt("<:=> assign") | useAt("<:=> assign equational")
+        useAt("<:=> assign")(pos) | (if (pos.isSucc) useAt("<:=> assign equality all")(pos) else useAt("<:=> assign equality")(pos))
       }
     }
   }
@@ -192,10 +192,12 @@ trait HilbertCalculus extends UnifyUSCalculus {
   lazy val K                  : DependentPositionTactic = useAt("K modal modus ponens", PosInExpr(1::Nil))
   /** V: vacuous box `[a]p()` will be discarded and replaced by `p()` provided program `a` does not change values of postcondition `p()`.
     * @note Unsound for hybrid games
-    * @see [[boxTrue]]
     */
-    //@todo useAt except with dualFree as the tactic to prove the global prereq [a]true.
   lazy val V                  : DependentPositionTactic = useAt("V vacuous")
+  /** VK: vacuous box `[a]p()` will be discarded and replaced by `p()` provided program `a` does not change values of postcondition `p()`
+    * and provided `[a]true` proves, e.g., since `a` is a hybrid system.
+    */
+  lazy val VK                 : DependentPositionTactic = useAt("VK vacuous")
 
   //
   // differential equations
@@ -203,9 +205,15 @@ trait HilbertCalculus extends UnifyUSCalculus {
 
   /** DW: Differential Weakening to use evolution domain constraint `[{x'=f(x)&q(x)}]p(x)` reduces to `[{x'=f(x)&q(x)}](q(x)->p(x))` */
   lazy val DW                 : DependentPositionTactic = namedUseAt("DWeaken", "DW differential weakening")
+  /** DWd: Diamond Differential Weakening to use evolution domain constraint `<{x'=f(x)&q(x)}>p(x)` reduces to `<{x'=f(x)&q(x)}>(q(x)&p(x))` */
+  lazy val DWd                 : DependentPositionTactic = useAt("DWd diamond differential weakening")
   /** DC: Differential Cut a new invariant for a differential equation `[{x'=f(x)&q(x)}]p(x)` reduces to `[{x'=f(x)&q(x)&C(x)}]p(x)` with `[{x'=f(x)&q(x)}]C(x)`. */
   def DC(invariant: Formula)  : DependentPositionTactic = namedUseAt("DCaxiom", "DC differential cut",
-    (us:Subst)=>us++RenUSubst(Seq((UnitPredicational("r",AnyArg), invariant)))
+    (us:Option[Subst])=>us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in DC"))++RenUSubst(Seq((UnitPredicational("r",AnyArg), invariant)))
+  )
+  /** DCd: Diamond Differential Cut a new invariant for a differential equation `<{x'=f(x)&q(x)}>p(x)` reduces to `<{x'=f(x)&q(x)&C(x)}>p(x)` with `[{x'=f(x)&q(x)}]C(x)`. */
+  def DCd(invariant: Formula)  : DependentPositionTactic = useAt("DCd diamond differential cut",
+    (us:Option[Subst])=>us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in DCd"))++RenUSubst(Seq((UnitPredicational("r",AnyArg), invariant)))
   )
   /** DE: Differential Effect exposes the effect of a differential equation `[x'=f(x)]p(x,x')` on its differential symbols
     * as `[x'=f(x)][x':=f(x)]p(x,x')` with its differential assignment `x':=f(x)`.
@@ -230,15 +238,51 @@ trait HilbertCalculus extends UnifyUSCalculus {
   /** DI: Differential Invariants are used for proving a formula to be an invariant of a differential equation.
     * `[x'=f(x)&q(x)]p(x)` reduces to `q(x) -> p(x) & [x'=f(x)]p(x)'`.
     * @see [[DifferentialTactics.diffInd()]] */
-  lazy val DI                 : DependentPositionTactic = namedUseAt("DI", "DI differential invariant")
+  lazy val DI                 : DependentPositionTactic = useAt("DI differential invariant")
 
   /** DGC: Differential ghost add auxiliary differential equation with extra constant g */
   private[btactics] def DGC(y:Variable, b:Term) =
     useAt("DG differential ghost constant", PosInExpr(0::Nil),
-      (us:Subst)=>{
+      (us:Option[Subst])=>{
         val singular = FormulaTools.singularities(b)
         insist(singular.isEmpty, "Possible singularities during DG(" + DifferentialSymbol(y) + "=" + b + ") will be rejected: " + singular.mkString(","))
-        us++RenUSubst(Seq(
+        us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in DG"))++RenUSubst(Seq(
+          (Variable("y_",None,Real), y),
+          (UnitFunctional("b", Except(Variable("y_", None, Real)), Real), b)
+        ))
+      }
+    )
+
+  private[btactics] def DGCa(y:Variable, b:Term) =
+    useAt("DG differential ghost constant all", PosInExpr(0::Nil),
+      (us:Option[Subst])=>{
+        val singular = FormulaTools.singularities(b)
+        insist(singular.isEmpty, "Possible singularities during DG(" + DifferentialSymbol(y) + "=" + b + ") will be rejected: " + singular.mkString(","))
+        us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in DG"))++RenUSubst(Seq(
+          (Variable("y_",None,Real), y),
+          (UnitFunctional("b", Except(Variable("y_", None, Real)), Real), b)
+        ))
+      }
+    )
+
+  /** DGC: Differential ghost add auxiliary differential equation with extra constant g */
+  private[btactics] def DGCd(y:Variable, b:Term) =
+  useAt("DGd diamond differential ghost constant", PosInExpr(0::Nil),
+    (us:Option[Subst])=>{
+      val singular = FormulaTools.singularities(b)
+      insist(singular.isEmpty, "Possible singularities during DG(" + DifferentialSymbol(y) + "=" + b + ") will be rejected: " + singular.mkString(","))
+      us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in DGd"))++RenUSubst(Seq(
+        (Variable("y_",None,Real), y),
+        (UnitFunctional("b", Except(Variable("y_", None, Real)), Real), b)
+      ))
+    }
+  )
+  private[btactics] def DGCde(y:Variable, b:Term) =
+    useAt("DGd diamond differential ghost constant exists", PosInExpr(0::Nil),
+      (us:Option[Subst])=>{
+        val singular = FormulaTools.singularities(b)
+        insist(singular.isEmpty, "Possible singularities during DG(" + DifferentialSymbol(y) + "=" + b + ") will be rejected: " + singular.mkString(","))
+        us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in DGde"))++RenUSubst(Seq(
           (Variable("y_",None,Real), y),
           (UnitFunctional("b", Except(Variable("y_", None, Real)), Real), b)
         ))
@@ -354,12 +398,8 @@ trait HilbertCalculus extends UnifyUSCalculus {
 
   // def ind
 
-  /** dualFree: proves `[a]true` directly for hybrid systems `a` that are not hybrid games. */
-  val dualFree                : PositionalTactic = ProofRuleTactics.dualFree
-  /** boxTrue: proves `[a]true` as directly as possible.
-    * @see [[dualFree]] */
-  //@todo could do boxTrue = dualFree | master
-  val boxTrue                 : PositionalTactic = dualFree
+  /** boxTrue: proves `[a]true` directly for hybrid systems `a` that are not hybrid games. */
+  val boxTrue                : DependentPositionTactic = useAt("[]T system")
 
 
   /*******************************************************************
@@ -380,7 +420,7 @@ trait HilbertCalculus extends UnifyUSCalculus {
   // implementation
 
   @deprecated("useAt(AxiomInfo,inst) instead or just useAt(axiomName,inst)")
-  private[btactics] def namedUseAt(codeName: String, axiomName: String, inst: (Subst=>Subst) = us=>us) = new DependentPositionTactic(codeName) {
+  private[btactics] def namedUseAt(codeName: String, axiomName: String, inst: (Option[Subst]=>Subst) = us=>us.getOrElse(throw new BelleError("No substitution found by unification, try to patch locally with own substitution"))) = new DependentPositionTactic(codeName) {
     assert(DerivationInfo.hasCodeName(codeName), s"$codeName is a tactic name but is not a DerivationInfo codeName.")
     if (DerivationInfo.ofCodeName(codeName).codeName.toLowerCase() != codeName.toLowerCase()) println("WARNING: codeName should be changed to a consistent name: " + codeName)
     override def factory(pos: Position): DependentTactic = useAt(axiomName, inst)(pos)

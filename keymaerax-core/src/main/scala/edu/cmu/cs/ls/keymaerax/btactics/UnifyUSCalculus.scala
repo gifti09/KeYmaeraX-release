@@ -18,6 +18,7 @@ import edu.cmu.cs.ls.keymaerax.tools.{CounterExampleTool, ODESolverTool}
 import PosInExpr.HereP
 import StaticSemanticsTools._
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
+import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 
 import scala.collection.immutable._
 import scala.language.postfixOps
@@ -62,6 +63,7 @@ trait UnifyUSCalculus {
         if (sub.isEmpty) throw new BelleUserGeneratedError("ill-positioned " + pos + " in " + sequent + "\nin " + "stepAt(" + pos + ")\n(" + sequent + ")")
         axiomIndex(sub.get) match {
           case Some(axiom) =>
+            if (true || BelleExpr.DEBUG) println("stepAt " + axiom)
             DerivationInfo(axiom).belleExpr match {
               case ap:AtPosition[_] => ap(pos)
               case expr:BelleExpr => expr
@@ -187,7 +189,7 @@ trait UnifyUSCalculus {
   /** useAt(lem)(pos) uses the given lemma at the given position in the sequent (by unifying and equivalence rewriting).
     * @param key the optional position of the key in the axiom to unify with. Defaults to [[AxiomIndex]]
     * @param inst optional transformation augmenting or replacing the uniform substitutions after unification with additional information. */
-  def useAt(lem: Lemma, key:PosInExpr, inst: Subst=>Subst): DependentPositionTactic = {
+  def useAt(lem: Lemma, key:PosInExpr, inst: Option[Subst]=>Subst): DependentPositionTactic = {
     if (lem.name.isDefined) {
       val info = ProvableInfo.ofCodeName(lem.name.get)
       if (info.provable == lem.fact)
@@ -202,7 +204,7 @@ trait UnifyUSCalculus {
       useAt("useAt", lem.fact, key, inst)
     }
   }
-  def useAt(lem: Lemma, key:PosInExpr): DependentPositionTactic = useAt(lem, key, (us:Subst)=>us)
+  def useAt(lem: Lemma, key:PosInExpr): DependentPositionTactic = useAt(lem, key, (us:Option[Subst])=>us.getOrElse(throw new BelleError("No substitution found by unification, try to patch locally with own substitution")))
   /** useAt(lem)(pos) uses the given lemma at the given position in the sequent (by unifying and equivalence rewriting). */
   def useAt(lem: Lemma)               : DependentPositionTactic = useAt(lem, PosInExpr(0::Nil))
 
@@ -216,15 +218,15 @@ trait UnifyUSCalculus {
   /** useAt(axiom)(pos) uses the given (derived) axiom at the given position in the sequent (by unifying and equivalence rewriting).
     * @param key the optional position of the key in the axiom to unify with. Defaults to [[AxiomIndex]]
     * @param inst optional transformation augmenting or replacing the uniform substitutions after unification with additional information. */
-  def useAt(axiom: String, key: PosInExpr, inst: Subst=>Subst): DependentPositionTactic = useAt(ProvableInfo(axiom), key, inst)
+  def useAt(axiom: String, key: PosInExpr, inst: Option[Subst]=>Subst): DependentPositionTactic = useAt(ProvableInfo(axiom), key, inst)
   def useAt(axiom: String, key: PosInExpr): DependentPositionTactic = useAt(ProvableInfo(axiom), key)
-  def useAt(axiom: String, inst: Subst=>Subst): DependentPositionTactic = useAt(axiom, AxiomIndex.axiomIndex(axiom)._1, inst)
+  def useAt(axiom: String, inst: Option[Subst]=>Subst): DependentPositionTactic = useAt(axiom, AxiomIndex.axiomIndex(axiom)._1, inst)
   /** useAt(axiom)(pos) uses the given (derived) axiom at the given position in the sequent (by unifying and equivalence rewriting). */
   def useAt(axiom: String): DependentPositionTactic = useAt(axiom, AxiomIndex.axiomIndex(axiom)._1)
 
   /** useExpansionAt(axiom)(pos) uses the given axiom at the given position in the sequent (by unifying and equivalence rewriting) in the direction that expands as opposed to simplifies operators. */
   def useExpansionAt(axiom: String): DependentPositionTactic = useAt(axiom, AxiomIndex.axiomIndex(axiom)._1.sibling)
-  def useExpansionAt(axiom: String, inst: Subst=>Subst): DependentPositionTactic = useAt(axiom, AxiomIndex.axiomIndex(axiom)._1.sibling, inst)
+  def useExpansionAt(axiom: String, inst: Option[Subst]=>Subst): DependentPositionTactic = useAt(axiom, AxiomIndex.axiomIndex(axiom)._1.sibling, inst)
 
   /*******************************************************************
     * unification and matching based auto-tactics (backward tableaux/sequent)
@@ -303,9 +305,9 @@ trait UnifyUSCalculus {
     */
   def boundRename(what: Variable, repl: Variable): DependentPositionTactic = ProofRuleTactics.boundRenaming(what,repl)
 
-  def useAt(axiom: ProvableInfo, key: PosInExpr, inst: Subst=>Subst): DependentPositionTactic = useAt(axiom.codeName, axiom.provable, key, inst)
-  def useAt(axiom: ProvableInfo, key: PosInExpr): DependentPositionTactic = useAt(axiom.codeName, axiom.provable, key, us=>us)
-  private[btactics] def useAt(fact: Provable, key: PosInExpr): DependentPositionTactic = useAt("ANON", fact, key, us=>us)
+  def useAt(axiom: ProvableInfo, key: PosInExpr, inst: Option[Subst]=>Subst): DependentPositionTactic = useAt(axiom.codeName, axiom.provable, key, inst)
+  def useAt(axiom: ProvableInfo, key: PosInExpr): DependentPositionTactic = useAt(axiom.codeName, axiom.provable, key, us=>us.getOrElse(throw new BelleError("No substitution found by unification, try to patch locally with own substitution")))
+  private[btactics] def useAt(fact: Provable, key: PosInExpr): DependentPositionTactic = useAt("ANON", fact, key, us=>us.getOrElse(throw new BelleError("No substitution found by unification, try to patch locally with own substitution")))
   private[btactics] def useAt(fact: Provable): DependentPositionTactic = useAt(fact, PosInExpr(0::Nil))
   /**
     * useAt(fact)(pos) uses the given fact at the given position in the sequent.
@@ -349,13 +351,13 @@ trait UnifyUSCalculus {
     * @see [[edu.cmu.cs.ls.keymaerax.btactics]]
     * @todo could directly use prop rules instead of CE if key close to HereP if more efficient.
     */
-  def useAt(codeName: String, fact: Provable, key: PosInExpr, inst: Subst=>Subst = us=>us): DependentPositionTactic = new DependentPositionTactic(codeName) {
+  def useAt(codeName: String, fact: Provable, key: PosInExpr, inst: Option[Subst]=>Subst = us=>us.getOrElse(throw new BelleError("No substitution found by unification, try to patch locally with own substitution"))): DependentPositionTactic = new DependentPositionTactic(codeName) {
     private val (keyCtx:Context[_],keyPart) = fact.conclusion.succ.head.at(key)
 
     override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
       override def computeExpr(sequent: Sequent): BelleExpr = {
         val (ctx,expr) = sequent.at(pos)
-        val subst = inst(UnificationMatch(keyPart, expr))
+        val subst = inst(UnificationMatch.unifiable(keyPart, expr))
         if (DEBUG) println("Doing a useAt(" + fact.prettyString + ")\n  unify:   " + expr + "\n  against: " + keyPart + "\n  by:      " + subst)
         Predef.assert(!RECHECK || expr == subst(keyPart), "unification matched left successfully\n  unify:   " + expr + "\n  against: " + keyPart + "\n  by:      " + subst + "\n  gave:    " + subst(keyPart) + "\n  that is: " + keyPart + " instantiated by " + subst)
         //val keyCtxMatched = Context(subst(keyCtx.ctx))
@@ -368,6 +370,12 @@ trait UnifyUSCalculus {
     /**
       * useAt(K{k})(C{c}) uses, already under the given substitution subst, the key k from context K{k}
       * in place of c at position p in context C{_}.
+      *
+      * For facts of the form
+      * {{{
+      *   prereq -> (left<->right)
+      * }}}
+      * this tactic will try only QE to prove `prereq` globally and will leave `C{prereq}` as an open goal otherwise.
       *
       * @param subst the substitution subst=unify(k,c)
       * @param K the context of fact in which key k occurs
@@ -509,21 +517,32 @@ trait UnifyUSCalculus {
                *
                */
 
+              val remR = sequent.sub(p).get.asInstanceOf[Formula]
+
               //@todo assumes no more context around remainder (no other examples so far)
-              val (conclusion, commute) = remainder match {
-                case Equiv(DotFormula, other) => (other, if (p.isSucc) commuteEquivR(1) else ident)
-                case Equiv(other, DotFormula) => (other, if (p.isAnte) commuteEquivR(1) else ident)
+              val (conclusion, equiv, commute) = remainder match {
+                case Equiv(DotFormula, other) => (other, Equiv(remR, other), p.isSucc)
+                case Equiv(other, DotFormula) => (other, Equiv(other, remR), p.isAnte)
                 //              case Equal(DotTerm, other) => (other, if (p.isSucc) TactixLibrary.useAt("= commute")(1) else ident)
                 //              case Equal(other, DotTerm) => (other, if (p.isAnte) TactixLibrary.useAt("= commute")(1) else ident)
               }
 
+              def hide2 =
+                if (p.isSucc) cohide2(AntePos(sequent.ante.size), p.top)
+                else (sequent.ante.indices.reverse.tail.map(i => hideL(AntePosition.base0(i))) ++
+                      sequent.succ.indices.reverse.map(i => hideR(SuccPosition.base0(i)))).reduceRightOption[BelleExpr](_ & _).getOrElse(TactixLibrary.skip)
+
+              // uses specialized congruence tactic for DC, may not work with other conditional equivalences
               cut(C(subst(prereq))) <(
-                /* use: result remains open */ cutR(C(subst(conclusion)))(p.checkSucc.top) <(
-                hideL('Llast) partial,
-                cohide2(AntePos(sequent.ante.size), p.top) & equivifyR(1) & commute & implyRi & CMon(p.inExpr) &
-                  by(Provable.startProof(Imply(subst(prereq), subst(Context(remainder)(k))))(subst.toForward(fact), 0))
-                ) partial,
-                /* show: prereq remains open */ hideR(p.top) partial
+                /* use: result remains open */ cutAt(subst(conclusion))(p) <(
+                hideL('Llast),
+                hide2 & cut(C(subst(equiv))) <(
+                  /* hide C(prereq) */ hideL(-1) & implyR(1) & andLi & implyRi & condEquivCongruence(C.ctx, p.inExpr, HereP, commute) & closeTrue(1) & done,
+                  /* hide C(r)->C(l) */ hideR(1) & implyRi & CMon(p.inExpr) & by(Provable.startProof(Imply(subst(prereq), subst(Context(remainder)(k))))(subst.toForward(fact), 0)) & done
+                  )
+//                  equivifyR(1) & commute & implyRi & CMon(p.inExpr) & by(Provable.startProof(Imply(subst(prereq), subst(Context(remainder)(k))))(subst.toForward(fact), 0))
+                ),
+                /* leave open: show prereq (@todo stripped down master might show) */ if (p.isSucc) hideR(p.top) else hideL(p.top)
                 )
           }
         case Forall(vars, remainder) if vars.length==1 => ???
@@ -536,6 +555,47 @@ trait UnifyUSCalculus {
 
   }
 
+  /* Specialized congruence reasoning for the questions arising in the axiomatic ODE solver DC step */
+  private def condEquivCongruence(context: Formula, towards: PosInExpr, subPos: PosInExpr, commute: Boolean): BelleExpr = context match {
+    case Box(_, p) if towards.head == 1 =>
+      useAt("[] split", PosInExpr(1::Nil))(1, subPos ++ 0) &
+      useAt("K modal modus ponens", PosInExpr(1::Nil))(1, subPos) &
+      condEquivCongruence(p, towards.child, subPos ++ 1, commute) &
+      useAt(TactixLibrary.proveBy("[a{|^@|};]true <-> true".asFormula, equivR(1) <(closeTrue(1), cohideR(1) & byUS("[]T system"))))(1, subPos)
+    case Imply(_, p) if towards.head == 1 =>
+      useAt(TactixLibrary.proveBy("(p_()->q_()) & (p_()->r_()) <-> (p_() -> q_()&r_())".asFormula, TactixLibrary.prop))(1, subPos ++ 0) &
+      useAt(TactixLibrary.proveBy("(p_()->q_()) -> (p_()->r_()) <-> (p_() -> (q_()->r_()))".asFormula, TactixLibrary.prop))(1, subPos) &
+      condEquivCongruence(p, towards.child, subPos ++ 1, commute) &
+      useAt(DerivedAxioms.impliesTrue)(1, subPos)
+    case And(p, _) if towards.head == 0 =>
+      useAt(TactixLibrary.proveBy("(q_()&p_()) & (r_()&p_()) <-> ((q_()&r_()) & p_())".asFormula, TactixLibrary.prop))(1, subPos ++ 0) &
+      useAt(TactixLibrary.proveBy("(q_()->r_()) -> (q_()&p_() -> r_()&p_())".asFormula, TactixLibrary.prop), PosInExpr(1::Nil))(1, subPos) &
+      condEquivCongruence(p, towards.child, subPos, commute)
+    case And(_, p) if towards.head == 1 =>
+      useAt(TactixLibrary.proveBy("(p_()&q_()) & (p_()&r_()) <-> (p_() & (q_()&r_()))".asFormula, TactixLibrary.prop))(1, subPos ++ 0) &
+      useAt(TactixLibrary.proveBy("(q_()->r_()) -> (p_()&q_() -> p_()&r_())".asFormula, TactixLibrary.prop), PosInExpr(1::Nil))(1, subPos) &
+      condEquivCongruence(p, towards.child, subPos, commute)
+    case Or(p, _) if towards.head == 0 =>
+      useAt(TactixLibrary.proveBy("(q_()|p_()) & (r_()|p_()) <-> ((q_()&r_()) | p_())".asFormula, TactixLibrary.prop))(1, subPos ++ 0) &
+      useAt(TactixLibrary.proveBy("(q_()|p_()) -> (r_()|p_()) <-> ((q_()->r_()) | p_())".asFormula, TactixLibrary.prop))(1, subPos) &
+      condEquivCongruence(p, towards.child, subPos ++ 0, commute) &
+      useAt(TactixLibrary.proveBy("true | p_() <-> true".asFormula, TactixLibrary.prop))(1, subPos)
+    case Or(_, p) if towards.head == 1 =>
+      useAt(TactixLibrary.proveBy("(p_()|q_()) & (p_()|r_()) <-> (p_() | (q_()&r_()))".asFormula, TactixLibrary.prop))(1, subPos ++ 0) &
+      useAt(TactixLibrary.proveBy("(p_()|q_()) -> (p_()|r_()) <-> (p_() | (q_()->r_()))".asFormula, TactixLibrary.prop))(1, subPos) &
+      condEquivCongruence(p, towards.child, subPos ++ 1, commute) &
+      useAt(TactixLibrary.proveBy("p_() | true <-> true".asFormula, TactixLibrary.prop))(1, subPos)
+    case Forall(x, p) if towards.head == 0 =>
+      useAt("[:*] assign nondet", PosInExpr(1::Nil))(1, subPos ++ 0 ++ 0) &
+      useAt("[:*] assign nondet", PosInExpr(1::Nil))(1, subPos ++ 0 ++ 1) &
+      useAt("[:*] assign nondet", PosInExpr(1::Nil))(1, subPos ++ 1) &
+      condEquivCongruence(Box(AssignAny(x.head), p), PosInExpr(towards.pos.updated(0, 1)), subPos, commute)
+    case DotFormula =>
+      val fact =
+        if (commute) "((p_()<->q_())&q_() -> p_()) <-> true".asFormula
+        else "((p_()<->q_())&p_() -> q_()) <-> true".asFormula
+      useAt(TactixLibrary.proveBy(fact, TactixLibrary.prop))(1, subPos)
+  }
 
 
   // Let auto-tactics
@@ -1136,6 +1196,12 @@ trait UnifyUSCalculus {
     * where `__l__` indicates the key part of the fact.
     * useAt automatically tries proving the required assumptions/conditions of the fact it is using.
     *
+    * For facts of the form
+    * {{{
+    *   prereq -> (left<->right)
+    * }}}
+    * this tactic currently only uses master to prove `prereq` globally and otherwise gives up.
+    *
     * @author Andre Platzer
     * @param fact the Provable fact whose conclusion to use to simplify at the indicated position of the sequent
     * @param key the part of the fact's conclusion to unify the indicated position of the sequent with
@@ -1392,7 +1458,7 @@ trait UnifyUSCalculus {
 
             // |- subst(prereq)
             val prereqFact = TactixLibrary.proveBy(subst(prereq), TactixLibrary.master())
-            require(prereqFact.isProved, "only globally provable requirements currently supported. Ese useAt instead " + prereqFact)
+            require(prereqFact.isProved, "only globally provable requirements currently supported. Use useAt instead " + prereqFact)
 
             // |- subst(remainder{k})
             val remFact: Provable = (Provable.startProof(subst(Context(remainder)(k)))
@@ -1597,6 +1663,42 @@ trait UnifyUSCalculus {
             for (ax <- l) try {
               val (key, recursor) = AxiomIndex.axiomIndex(ax)
               return Some((modifier(ax,pos) (useFor(ax, key, inst(ax))(pos)(de)), recursor))
+            } catch {case _: ProverException => /* ignore and try next */}
+            None
+          }
+          firstAxUse match {
+            case None =>
+              if (DEBUG) println("no chase(" + de.conclusion.sub(pos).get.prettyString + ")")
+              de
+            case Some((axUse, recursor)) =>
+              recursor.foldLeft(axUse)(
+                (pf, cursor) => doChase(pf, pos ++ cursor)
+              )
+          }
+      }
+    } ensuring(r => r.subgoals==de.subgoals, "chase keeps subgoals unchanged: " + " final chase(" + de.conclusion.sub(pos).get.prettyString + ")\nhad subgoals: " + de.subgoals)
+    doChase(de,pos)
+  }
+
+  /** chaseCustom: Unrestricted form of chaseFor, where AxiomIndex is not built in,
+    * i.e. it takes keys of the form Expression => List[(Provable,PosInExpr, List[PosInExpr])]
+    * This allows customised rewriting
+    */
+  def chaseCustom(keys: Expression=>List[(Provable,PosInExpr, List[PosInExpr])]): ForwardPositionTactic = pos => de => {
+    /** Recursive chase implementation */
+    def doChase(de: Provable, pos: Position): Provable = {
+      if (DEBUG) println("chase(" + de.conclusion.sub(pos).get.prettyString + ")")
+      // generic recursor
+      keys(de.conclusion.sub(pos).get) match {
+        case Nil =>
+          if (DEBUG) println("no chase(" + de.conclusion.sub(pos).get.prettyString + ")")
+          de
+        // take the first axiom among breadth that works for one useFor step
+        case l: List[(Provable,PosInExpr, List[PosInExpr])] =>
+          // useFor the first applicable axiom if any, or None
+          def firstAxUse: Option[(Provable,List[PosInExpr])] = {
+            for ((ax,key,recursor) <- l) try {
+              return Some((useFor(ax, key)(pos)(de), recursor))
             } catch {case _: ProverException => /* ignore and try next */}
             None
           }

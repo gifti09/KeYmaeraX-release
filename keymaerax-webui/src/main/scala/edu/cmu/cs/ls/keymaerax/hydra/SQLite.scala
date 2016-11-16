@@ -69,6 +69,8 @@ object SQLite {
     override def deleteDatabase(): Unit = {
       db.deleteAllLemmas()
     }
+
+    override def version(): String = db.getConfiguration("version").config("version")
   }
 
   def SQLiteLemmaDB (db: SQLiteDB) = new CachedLemmaDB(new UncachedSQLiteLemmaDB(db))
@@ -340,6 +342,16 @@ object SQLite {
           Some((Models.map(m => (m.userid.get, m.name.get, m.filecontents.get, m.date.get, m.description, m.publink, m.title, m.tactic))
             returning Models.map(_._Id.get))
             .insert(userId, name, fileContents, date, description, publink, title, tactic))
+        }
+        else None
+      })
+
+    override def addModelTactic(modelId: String, fileContents: String): Option[Int] =
+      synchronizedTransaction({
+        nSelects = nSelects + 1
+        val mId = Integer.parseInt(modelId)
+        if (Models.filter(_._Id === mId).filter(_.tactic.isEmpty).list.isEmpty) {
+          Some(Models.filter(_._Id === mId).map(_.tactic).update(Some(fileContents)))
         }
         else None
       })

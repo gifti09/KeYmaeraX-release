@@ -81,6 +81,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
       lastExecutedTacticText: "",
       currentSuggestions: undefined,
       tacticDiff: "",
+      tacticDel: "",
 
       fetch: function(userId, proofId) {
         var theTactic = this;
@@ -88,6 +89,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
           theTactic.tacticText = response.data.tacticText;
           theTactic.lastExecutedTacticText = theTactic.tacticText;
           theTactic.tacticDiff = "";
+          theTactic.tacticDel = "";
         });
       },
 
@@ -95,6 +97,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
         this.tacticText = "";
         this.lastExecutedTacticText = "";
         this.tacticDiff = "";
+        this.tacticDel = "";
         this.currentSuggestions = undefined;
       }
     },
@@ -103,14 +106,14 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
       highlighted: undefined
     },
 
-    /** Prunes the proof tree at the specified goal */
-    prune: function(userId, proofId, nodeId) {
+    /** Prunes the proof tree at the specified goal, executes onPruned when the tree is pruned */
+    prune: function(userId, proofId, nodeId, onPruned) {
       //@note make model available in closure of function success
       var theProofTree = this.proofTree;
       var theAgenda = this.agenda;
       var theTactic = this.tactic;
 
-      $http.get('proofs/user/' + userId + '/' + proofId + '/' + nodeId + '/pruneBelow').success(function(data) {
+      $http.get('proofs/user/' + userId + '/' + proofId + '/' + nodeId + '/pruneBelow').then(function(response) {
         // prune proof tree
         theProofTree.pruneBelow(nodeId);
 
@@ -124,7 +127,7 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
         });
 
         // sanity check: all agendaItems should have the same deductions (top item should be data.agendaItem.deduction)
-        var newTop = data.agendaItem.deduction.sections[0].path[0];
+        var newTop = response.data.agendaItem.deduction.sections[0].path[0];
         $.each(agendaItems, function(i, item) {
           var oldTop = item.deduction.sections[0].path[0];
           if (oldTop !== newTop) {
@@ -135,8 +138,8 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
         });
 
         // update agenda: copy already cached deduction path into the remaining agenda item (new top item)
-        data.agendaItem.deduction = agendaItems[0].deduction;
-        theAgenda.itemsMap[data.agendaItem.id] = data.agendaItem;
+        response.data.agendaItem.deduction = agendaItems[0].deduction;
+        theAgenda.itemsMap[response.data.agendaItem.id] = response.data.agendaItem;
 
         // delete previous items
         //@todo preserve previous tab order
@@ -145,11 +148,11 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
         });
 
         // select new top item (@todo does not work with step back)
-        theAgenda.select(data.agendaItem);
+        theAgenda.select(response.data.agendaItem);
 
         // refresh tactic
         theTactic.fetch(userId, proofId);
-      });
+      }).then(onPruned);
     },
 
     /** Fetches the agenda from the server */
