@@ -626,7 +626,7 @@ object Contract {
   val PRINT_DROP_IN = PRINT_STEP
   val PRINT_DROP_OR_MERGE = PRINT_STEP
   val PRINT_CLOSE_SIDE = PRINT_STEP
-  val PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL = PRINT_STEP
+  val PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL = PRINT_STEP | true
   val PRINT_INTRODUCE_AND_WEAKEN_FOR = PRINT_STEP
 
   /**
@@ -1057,7 +1057,7 @@ object Contract {
                 // then reconnect to one big box
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
                 & (
-                if (ctr2.interface.piOut.size == 0) boxTrue('R)
+                if (ctr2.interface.piOut.size == 0) cohide(1) & boxTrue(1)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side2)('R) & prop
@@ -1148,7 +1148,7 @@ object Contract {
                 // then reconnect to one big box
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
                 & (
-                if (ctr2.interface.piOut.size == 0) boxTrue('R)
+                if (ctr2.interface.piOut.size == 0) cohide(1) & boxTrue(1)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
@@ -1243,7 +1243,7 @@ object Contract {
                 // then reconnect to one big box
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
                 & (
-                if (ctr1.interface.piOut.size == 0) boxTrue('R)
+                if (ctr1.interface.piOut.size == 0) cohide(1) & boxTrue(1)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side1)('R) & prop
@@ -1334,7 +1334,7 @@ object Contract {
                 // then reconnect to one big box
                 & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * (3)
                 & (
-                if (ctr1.interface.piOut.size == 0) boxTrue('R)
+                if (ctr1.interface.piOut.size == 0) cohide(1) & boxTrue(1)
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side1)('R) & prop)) * (ctr1.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side1)('R) & prop
@@ -1507,7 +1507,7 @@ object Contract {
 
     def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in, Box(ports, Box(ports3, _))))) =>
-        var t: BelleExpr = skip & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll") else skip)
+        var t: BelleExpr = (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll") else skip)
         val vInCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => X.keySet.contains(e._1))
         val vOutCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piOut.filter((e) => X.values.toSet.contains(e._1))
         val vInOpen: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => !X.keySet.contains(e._1))

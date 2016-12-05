@@ -1,13 +1,13 @@
-package btactics
+package cbcps
 
-import java.io.{File, FileInputStream, ObjectInputStream}
+import java.io.{File, FileInputStream}
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, DependentPositionTactic, Find, OnAll}
 import edu.cmu.cs.ls.keymaerax.btactics.ArithmeticSimplification._
 import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics._
-import edu.cmu.cs.ls.keymaerax.btactics.{TacticTestBase, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics.arithmetic.speculative.ArithmeticSpeculativeSimplification._
+import edu.cmu.cs.ls.keymaerax.btactics.{TacticTestBase, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import testHelper.ParserFactory._
 
@@ -37,7 +37,7 @@ class ComponentTest extends TacticTestBase {
     val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
       print("Base case") & QE & print("Base case done"),
       print("Use case") & QE & print("Use case done"),
-      print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & OnAll(diffSolve()(1) partial) &
+      print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & OnAll(diffSolve(1) partial) &
         OnAll(speculativeQE) & printIndexed("Induction step done")
       ) & print("Proof done")
 
@@ -59,7 +59,7 @@ class ComponentTest extends TacticTestBase {
     val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
       print("Base case") & master() & print("Base case done"),
       print("Use case") & master() & print("Use case done"),
-      print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve()('R) & print("Foo") partial) &
+      print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve('R) & print("Foo") partial) &
         printIndexed("After diffSolve") & OnAll(normalize partial) & printIndexed("After normalize") & OnAll(speculativeQE) & printIndexed("Induction step done")
       ) & print("Proof done")
 

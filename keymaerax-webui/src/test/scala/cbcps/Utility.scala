@@ -180,7 +180,7 @@ object Lemmas {
 
   val PRINT_LEMMA2 = false
   val PRINT_LEMMA5 = false
-
+  val PRINT_LEMMA5L = false
 
   //L1 BA - DONE
   val lemma1BA: DependentPositionTactic = "Lemma1" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
@@ -261,8 +261,8 @@ object Lemmas {
 
         if (commute) {
           t = t & (if (PRINT_LEMMA2) print("t2_DC: commute is true -> commute back") else skip)
-//          if (assoc)
-//            t = t & useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil))
+          //          if (assoc)
+          //            t = t & useAt(andAssoc, PosInExpr(0 :: Nil))(pos ++ PosInExpr(0 :: 1 :: Nil))
           t = t & useAt(domainCommute)(pos)
         }
       }
@@ -281,7 +281,7 @@ object Lemmas {
         println("lemma2_DC: elim='" + elim + "', elimDomain='" + elimDomain + "'")
       }
 
-      val trueElimDomain=if(elimDomain==null) True else elimDomain
+      val trueElimDomain = if (elimDomain == null) True else elimDomain
 
       var commute = false
       val d = dom match {
@@ -620,15 +620,21 @@ object Lemmas {
     }
   })
 
-  //Lemma 5 - DONE
-  val f5 = "[a_;]F_(||) -> ( [a_;?F_(||);]A_(||) <-> [a_;]A_(||) )".asFormula
+  //Lemma 5 - DONE   {|^@|}
+  val f5 = "[a{|^@|};]F_(||) -> ( [a{|^@|};?F_(||);]A_(||) <-> [a{|^@|};]A_(||) )".asFormula
   val n5 = "Proof of Lemma5 - Introduce Test"
   val t5 = implyR('R) & equivR('R) < (
     // ->
-    implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & composeb(1, 0 :: Nil) & testb(1, 0 :: 1 :: Nil) & K('R) & monb & implyR('R) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & closeId
+    (if (PRINT_LEMMA5) print("-> -1") else skip) & implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & composeb(1, 0 :: Nil) & testb(1, 0 :: 1 :: Nil) &
+      (if (PRINT_LEMMA5) print("-> 1") else skip) & useAt("K modal modus ponens", PosInExpr(1 :: Nil))('R) & monb &
+      (if (PRINT_LEMMA5) print("-> 2") else skip) & implyR('R) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & closeId &
+      (if (PRINT_LEMMA5) print("-> 3") else skip)
     ,
     // <-
-    implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & composeb(1, 1 :: Nil) & testb(1, 1 :: 1 :: Nil) & K('R) & monb & implyR('R) & implyR('R) & closeId
+    (if (PRINT_LEMMA5) print("<- 0") else skip) & implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) &
+      (if (PRINT_LEMMA5) print("<- 1") else skip) & composeb(1, 1 :: Nil) & testb(1, 1 :: 1 :: Nil) &
+      (if (PRINT_LEMMA5) print("<- 2") else skip) & K('R) &
+      (if (PRINT_LEMMA5) print("<- 3") else skip) & monb & implyR('R) & implyR('R) & closeId
     )
 
   //  /**
@@ -669,7 +675,9 @@ object Lemmas {
   def lemma5T(test: Formula): DependentPositionTactic = "Apply Lemma5" by ((pos: Position, seq: Sequent) => {
     seq.sub(pos) match {
       case Some(Box(p: Program, f: Formula)) =>
-        useAt("ANON", lemma5.fact, PosInExpr(1 :: 1 :: Nil), (s: Subst) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil))(pos)
+        useAt("ANON", lemma5.fact, PosInExpr(1 :: 1 :: Nil), uso => uso match {
+          case Some(s) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil)
+        })(pos)
     }
   })
 
@@ -679,10 +687,10 @@ object Lemmas {
   val n5L = "Proof of Lemma5 - Introduce Test Left"
   val t5L = implyR('R) & equivR('R) < (
     // -> implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) &
-    (if (PRINT_LEMMA5) print("->") else skip) & testb('L) & implyL('L) < (closeId, closeId)
+    (if (PRINT_LEMMA5L) print("->") else skip) & testb('L) & implyL('L) < (closeId, closeId)
     ,
     // <-
-    (if (PRINT_LEMMA5) print("<-") else skip) & testb('R) & implyR('R) & closeId
+    (if (PRINT_LEMMA5L) print("<-") else skip) & testb('R) & implyR('R) & closeId
     )
   lazy val lemma5L: Lemma = lemma(f5L, n5L, t5L)
 
@@ -697,7 +705,9 @@ object Lemmas {
   def lemma5LT(test: Formula): DependentPositionTactic = "Apply Lemma5" by ((pos: Position, seq: Sequent) => {
     seq.sub(pos) match {
       case Some(f: Formula) =>
-        useAt("ANON", lemma5L.fact, PosInExpr(1 :: 1 :: Nil), (s: Subst) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil))(pos)
+        useAt("ANON", lemma5L.fact, PosInExpr(1 :: 1 :: Nil), uso => uso match {
+          case Some(s) => s ++ RenUSubst(("F_(||)".asFormula, test) :: Nil)
+        })(pos)
     }
   })
 
@@ -879,84 +889,80 @@ object Lemmas {
   def main(args: Array[String]) {
     ProofHelper.initProver
     //        proofAll
-
-    //    println("Test Lemma 1BA - proved? " + TactixLibrary.proveBy("[a:=2;b:=4;?a>0;]a>0".asFormula,
+    //
+    //    println("==> Test Lemma 1BA - proved? " + TactixLibrary.proveBy("[a:=2;b:=4;?a>0;]a>0".asFormula,
     //      composeb('R) & composeb(1, 1 :: Nil) & lemma1BA(1, 1 :: Nil) & assignb('R) & testb('R) & prop).isProved)
-    //    println("Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;?a>0;]a>0 -> [a:=2;b:=4;?a>0;]a>0".asFormula,
+    //    println("==> Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;?a>0;]a>0 -> [a:=2;b:=4;?a>0;]a>0".asFormula,
     //      implyR('R) & composeb('R) & composeb(1, 1 :: Nil) & lemma1(1, 1 :: Nil) & normalize).isProved)
-    //        println("Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
-    //          implyR('R) & composeb('R) &
-    //            lemma2_DC(mutable.Seq("b".asVariable),"b<10".asFormula)('R) & assignb('R) & diffSolve()('R) & QE & print("y")
-    //        ).isProved)
-    //    println("Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
-    //      composeb('R) & useAt(lemma3, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
-    //    println("Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
+    //    println("==> Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
+    //      implyR('R) & composeb('R) &
+    //        lemma2_DC(mutable.Seq("b".asVariable), "b<10".asFormula)('R) & assignb('R) & diffSolve('R) & QE & print("y")
+    //    ).isProved)
+    //    println("==> Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
+    //      composeb('R) & useAt("ANON", lemma3.fact, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
+    //    println("==> Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
     //      implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & print("hihi 41") & closeId).isProved)
-    //    println("Test Lemma 4_1 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=a1;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_1 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=a1;](a>0)".asFormula,
     //      implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & print("hihi 41s") & closeId).isProved)
-    //    println("Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=*;]a>0".asFormula,
+    //    println("==> Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=*;]a>0".asFormula,
     //      implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & print("hihi 42") & closeId).isProved)
-    //    println("Test Lemma 4_2 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=*;]a>0".asFormula,
+    //    println("==> Test Lemma 4_2 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=*;]a>0".asFormula,
     //      implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & print("hihi 42s") & closeId).isProved)
-    //    println("Test Lemma 4_3 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=*;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_3 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=*;](a>0)".asFormula,
     //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43->") & closeId).isProved)
-    //    println("Test Lemma 4_3 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=a1;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_3 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=a1;](a>0)".asFormula,
     //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43<-") & closeId).isProved)
-    //    println("Test Lemma 4_3 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=*;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_3 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=*;](a>0)".asFormula,
     //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43->s") & closeId).isProved)
-    //    println("Test Lemma 4_3 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=a1;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_3 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=a1;](a>0)".asFormula,
     //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43<-s") & closeId).isProved)
-    //    println("Test Lemma 4_4 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=*;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_4 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=*;](a>0)".asFormula,
     //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44->") & closeId).isProved)
-    //    println("Test Lemma 4_4 - '<-' proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;?(b>0);](a>0)".asFormula,
+    //    println("==> Test Lemma 4_4 - '<-' proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;?(b>0);](a>0)".asFormula,
     //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44<-") & closeId).isProved)
-    //    println("Test Lemma 4_4 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=*;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_4 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=*;](a>0)".asFormula,
     //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44->s") & closeId).isProved)
-    //    println("Test Lemma 4_4 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;][?(b>0);](a>0)".asFormula,
+    //    println("==> Test Lemma 4_4 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;][?(b>0);](a>0)".asFormula,
     //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44<-s") & closeId).isProved)
-    //    println("Test Lemma 4_5 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=a1;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_5 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=a1;](a>0)".asFormula,
     //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi45->") & closeId).isProved)
-    //    println("Test Lemma 4_5 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;?(b>0);](a>0)".asFormula,
+    //    println("==> Test Lemma 4_5 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;?(b>0);](a>0)".asFormula,
     //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45<-") & closeId).isProved)
-    //    println("Test Lemma 4_5 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;](a>0)".asFormula,
+    //    println("==> Test Lemma 4_5 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;](a>0)".asFormula,
     //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45->s") & closeId).isProved)
-    //    println("Test Lemma 4_5 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);](a>0)".asFormula,
+    //    println("==> Test Lemma 4_5 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);](a>0)".asFormula,
     //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45<-s") & closeId).isProved)
-    //    println("Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);?(a>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi") & closeId).isProved)
-    //    println("Test Lemma 4_6 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][?(a>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi") & closeId).isProved)
+    //    println("==> Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);?(a>0);](a>0)".asFormula,
+    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi 46") & closeId).isProved)
+    //    println("==> Test Lemma 4_6 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][?(a>0);](a>0)".asFormula,
+    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi 46 split") & closeId).isProved)
+//    println("==> Test Lemma 5 - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
+//      implyR('R) & lemma5T("a>5".asFormula)('R) < (
+//        //use test
+//        composeb('R) & assignb('R) & testb('R) & implyR('R) & QE,
+//        //show
+//        V('R) & prop
+//        )).isProved)
+//    println("==> Test Lemma 5 Left - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
+//      implyR('R) & lemma5LT("a>5".asFormula)('R) < (
+//        //use test
+//        testb('R) & implyR('R) & assignb('R) & QE,
+//        //show
+//        prop
+//        )).isProved)
 
 
-    //    println("Test Lemma 5 - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
-    //      implyR('R) & lemma5T("a>5".asFormula)('R) < (
-    //        //use test
-    //        composeb('R) & assignb('R) & testb('R) & implyR('R) & QE,
-    //        //show
-    //        V('R) & prop
-    //        )).isProved)
-
-    //    println("Test Lemma 5 Left - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
-    //      implyR('R) & lemma5LT("a>5".asFormula)('R) < (
-    //        //use test
-    //        print("use 5") & testb('R) & implyR('R) & assignb('R) & QE,
-    //        //show
-    //        print("show 5") & prop
-    //        )).isProved)
-
-
-    println("Test Lemma 6 - proved? " + TactixLibrary.proveBy("([x:=2;][a:=10;](a>5->(a>0&c>0))) -> [x:=2;][a:=10;][?a>5;]a>0".asFormula,
-      implyR('R) & useAt("ANON", l6.fact, PosInExpr(1 :: 0 :: Nil), us => us)(1, 1 :: 1 :: Nil) &
-        //            lemma6T("a>0".asFormula)(1, 1 :: 1 :: Nil) &
+    println("==> Test Lemma 6 - proved? " + TactixLibrary.proveBy("([x:=2;][a:=10;](a>5->(a>0&c>0))) -> [x:=2;][a:=10;][?a>5;]a>0".asFormula,
+      implyR('R) & print("before lemma6") & lemma6T("a>0".asFormula)(1, 1 :: 1 :: Nil) &
         print("after lemma6") < (
           print("use") & monb & monb & testb('R) & prop & print("use done?"),
           print("show") & hideL(-1) & assignb('R) & assignb('R) & QE & print("show done?")
           )).isProved)
-    //    println("Test Lemma 7 - proved? " + TactixLibrary.proveBy("([a:=42;](a>5->(a>0&c>0))) -> [a:=42;][?a>5;]a>0".asFormula,
-    //      implyR('R) & lemma7T("a>0".asFormula)('R) < (
-    //        monb & QE,
-    //        monb & testb('R) & prop
-    //        )).isProved)
+    println("==> Test Lemma 7 - proved? " + TactixLibrary.proveBy("([a:=42;](a>5->(a>0&c>0))) -> [a:=42;][?a>5;]a>0".asFormula,
+      implyR('R) & lemma7T("a>0".asFormula)('R) < (
+        monb & QE,
+        monb & testb('R) & prop
+        )).isProved)
 
 
     // Lemma 5 using the OLD version of the tactic, without the Lemma

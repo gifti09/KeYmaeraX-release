@@ -4,11 +4,11 @@ import java.io.FileInputStream
 import java.time.DayOfWeek
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, DependentPositionTactic, Find, PosInExpr}
-import edu.cmu.cs.ls.keymaerax.btactics.{DerivedAxioms, TactixLibrary}
+import edu.cmu.cs.ls.keymaerax.btactics.{DerivedAxioms, Simplifier, SimplifierV2, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.core.{DifferentialProgram, ODESystem, Program}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics._
+import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{printIndexed, _}
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.ArithmeticSimplification._
@@ -30,6 +30,36 @@ object Tester {
   }
 
   // --- HELPER METHODS ---
+
+  def testRobixFormula() = {
+    /*
+    val f = "v_0>=0 &\n A>=0 &\n B>0 & \n V>=0 & \n ep>0 &\n -B<=a & \n a<=A & \n -(x_0-xoIn_0)>v_0^2/(2*B)+V*v_0/B+(A/B+1)*(A/2*ep^2+ep*(v_0+V)) & \n -(t-tOld)*(v_0+a*(t-tOld)-a/2*(t-tOld))<=x-x_0 & x-x_0<=(t-tOld)*(v_0+a*(t-tOld)-a/2*(t-tOld)) & \n 0<=t-tOld &\n t-tOld<=ep & \n t<=ep & \n v_0+a*(t-tOld)>=0 &\n -V*(t-tOld)<=xoIn-xoIn_0 &\n xoIn-xoIn_0<=V*(t-tOld) &\n x_0-xoIn_0 < 0 &\n x-xoIn < 0\n  ->  -(x-xoIn)>(v_0+a*(t-tOld))^2/(2*B)+V*((v_0+a*(t-tOld))/B)".asFormula
+
+    TactixLibrary.proveBy(
+      f,
+      implyR('R) & (andL('L) *) & printIndexed("before rt")& replaceTransform("ep".asVariable,"t-tOld".asTerm)(-8) & printIndexed("after rt")& speculativeQE
+      //      implyR('R) & (andL('L) *) & abs(-9, 0 :: Nil) & abs(1, 1 :: 0 :: Nil) & normalize(betaRule,skip,skip) & printIndexed("abs done")
+      //        & onAll(exhaustiveEqL2R(true)(-22) & exhaustiveEqL2R(true)(-20) & exhaustiveEqL2R(true)(-10) & exhaustiveEqL2R(true)(-6)) & printIndexed("L2R done") & onAll(speculativeQE & print("QE done for branch")) & print("end")
+    )
+  */
+
+    val f = " true\n   & ep>0\n   & A>=0\n   & B>0\n   & 0<=vf\n   & xf < xlIn_0\n   & xf+vf^2/(2*B) < xlIn_0+vlIn_0^2/(2*B)\n   & 0<=t-tOld_0\n   & t-tOld_0<=ep\n   & 0<=vlIn_0\n   & -B*(t-tOld_0)<=vlIn_0-vlIn0_0\n   & vlIn_0-vlIn0_0<=A*(t-tOld_0)\n   & xlIn_0-xlIn0_0>=(vlIn_0+vlIn0_0)/2*(t-tOld_0)\n   & xlIn0=xlIn_0\n   & vlIn0=vlIn_0\n   & xf+vf^2/(2*B)+(A/B+1)*(A/2*ep^2+ep*vf) < xlIn_0+vlIn_0^2/(2*B)\n   & -B<=af\n   & af<=A\n   & tOld=t\n   & t_>=0\n   & af*t_+vf>=0&t_+t-tOld<=ep\n   & 0<=vlIn\n   & -B*(t_+t-tOld)<=vlIn-vlIn0\n   & vlIn-vlIn0<=A*(t_+t-tOld)&xlIn-xlIn0>=(vlIn+vlIn0)/2*(t_+t-tOld)\n-> af/2*t_^2+vf*t_+xf+(af*t_+vf)^2/(2*B) < xlIn+vlIn^2/(2*B)".asFormula
+
+    println("proved? " + TactixLibrary.proveBy(
+      f,
+      implyR('R) & (andL('L) *) & printIndexed("start")
+        & exhaustiveEqL2R(true)(-19) & exhaustiveEqL2R(true)(-15) & exhaustiveEqL2R(true)(-14) & printIndexed("l2r done")
+        & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE)
+        & exhaustiveEqL2R(true)(-24) & printIndexed("t-t removed")
+        & hideL(-22) & hideL(-12) & printIndexed("hidden")
+        & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE) & print("cut in")
+        & QE
+
+      //      implyR('R) & (andL('L) *) & abs(-9, 0 :: Nil) & abs(1, 1 :: 0 :: Nil) & normalize(betaRule,skip,skip) & printIndexed("abs done")
+      //        & onAll(exhaustiveEqL2R(true)(-22) & exhaustiveEqL2R(true)(-20) & exhaustiveEqL2R(true)(-10) & exhaustiveEqL2R(true)(-6)) & printIndexed("L2R done") & onAll(speculativeQE & print("QE done for branch")) & print("end")
+    ).isProved)
+
+  }
 
   def test() = {
     ProofHelper.initProver
@@ -66,41 +96,44 @@ object Tester {
     //TacticTest
     //    tacticTest()
 
+    //Verify Formula for Robix
+    //    testRobixFormula()
 
-        val t1 = test1(true)
-        val bt = bigTest(true)
-        val t2 = test2(true)
-        val t3 = test3(true)
-        val td4 = testD4(true)
-        val bdt = bigTestDelta(true)
-        val td5 = testD5(true)
-        val td6 = testD6(true)
-        val tm7 = testM7(true)
-        val tmd8 = testMD8(true)
 
-    //    val tr = testRobix(false)
-        val tetcs = testEtcs(false)
-//    val tllc = testLlc(true)
+    //        val t1 = test1(true)
+    //        val bt = bigTest(true)
+    //        val t2 = test2(true)
+    //        val t3 = test3(true)
+    //        val td4 = testD4(true)
+    //        val bdt = bigTestDelta(true)
+    //        val td5 = testD5(true)
+    //        val td6 = testD6(true)
+    //        val tm7 = testM7(true)
+    //        val tmd8 = testMD8(true)
 
-        val trun = testRunning(true)
+    //    val tr = testRobix(true)
+    //        val tetcs = testEtcs(false)
+    val tllc = testLlc(true)
 
-        println("--- SUMMARY ---")
-        println("===============")
-        println("test1 done? " + t1)
-        println("bigTest done? " + bt)
-        println("test2 done? " + t2)
-        println("test3 done? " + t3)
-        println("testD4 done? " + td4)
-        println("bigDeltaTest done? " + bdt)
-        println("testD5 done? " + td5)
-        println("testD6 done? " + td6)
-        println("testM7 done? " + tm7)
-        println("testMD8 done? " + tmd8)
-        println("testRunning done? " + trun)
+    //        val trun = testRunning(true)
+
+    println("--- SUMMARY ---")
+    println("===============")
+    //        println("test1 done? " + t1)
+    //        println("bigTest done? " + bt)
+    //        println("test2 done? " + t2)
+    //        println("test3 done? " + t3)
+    //        println("testD4 done? " + td4)
+    //        println("bigDeltaTest done? " + bdt)
+    //        println("testD5 done? " + td5)
+    //        println("testD6 done? " + td6)
+    //        println("testM7 done? " + tm7)
+    //        println("testMD8 done? " + tmd8)
+    //        println("testRunning done? " + trun)
 
     //    println("testRobix done? " + tr)
     //    println("testEtcs done? " + tetcs)
-    //    println("testLlc done? " + tllc)
+    //        println("testLlc done? " + tllc)
 
     ProofHelper.shutdownProver
     System.exit(0)
@@ -1088,15 +1121,15 @@ object Tester {
           ).stripMargin.asFormula,
         "(v > 0 -> (x - xoIn)^2 + (y - yoIn)^2 > 0)".asFormula,
         s"""v >= 0
-            | & A >= 0
-            | & B > 0
-            | & V >= 0
-            | & ep > 0
-            | & dx^2+dy^2 = 1
-            | & 0 <= $t & $t <= ep
-            | & -V*($t) <= xoIn-xoIn0 & xoIn-xoIn0 <= V*($t) & -V*($t) <= yoIn-yoIn0 & yoIn-yoIn0 <= V*($t)
-            | & (v = 0 | abs(x-xoIn) > v^2 / (2*B) + V*(v/B)
-            |          | abs(y-yoIn) > v^2 / (2*B) + V*(v/B))""".stripMargin.asFormula)
+           | & A >= 0
+           | & B > 0
+           | & V >= 0
+           | & ep > 0
+           | & dx^2+dy^2 = 1
+           | & 0 <= $t & $t <= ep
+           | & -V*($t) <= xoIn-xoIn0 & xoIn-xoIn0 <= V*($t) & -V*($t) <= yoIn-yoIn0 & yoIn-yoIn0 <= V*($t)
+           | & (v = 0 | abs(x-xoIn) > v^2 / (2*B) + V*(v/B)
+           |          | abs(y-yoIn) > v^2 / (2*B) + V*(v/B))""".stripMargin.asFormula)
 
       println("Ctr1 - Robot: " + ctr1.contract())
       println("ProofGoals1:\n" + ctr1.proofGoals().mkString("\n"))
@@ -1122,8 +1155,8 @@ object Tester {
           di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
           hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
           hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
-          ) & print("Acceleration branch done")
-        ) & print("Induction step done")
+        ) & print("Acceleration branch done")
+      ) & print("Induction step done")
 
       val bct1 = print("Base case...") & (andL('L) *) & speculativeQE & print("Base case done")
       val uct1 = print("Use case...") & (andL('L) *) & speculativeQE & print("Use case done")
@@ -1178,12 +1211,12 @@ object Tester {
           |& yo = yo0""".stripMargin.asFormula,
         "true".asFormula,
         s"""V >= 0
-            |& 0 <= $t
-            |& $t <= ep
-            |& -V*$t <= xo-xo0
-            |& xo-xo0 <= V*$t
-            |& -V*$t <= yo-yo0
-            |& yo-yo0 <= V*$t""".stripMargin.asFormula)
+           |& 0 <= $t
+           |& $t <= ep
+           |& -V*$t <= xo-xo0
+           |& xo-xo0 <= V*$t
+           |& -V*$t <= yo-yo0
+           |& yo-yo0 <= V*$t""".stripMargin.asFormula)
 
       println("Ctr2 - Obstacle: " + ctr2.contract())
       println("ProofGoals2:\n" + ctr2.proofGoals().mkString("\n"))
@@ -1192,7 +1225,7 @@ object Tester {
       val uct2 = print("Use case...") & speculativeQE & print("Use case done")
       val st2 = print("Induction step") & chase(1) & normalize(composeb('R) | assignb('R), skip, skip) & printIndexed("After normalize1") &
         chase(1) & normalize(andR('R), skip, skip) & printIndexed("After normalize2") &
-        diffSolve()('R) & master()
+        diffSolve('R) & master()
 
       if (ctr2.verifyBaseCase(bct2).isEmpty)
         println("ctr2-baseCase NOT verified!")
@@ -1223,7 +1256,7 @@ object Tester {
 
     if (initialize) {
       val sct = normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R), skip, skip) &
-        diffSolve()('R) & master()
+        diffSolve('R) & master()
       //Verify lemmas for side conditions
       println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
@@ -1334,7 +1367,7 @@ object Tester {
       val uct1 = print("Use case") & QE & print("Use case done")
       val st1 = print("Induction step") & implyR('R) & (andL('L) *) & print("Induction step Go...") &
         chase(1) & normalize(andR('R), skip, skip) & print("chased and normalized...") &
-        OnAll(diffSolve()(1) partial) & print("diffsolved...") &
+        OnAll(diffSolve(1) partial) & print("diffsolved...") &
         OnAll(speculativeQE) & printIndexed("Induction step done")
 
 
@@ -1359,7 +1392,7 @@ object Tester {
           |}""".stripMargin.asProgram,
         ODESystem(
           s"""z'=v,
-              |v' = a""".stripMargin.asDifferentialProgram, s"v >= 0".asFormula)
+             |v' = a""".stripMargin.asDifferentialProgram, s"v >= 0".asFormula)
       )
       val i2 = new Interface(
         mutable.LinkedHashMap(
@@ -1399,7 +1432,7 @@ object Tester {
       val bct2 = print("Base case") & master() & print("Base case done")
       val uct2 = print("Use case") & master() & print("Use case done")
       //@todo proves only when notL is disabled in normalize, because diffSolve hides facts
-      val st2 = print("Induction step") & implyR('R) & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve()('R) & print("Foo") partial) &
+      val st2 = print("Induction step") & implyR('R) & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve('R) & print("Foo") partial) &
         printIndexed("After diffSolve") & OnAll(normalize partial) & printIndexed("After normalize") & OnAll(speculativeQE) & printIndexed("Induction step done")
 
 
@@ -1433,7 +1466,7 @@ object Tester {
       implyR('R) & (andL('L) *) & print("sideT - implyR/andL") &
         chase(1) & print("sideT - chased") &
         normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) & print("sideT - normalized") &
-        diffSolve()('R) & master()
+        diffSolve('R) & master()
       //Verify lemmas for side conditions
       println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
@@ -1493,52 +1526,52 @@ object Tester {
 
     if (initialize) {
 
-            //COMPONENT 1 - LEADER
-            val c1 = new Component(name + "-leader",
-              "al :=*; ?-B <= al & al <= A;".asProgram,
-              ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
-            )
-            val i1 = new Interface(
-              mutable.LinkedHashMap.empty,
-              mutable.LinkedHashMap(
-                Seq("xl".asVariable, "vl".asVariable) -> (s"0 <= vl & -B*$t <= vl-vl0 & vl-vl0 <= A*$t & xl-xl0 >= (vl+vl0)/2*$t").asFormula
-              ),
-              mutable.LinkedHashMap(Seq("xl".asVariable, "vl".asVariable) -> Seq("xl0".asVariable, "vl0".asVariable))
-            )
-            val ctr1 = new DelayContract(c1, i1,
-              ("""ep > 0
-                 | & A >= 0
-                 | & B > 0
-                 | & xl = xl0
-                 | & vl = vl0
-                 | & 0 <= vl
-                 | & t=tOld"""
-                ).stripMargin.asFormula,
-              True,
-              s"""ep > 0
-                  | & A >= 0
-                  | & B > 0
-                  | & 0 <= $t & $t <= ep
-                  | & xl-xl0 >= (vl+vl0)/2*$t
-                  | & 0 <= vl
-                  | & -B*$t <= vl-vl0
-                  | & vl-vl0 <= A*$t""".stripMargin.asFormula)
-            println("Ctr1 - leader: " + ctr1.contract())
+      //COMPONENT 1 - LEADER
+      val c1 = new Component(name + "-leader",
+        "al :=*; ?-B <= al & al <= A;".asProgram,
+        ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
+      )
+      val i1 = new Interface(
+        mutable.LinkedHashMap.empty,
+        mutable.LinkedHashMap(
+          Seq("xl".asVariable, "vl".asVariable) -> (s"0 <= vl & -B*$t <= vl-vl0 & vl-vl0 <= A*$t & xl-xl0 >= (vl+vl0)/2*$t").asFormula
+        ),
+        mutable.LinkedHashMap(Seq("xl".asVariable, "vl".asVariable) -> Seq("xl0".asVariable, "vl0".asVariable))
+      )
+      val ctr1 = new DelayContract(c1, i1,
+        ("""ep > 0
+           | & A >= 0
+           | & B > 0
+           | & xl = xl0
+           | & vl = vl0
+           | & 0 <= vl
+           | & t=tOld"""
+          ).stripMargin.asFormula,
+        True,
+        s"""ep > 0
+           | & A >= 0
+           | & B > 0
+           | & 0 <= $t & $t <= ep
+           | & xl-xl0 >= (vl+vl0)/2*$t
+           | & 0 <= vl
+           | & -B*$t <= vl-vl0
+           | & vl-vl0 <= A*$t""".stripMargin.asFormula)
+      println("Ctr1 - leader: " + ctr1.contract())
 
-            val bct1 = print("Base case") & QE & print("Base case done")
-            val uct1 = print("Use case") & QE & print("Use case done")
-            val st1 = print("Induction step") & master() & printIndexed("Induction step done")
+      val bct1 = print("Base case") & QE & print("Base case done")
+      val uct1 = print("Use case") & QE & print("Use case done")
+      val st1 = print("Induction step") & master() & printIndexed("Induction step done")
 
 
-            if (ctr1.verifyBaseCase(bct1).isEmpty)
-              println("ctr1-baseCase NOT verified!")
-            if (ctr1.verifyUseCase(uct1).isEmpty)
-              println("ctr1-useCase NOT verified!")
-            if (ctr1.verifyStep(st1).isEmpty)
-              println("ctr1-step NOT verified!")
+      if (ctr1.verifyBaseCase(bct1).isEmpty)
+        println("ctr1-baseCase NOT verified!")
+      if (ctr1.verifyUseCase(uct1).isEmpty)
+        println("ctr1-useCase NOT verified!")
+      if (ctr1.verifyStep(st1).isEmpty)
+        println("ctr1-step NOT verified!")
 
-            println("Ctr1 verified? " + ctr1.isVerified())
-            Contract.save(ctr1, name + "-1.cbcps")
+      println("Ctr1 verified? " + ctr1.isVerified())
+      Contract.save(ctr1, name + "-1.cbcps")
 
       //COMPONENT 2 - FOLLOWER
       val c2 = new Component(name + "-follower",
@@ -1552,7 +1585,7 @@ object Tester {
       )
       val i2 = new Interface(
         mutable.LinkedHashMap(
-          Seq("xlIn".asVariable, "vlIn".asVariable) -> (s"0 <= vlIn & -B*$t <= vlIn-vlIn0 & vlIn-vInl0 <= A*$t & xlIn-xInl0 >= (vlIn+vlIn0)/2*$t").asFormula
+          Seq("xlIn".asVariable, "vlIn".asVariable) -> (s"0 <= vlIn & -B*$t <= vlIn-vlIn0 & vlIn-vlIn0 <= A*$t & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t").asFormula
         ),
         mutable.LinkedHashMap.empty,
         mutable.LinkedHashMap(Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xlIn0".asVariable, "vlIn0".asVariable))
@@ -1570,33 +1603,45 @@ object Tester {
           | & 0 <= vlIn""".stripMargin.asFormula,
         "xf < xlIn".asFormula,
         s"""ep > 0
-            | & A >= 0
-            | & B > 0
-            | & 0<= vf & xf < xlIn
-            | & xf+vf^2/(2*B) < xlIn + vlIn^2/(2*B)
-            | & 0 <= $t & $t <= ep
-            | & 0 <= vlIn
-            | & -B*$t <= vlIn-vlIn0
-            | & vlIn-vlIn0 <= A*$t
-            | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t""".stripMargin.asFormula)
+           | & A >= 0
+           | & B > 0
+           | & 0<= vf & xf < xlIn
+           | & xf+vf^2/(2*B) < xlIn + vlIn^2/(2*B)
+           | & 0 <= $t & $t <= ep
+           | & 0 <= vlIn
+           | & -B*$t <= vlIn-vlIn0
+           | & vlIn-vlIn0 <= A*$t
+           | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t""".stripMargin.asFormula)
 
       println("Ctr2 - Follower: " + ctr2.contract())
-      println("vars: "+ctr2.variables())
 
       val bct2 = print("Base case") & master() & print("Base case done")
       val uct2 = print("Use case") & master() & print("Use case done")
-      val st2 = print("Induction step") & chase(1) & normalize(andR('R) | andL('L) | composeb('R) | assignb('R) | testb('R) | implyR('R) | randomb('R) | choiceb('R) | boxAnd('R), skip, skip) & print("after normalize") &
-        OnAll(diffSolve()(1) partial) < (
+      val st2 = print("Induction step") & implyR('R) & chase(1) & normalize(andR('R), skip, skip) & print("after normalize") &
+        OnAll(diffSolve(1) partial) < (
           print("Braking branch") & normalize & OnAll(speculativeQE) & print("Braking branch done"),
           print("Stopped branch") & normalize & OnAll(speculativeQE) & print("Stopped branch done"),
-          printIndexed("Acceleration branch") &
-            hideL(Find.FindL(0, Some("xf_0+vf_0^2/(2*B) < xlIn+vlIn^2/(2*B)".asFormula))) &
-            (alphaRule *) &
-            replaceTransform("ep".asTerm, s"$t".asTerm)(Find.FindL(0, Some("xf_0+vf_0^2/(2*B)+(A/B+1)*(A/2*ep^2+ep*vf_0) < xlIn + vlIn^2/(2*B)".asFormula))) &
-            //@todo does not yet prove
-            OnAll(normalize partial) & printIndexed("Now what?") & OnAll(
-            speculativeQE) & print("Acceleration branch done")
-          ) & print("Induction step done")
+          (printIndexed("Acceleration branch")
+            & normalize(betaRule, skip, skip) < (
+            print("branch1") & QE & print("b1 done"),
+            printIndexed("branch2")
+              & allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
+              & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
+              & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)
+              & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
+              & hide(-13) & hide(-12) & hide(-6) & QE & print("b2 done"),
+            printIndexed("branch3")
+              & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13) & printIndexed("l2r done")
+              & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-22) & printIndexed("t-t removed")
+              & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
+              & allL("s_".asVariable, "t_".asVariable)(-17) & implyL(-17) < (hide(1) & QE, skip) & andL(-17)
+              & hide(-13) & hide(-12) & hide(-6)
+              & QE & print("b2 done"),
+            print("branch4") & QE & print("b4 done"),
+            print("branch5") & QE & print("b5 done")
+          )
+            ) & print("Acceleration branch done")
+        ) & print("Induction step done")
 
 
       if (ctr2.verifyBaseCase(bct2).isEmpty)
@@ -1608,8 +1653,8 @@ object Tester {
 
       println("Ctr2 verified? " + ctr2.isVerified())
 
-      //      require(ctr1.isVerified(), "ctr1 must be verified!")
-      //      require(ctr1.isVerified(), "ctr2 must be verified!")
+      require(ctr1.isVerified(), "ctr1 must be verified!")
+      require(ctr1.isVerified(), "ctr2 must be verified!")
 
       Contract.save(ctr2, name + "-2.cbcps")
       println("Saved both contracts!")
@@ -1627,7 +1672,7 @@ object Tester {
       implyR('R) & (andL('L) *) & print("sideT - implyR/andL") &
         chase(1) & print("sideT - chased") &
         normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) & print("sideT - normalized") &
-        diffSolve()('R) & master()
+        diffSolve('R) & master()
       //Verify lemmas for side conditions
       println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
@@ -1655,7 +1700,8 @@ object Tester {
     }.toSeq: _*)
 
     val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable))
+      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
+    )
 
     if (initialize) {
       //Verify lemmas for cpo
@@ -1777,10 +1823,10 @@ object Tester {
 
     if (initialize) {
       //Verify lemmas for cpo
-        lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
-          v -> ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
-        }
-        }
+      lctr1.cpo(lctr2, X).foreach { case (v, f: Formula) => {
+        v -> ProofHelper.verify(f, master(), Some(name + "-cpo-" + v))
+      }
+      }
     }
 
     //Reuse previously verified lemmas for cpo
@@ -1879,7 +1925,7 @@ object Tester {
     }));
     println(ctr1.component.name + " - Step: " + (ctr1.verifyStep(
       implyR('R) & (composeb('R) *) & testb('R)
-        & implyR('R) & assignb('R) & assignb('R) & diffSolve()('R)
+        & implyR('R) & assignb('R) & assignb('R) & diffSolve('R)
         & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R)
         & QE
     ) match {
@@ -1902,9 +1948,9 @@ object Tester {
     println(ctr2.component.name + " - Step: " + (ctr2.verifyStep(
       implyR('R) & (composeb('R) *) & testb('R)
         & implyR('R) & choiceb('R) & andR('R) < (
-        assignb('R) & assignb('R) & diffSolve()('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE,
-        assignb('R) & assignb('R) & diffSolve()('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE
-        )
+        assignb('R) & assignb('R) & diffSolve('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE,
+        assignb('R) & assignb('R) & diffSolve('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE
+      )
     ) match {
       case None => "NOT verified."
       case Some(p) => "verified." + " -> LemmaID='" + ctr2.stepLemma.get.name.get + "'"
