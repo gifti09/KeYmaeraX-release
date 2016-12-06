@@ -61,6 +61,12 @@ object Tester {
 
   }
 
+  def testBoxTrue() = {
+    val f = "true->[?true;]true".asFormula
+
+    println(TactixLibrary.proveBy(f,implyR('R) & cohide(1) & boxTrue(1)).isProved)
+  }
+
   def test() = {
     ProofHelper.initProver
     //Match Test
@@ -99,6 +105,9 @@ object Tester {
     //Verify Formula for Robix
     //    testRobixFormula()
 
+    //boxTrue Test
+    testBoxTrue()
+
 
     //        val t1 = test1(true)
     //        val bt = bigTest(true)
@@ -113,7 +122,8 @@ object Tester {
 
     //    val tr = testRobix(true)
     //        val tetcs = testEtcs(false)
-    val tllc = testLlc(true)
+
+//    val tllc = testLlc(true)
 
     //        val trun = testRunning(true)
 

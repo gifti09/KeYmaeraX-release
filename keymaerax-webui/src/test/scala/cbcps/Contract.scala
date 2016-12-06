@@ -623,10 +623,10 @@ object Contract {
   val PRINT_DROP_OR_SKIP_DELTA_PART = PRINT_STEP
   val PRINT_DROP_REMAINING_PORTS3 = PRINT_STEP
   val PRINT_DROP_FROM_PORTS3 = PRINT_STEP
-  val PRINT_DROP_IN = PRINT_STEP
+  val PRINT_DROP_IN = PRINT_STEP | true
   val PRINT_DROP_OR_MERGE = PRINT_STEP
   val PRINT_CLOSE_SIDE = PRINT_STEP
-  val PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL = PRINT_STEP | true
+  val PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL = PRINT_STEP
   val PRINT_INTRODUCE_AND_WEAKEN_FOR = PRINT_STEP
 
   /**
@@ -1470,9 +1470,10 @@ object Contract {
         }
         if (n == vInDrop.size && vInDrop.nonEmpty) {
           t = t & (if (PRINT_DROP_IN) print("dropIn: introduceEmptyTest in dropIn, n=" + n + ", vIn.size=" + vInDrop.size + ", vIn=" + vInDrop) else skip) &
-            Lemmas.lemma5T("true".asFormula)(pos.top) < (skip, boxTrue(1))
+            Lemmas.lemma5T("true".asFormula)(pos.top) & (if (PRINT_DROP_IN) print("dropIn: after lemma5") else skip)<
+            (skip, (if (PRINT_DROP_IN) printIndexed("dropIn: before boxTrue") else skip) & cohide(1) & boxTrue(1) & (if (PRINT_DROP_IN) print("dropIn: after boxTrue") else skip))
         }
-        t
+        t & (if (PRINT_DROP_IN) print("dropIn: done") else skip)
       //no inputs --> let the test stay there
       case Some(Box(_, Box(in3: Test, _))) => useAt("[;] compose", PosInExpr(1 :: Nil))(pos.top) //Lemmas.lemma1AB(pos.top.getPos)
     })

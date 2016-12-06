@@ -890,66 +890,66 @@ object Lemmas {
     ProofHelper.initProver
     //        proofAll
     //
-    //    println("==> Test Lemma 1BA - proved? " + TactixLibrary.proveBy("[a:=2;b:=4;?a>0;]a>0".asFormula,
-    //      composeb('R) & composeb(1, 1 :: Nil) & lemma1BA(1, 1 :: Nil) & assignb('R) & testb('R) & prop).isProved)
-    //    println("==> Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;?a>0;]a>0 -> [a:=2;b:=4;?a>0;]a>0".asFormula,
-    //      implyR('R) & composeb('R) & composeb(1, 1 :: Nil) & lemma1(1, 1 :: Nil) & normalize).isProved)
-    //    println("==> Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
-    //      implyR('R) & composeb('R) &
-    //        lemma2_DC(mutable.Seq("b".asVariable), "b<10".asFormula)('R) & assignb('R) & diffSolve('R) & QE & print("y")
-    //    ).isProved)
-    //    println("==> Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
-    //      composeb('R) & useAt("ANON", lemma3.fact, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
-    //    println("==> Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & print("hihi 41") & closeId).isProved)
-    //    println("==> Test Lemma 4_1 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & print("hihi 41s") & closeId).isProved)
-    //    println("==> Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=*;]a>0".asFormula,
-    //      implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & print("hihi 42") & closeId).isProved)
-    //    println("==> Test Lemma 4_2 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=*;]a>0".asFormula,
-    //      implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & print("hihi 42s") & closeId).isProved)
-    //    println("==> Test Lemma 4_3 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=*;](a>0)".asFormula,
-    //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43->") & closeId).isProved)
-    //    println("==> Test Lemma 4_3 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43<-") & closeId).isProved)
-    //    println("==> Test Lemma 4_3 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=*;](a>0)".asFormula,
-    //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43->s") & closeId).isProved)
-    //    println("==> Test Lemma 4_3 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43<-s") & closeId).isProved)
-    //    println("==> Test Lemma 4_4 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=*;](a>0)".asFormula,
-    //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44->") & closeId).isProved)
-    //    println("==> Test Lemma 4_4 - '<-' proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;?(b>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44<-") & closeId).isProved)
-    //    println("==> Test Lemma 4_4 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=*;](a>0)".asFormula,
-    //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44->s") & closeId).isProved)
-    //    println("==> Test Lemma 4_4 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;][?(b>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44<-s") & closeId).isProved)
-    //    println("==> Test Lemma 4_5 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi45->") & closeId).isProved)
-    //    println("==> Test Lemma 4_5 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;?(b>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45<-") & closeId).isProved)
-    //    println("==> Test Lemma 4_5 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;](a>0)".asFormula,
-    //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45->s") & closeId).isProved)
-    //    println("==> Test Lemma 4_5 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45<-s") & closeId).isProved)
-    //    println("==> Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);?(a>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi 46") & closeId).isProved)
-    //    println("==> Test Lemma 4_6 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][?(a>0);](a>0)".asFormula,
-    //      implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi 46 split") & closeId).isProved)
-//    println("==> Test Lemma 5 - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
-//      implyR('R) & lemma5T("a>5".asFormula)('R) < (
-//        //use test
-//        composeb('R) & assignb('R) & testb('R) & implyR('R) & QE,
-//        //show
-//        V('R) & prop
-//        )).isProved)
-//    println("==> Test Lemma 5 Left - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
-//      implyR('R) & lemma5LT("a>5".asFormula)('R) < (
-//        //use test
-//        testb('R) & implyR('R) & assignb('R) & QE,
-//        //show
-//        prop
-//        )).isProved)
+        println("==> Test Lemma 1BA - proved? " + TactixLibrary.proveBy("[a:=2;b:=4;?a>0;]a>0".asFormula,
+          composeb('R) & composeb(1, 1 :: Nil) & lemma1BA(1, 1 :: Nil) & assignb('R) & testb('R) & prop).isProved)
+        println("==> Test Lemma 1AB - proved? " + TactixLibrary.proveBy("[a:=2;?a>0;]a>0 -> [a:=2;b:=4;?a>0;]a>0".asFormula,
+          implyR('R) & composeb('R) & composeb(1, 1 :: Nil) & lemma1(1, 1 :: Nil) & normalize).isProved)
+        println("==> Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
+          implyR('R) & composeb('R) &
+            lemma2_DC(mutable.Seq("b".asVariable), "b<10".asFormula)('R) & assignb('R) & diffSolve('R) & QE & print("y")
+        ).isProved)
+        println("==> Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
+          composeb('R) & useAt("ANON", lemma3.fact, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)
+        println("==> Test Lemma 4_1 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=a1;](a>0)".asFormula,
+          implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & print("hihi 41") & closeId).isProved)
+        println("==> Test Lemma 4_1 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=a1;](a>0)".asFormula,
+          implyR('R) & lemma4_1T(1, 1 :: 1 :: Nil) & print("hihi 41s") & closeId).isProved)
+        println("==> Test Lemma 4_2 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=*;]a>0".asFormula,
+          implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & print("hihi 42") & closeId).isProved)
+        println("==> Test Lemma 4_2 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=*;]a>0".asFormula,
+          implyR('R) & lemma4_2T(1, 1 :: 1 :: Nil) & print("hihi 42s") & closeId).isProved)
+        println("==> Test Lemma 4_3 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;a:=*;](a>0)".asFormula,
+          implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43->") & closeId).isProved)
+        println("==> Test Lemma 4_3 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;a:=a1;](a>0)".asFormula,
+          implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43<-") & closeId).isProved)
+        println("==> Test Lemma 4_3 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][b:=b1;]a>0 -> [?c>0;c:=32;][x:=y;][b:=b1;][a:=*;](a>0)".asFormula,
+          implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43->s") & closeId).isProved)
+        println("==> Test Lemma 4_3 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][b:=*;]a>0 -> [?c>0;c:=32;][x:=y;][b:=*;][a:=a1;](a>0)".asFormula,
+          implyR('R) & lemma4_3T(1, 1 :: 1 :: Nil) & print("hihi 43<-s") & closeId).isProved)
+        println("==> Test Lemma 4_4 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=*;](a>0)".asFormula,
+          implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44->") & closeId).isProved)
+        println("==> Test Lemma 4_4 - '<-' proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;?(b>0);](a>0)".asFormula,
+          implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44<-") & closeId).isProved)
+        println("==> Test Lemma 4_4 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=*;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=*;](a>0)".asFormula,
+          implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44->s") & closeId).isProved)
+        println("==> Test Lemma 4_4 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=*;]a>0 -> [?c>0;c:=32;][x:=y;][a:=*;][?(b>0);](a>0)".asFormula,
+          implyR('R) & lemma4_4T(1, 1 :: 1 :: Nil) & print("hihi 44<-s") & closeId).isProved)
+        println("==> Test Lemma 4_5 '->' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);a:=a1;](a>0)".asFormula,
+          implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi45->") & closeId).isProved)
+        println("==> Test Lemma 4_5 '<-' - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;?(b>0);](a>0)".asFormula,
+          implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45<-") & closeId).isProved)
+        println("==> Test Lemma 4_5 '->' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;](a>0)".asFormula,
+          implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45->s") & closeId).isProved)
+        println("==> Test Lemma 4_5 '<-' split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(b>0);][a:=a1;]a>0 -> [?c>0;c:=32;][x:=y;][a:=a1;][?(b>0);](a>0)".asFormula,
+          implyR('R) & lemma4_5T(1, 1 :: 1 :: Nil) & print("hihi 45<-s") & closeId).isProved)
+        println("==> Test Lemma 4_6 - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);?(a>0);](a>0)".asFormula,
+          implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi 46") & closeId).isProved)
+        println("==> Test Lemma 4_6 split - proved? " + TactixLibrary.proveBy("[?c>0;c:=32;][x:=y;][?(a>0);][?(b>0);]a>0 -> [?c>0;c:=32;][x:=y;][?(b>0);][?(a>0);](a>0)".asFormula,
+          implyR('R) & lemma4_6T(1, 1 :: 1 :: Nil) & print("hihi 46 split") & closeId).isProved)
+    println("==> Test Lemma 5 - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
+      implyR('R) & lemma5T("a>5".asFormula)('R) < (
+        //use test
+        composeb('R) & assignb('R) & testb('R) & implyR('R) & QE,
+        //show
+        V('R) & prop
+        )).isProved)
+    println("==> Test Lemma 5 Left - proved? " + TactixLibrary.proveBy("a>5 -> [b:=0;]a>0".asFormula,
+      implyR('R) & lemma5LT("a>5".asFormula)('R) < (
+        //use test
+        testb('R) & implyR('R) & assignb('R) & QE,
+        //show
+        prop
+        )).isProved)
 
 
     println("==> Test Lemma 6 - proved? " + TactixLibrary.proveBy("([x:=2;][a:=10;](a>5->(a>0&c>0))) -> [x:=2;][a:=10;][?a>5;]a>0".asFormula,
