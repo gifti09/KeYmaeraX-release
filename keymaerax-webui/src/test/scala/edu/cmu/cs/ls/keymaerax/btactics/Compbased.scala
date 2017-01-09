@@ -23,13 +23,15 @@ import scala.language.postfixOps
 @SlowTest
 class Compbased extends TacticTestBase {
 
-  "Robix" should "prove the robot component" in withZ3 { implicit tool =>
+  behavior of "Robix"
+
+  ignore should "prove the robot component" in withZ3 { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/robix/robot.kyx"))
     val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/casestudies/components/robix/robot.kyt")).mkString)
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  it should "prove the auto-generated robot component" in withZ3 { implicit tool =>
+  ignore should "prove the auto-generated robot component" in withZ3 { implicit tool =>
     val model = "(t=0&v>=0&(abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B))&dx^2+dy^2=1&A>=0&B>0&V>=0&ep>0&xoIn0=xoIn&yoIn0=yoIn&t=tOld)&true->[{{{{{{xoIn0:=xoIn;yoIn0:=yoIn;}{a:=-B;++?v=0;a:=0;w:=0;++a:=*;?-B<=a&a<=A;k:=*;w:=*;?v*k=w;?abs(x-xoIn)>v^2/(2*B)+V*v/B+(A/B+1)*(A/2*ep^2+ep*(v+V))|abs(y-yoIn)>v^2/(2*B)+V*v/B+(A/B+1)*(A/2*ep^2+ep*(v+V));}}tOld:=t;}{t'=1,x'=v*dx,y'=v*dy,dx'=-w*dy,dy'=w*dx,v'=a,w'=a*k&(t<=ep&v>=0)&t-tOld<=ep}}{xoIn:=*;?-V*(t-tOld)<=xoIn-xoIn0&xoIn-xoIn0<=V*(t-tOld);}yoIn:=*;?-V*(t-tOld)<=yoIn-yoIn0&yoIn-yoIn0<=V*(t-tOld);}?true;}*]((v>0->(x-xoIn)^2+(y-yoIn)^2>0)&true)".asFormula
 
     def invariant(t: String) =
@@ -68,18 +70,18 @@ class Compbased extends TacticTestBase {
     proveBy(model, tactic) shouldBe 'proved
   }
 
-  it should "prove the obstacle component" in withZ3 { implicit tool =>
+  ignore should "prove the obstacle component" in withZ3 { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/robix/obstacle.kyx"))
     val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/casestudies/components/robix/obstacle.kyt")).mkString)
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  it should "prove compatibility" in withMathematica { implicit tool =>
+  ignore should "prove compatibility" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/robix/compatibility.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove monolithic model" in withZ3 { implicit tool =>
+  it should "prove monolithic model" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/robix/system.kyx"))
 
     val invariant =
@@ -128,39 +130,43 @@ class Compbased extends TacticTestBase {
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  "Multiport local lane control" should "prove the leader component" in withMathematica { implicit tool =>
+  behavior of "Multiport local lane control"
+
+  ignore should "prove the leader component" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/llc/multiport_leader.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove the follower component" in withMathematica { implicit tool =>
+  ignore should "prove the follower component" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/llc/multiport_follower.kyx"))
     val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/casestudies/components/llc/multiport_follower.kyt")).mkString)
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  it should "prove compatibility" in withMathematica { implicit tool =>
+  ignore should "prove compatibility" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/llc/multiport_compatibility.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove the monolithic system" in withMathematica { implicit tool =>
+  ignore should "prove the monolithic system" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/llc/multiport_system.kyx"))
     val tactic = BelleParser(io.Source.fromInputStream(getClass.getResourceAsStream("/examples/casestudies/components/llc/multiport_system.kyt")).mkString)
     proveBy(s, tactic) shouldBe 'proved
   }
 
-  "ETCS" should "prove RBC component" in withMathematica { implicit tool =>
+  behavior of "ETCS"
+
+  ignore should "prove RBC component" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/etcs/multiport_rbc.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove train component" in withMathematica { implicit tool =>
+  ignore should "prove train component" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/etcs/multiport_train.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }
 
-  it should "prove compatibility" in withMathematica { implicit tool =>
+  ignore should "prove compatibility" in withMathematica { implicit tool =>
     val s = parseToSequent(getClass.getResourceAsStream("/examples/casestudies/components/etcs/multiport_compatibility.kyx"))
     proveBy(s, master()) shouldBe 'proved
   }

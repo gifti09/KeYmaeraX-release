@@ -96,7 +96,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Component-based Automated Robot Cruise Control"
 
-  it should "prove Automated Controller Component" in withMathematica { implicit tool =>
+  ignore should "prove Automated Controller Component" in withMathematica { implicit tool =>
     val ac: Component = new Component("Automated Controller",
       """ sAcTr:=*;
         | ?(0<=sAcTr & sAcTr<=S & abs(sAcTr-sAc)<=deltaS);
@@ -119,7 +119,7 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(acCtr, "pt2-controller-automated.cbcps")
   }
 
-  it should "prove Actuator Component" in withMathematica { implicit tool =>
+  ignore should "prove Actuator Component" in withMathematica { implicit tool =>
     val eps = Globals.eps.name
     val act: Component = new Component("Actuator",
       s" aAct:=(sActTr-sAct)/$eps;".asProgram,
@@ -145,7 +145,7 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(actCtr, "pt2-actuator.cbcps")
   }
 
-  it should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
+  ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
     val acCtr: Contract = Contract.load("pt2-controller-automated.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -178,7 +178,7 @@ class PerformanceTest extends TacticTestBase {
     }
   }
 
-  it should "prove Composition" in withMathematica { implicit tool =>
+  ignore should "prove Composition" in withMathematica { implicit tool =>
     val acCtr: Contract = Contract.load("pt2-controller-automated.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -214,7 +214,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Monolithic Automated Robot Cruise Control"
 
-  it should "prove Automated System" in withMathematica { implicit tool =>
+  ignore should "prove Automated System" in withMathematica { implicit tool =>
 //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
 
@@ -231,7 +231,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Expert Automated Robot Cruise Control"
 
-  it should "prove Automated System" in withMathematica { implicit tool =>
+  ignore should "prove Automated System" in withMathematica { implicit tool =>
 //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
 
@@ -253,7 +253,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Component-based Guided Robot Cruise Control"
 
-  it should "prove Guided Controller Component" in withMathematica { implicit tool =>
+  ignore should "prove Guided Controller Component" in withMathematica { implicit tool =>
     val gc: Component = new Component("Guided Controller",
       """ {
         |   { ?(sGcUsr-sGc >= deltaS); sGcTr:=sGc+deltaS; } /* user velocity is too fast -> use current+delta */
@@ -285,14 +285,14 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(gcCtr, "pt2-controller-guided.cbcps")
   }
 
-  it should "reuse Actuator Component" in withMathematica { implicit tool =>
+  ignore should "reuse Actuator Component" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\cbcps-dP-dT\\draft\\models\\examples\\components\\etcs\\multiport_rbc.kyx")))
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
     actCtr shouldBe 'verified
   }
 
-  it should "prove new CPO and Sideconditions" in withMathematica { implicit tool =>
+  ignore should "prove new CPO and Sideconditions" in withMathematica { implicit tool =>
     val gcCtr: Contract = Contract.load("pt2-controller-guided.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -325,7 +325,7 @@ class PerformanceTest extends TacticTestBase {
     //    }
   }
 
-  it should "prove Composition" in withMathematica { implicit tool =>
+  ignore should "prove Composition" in withMathematica { implicit tool =>
     val gcCtr: Contract = Contract.load("pt2-controller-guided.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -361,7 +361,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Monolithic Guided Robot Cruise Control"
 
-  it should "prove Guided System" in withMathematica { implicit tool =>
+  ignore should "prove Guided System" in withMathematica { implicit tool =>
 //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
 
@@ -379,7 +379,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Expert Guided Robot Cruise Control"
 
-  it should "prove Guided System" in withMathematica { implicit tool =>
+  ignore should "prove Guided System" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedExpert.kyx")))
 
@@ -493,13 +493,13 @@ class PerformanceTest extends TacticTestBase {
       Seq(v: _*) -> Utility.loadLemma("pt3-obstacle-remote-side-" + v).get
     }
     }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](robCtr.sideConditions().map { case (v, f: Formula) => {
+    val robotSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](robCtr.sideConditions().map { case (v, f: Formula) => {
       Seq(v: _*) -> Utility.loadLemma("pt3-robot-side-" + v).get
     }
     }.toSeq: _*)
 
     //Compose
-    val sysCtr: Contract = Contract.composeWithLemmas(obsCtr, robCtr, X, cpo, obsSc, trainSc)
+    val sysCtr: Contract = Contract.composeWithLemmas(obsCtr, robCtr, X, cpo, obsSc, robotSc)
 
     sysCtr shouldBe 'verified
     println("CTR: " + sysCtr.contract())
@@ -855,12 +855,12 @@ class PerformanceTest extends TacticTestBase {
       print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
 
     def accArithTactic1: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
-      replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-10) & print("After replaceTransform") &
+      replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-9) & print("After replaceTransform") &
       speculativeQE & print("Proved acc arithmetic")
 
     val robStepTactic = print("Induction step") & implyR('R) & (andL('L) *) & chase(1) & print("After chase") & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
-      skip, //print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
-      skip, //print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+      print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+      print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
       print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
         di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
         hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
@@ -1051,7 +1051,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Component-based LLC"
 
-  ignore should "prove Leader Component" in withMathematica { implicit tool =>
+  it should "prove Leader Component" in withMathematica { implicit tool =>
     val t = Globals.runT
 
     val lead = new Component("Leader",
@@ -1095,7 +1095,7 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(leadCtr, "pt6-leader.cbcps")
   }
 
-  ignore should "prove Follower Component" in withMathematica { implicit tool =>
+  it should "prove Follower Component" in withMathematica { implicit tool =>
     val t = Globals.runT
 
     val follow = new Component("Follower",
@@ -1170,7 +1170,7 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(followCtr, "pt6-follower.cbcps")
   }
 
-  ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
+  it should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
     val leadCtr: Contract = Contract.load("pt6-leader.cbcps")
     val followCtr: Contract = Contract.load("pt6-follower.cbcps")
 
@@ -1202,7 +1202,7 @@ class PerformanceTest extends TacticTestBase {
     }
   }
 
-  ignore should "prove Composition" in withMathematica { implicit tool =>
+  it should "prove Composition" in withMathematica { implicit tool =>
     val leadCtr: Contract = Contract.load("pt6-leader.cbcps")
     val followCtr: Contract = Contract.load("pt6-follower.cbcps")
 
@@ -1237,7 +1237,7 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Monolithic LLC"
 
-  ignore should "prove System" in withMathematica { implicit tool =>
+  it should "prove System" in withMathematica { implicit tool =>
     val t = Globals.runT
     val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\system.kyx")))
 
