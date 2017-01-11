@@ -1262,22 +1262,43 @@ class PerformanceTest extends TacticTestBase {
 
     println(invariant)
 
-    val sysStepTactic = chase(1) & normalize & print("here") & //(andR('R), skip, skip) &
-      OnAll(diffSolve(1) partial) & print("branches...") < (
-      normalize & OnAll(speculativeQE) & print("brake1"),
-      normalize & OnAll(speculativeQE) & print("brake2"),
-      normalize & OnAll(speculativeQE) & print("stop1"),
-      print("acc1"),
-      normalize & OnAll(speculativeQE) & print("stop2"),
-      print("acc2")
-      //      normalize(betaRule, skip, skip) & print("branches...")
-    )
+//    val sysStepTactic = chase(1) & normalize & print("here") & //(andR('R), skip, skip) &
+//      OnAll(diffSolve(1) partial) & print("branches...") < (
+//      normalize & OnAll(speculativeQE) & print("brake1"),
+//      normalize & OnAll(speculativeQE) & print("brake2"),
+//      normalize & OnAll(speculativeQE) & print("stop1"),
+//      print("acc1"),
+//      normalize & OnAll(speculativeQE) & print("stop2"),
+//      print("acc2")
+//      //      normalize(betaRule, skip, skip) & print("branches...")
+//    )
+//
+//    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
+//      skip, //print("Base case") & baseTactic & print("Base case done"),
+//      skip, //print("Use case") & useTactic & print("Use case done"),
+//      print("Induction step") & sysStepTactic & printIndexed("Induction step done")
+//    ) & print("Proof done")
 
-    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
-      skip, //print("Base case") & baseTactic & print("Base case done"),
-      skip, //print("Use case") & useTactic & print("Use case done"),
-      print("Induction step") & sysStepTactic & printIndexed("Induction step done")
-    ) & print("Proof done")
+    val tactic=chase(1) & loop("0<=vf&xf < xl&xf+vf^2/(2*B) < xl+vl^2/(2*B)&0<=t&t<=ep&xl-xl0>=(vl+vl0)/2*t&0<=vl&-B*t<=vl-vl0&vl-vl0<=A*t&xlr=xl&vlr=vl".asFormula)(1) <(
+      QE,
+      QE,
+      chase(1) <(
+        diffSolve(1) & QE,
+        diffSolve(1) & QE,
+        diffSolve(1) & allR(1) & implyR(1) & implyR(1) & allL("t_".asTerm)(-24) & implyL(-24) <(
+          hideR(1) & QE,
+          hideL(-6) & printIndexed("rt")
+//            & replaceTransform("xf+vf^2/(2*B)+(A/B+1)*(A/2*t_^2+t_*vf) < xlr+vlr^2/(2*B)".asFormula,-14) & andL(-23) & andL(-24) & andR(1)  <(
+//            QE,
+//            andR(1) & <(
+//              hideL(-1) & hideL(-6) & hideL(-23) & hideL(-19) & hideL(-16) & hideL(-13) & QE,
+//              andR(1) & <(
+//                hideL(-1) & hideL(-6) & hideL(-23) & hideL(-9) & hideL(-12) & hideL(-14) & hideL(-16) & hideL(-1) & QE,
+//                hideL(-14) & QE
+//              )
+            )
+          )
+        )
 
     proveBy(s, tactic) shouldBe 'proved
   }
