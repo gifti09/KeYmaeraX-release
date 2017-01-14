@@ -74,7 +74,7 @@ abstract class Contract(
       (hideL(-1) & implyRi & by(ucl), hideR(1) & QE), //& print("Use Case")
     (andLi *) & cut(invariant) <
       (hideL(-1) & implyRi & by(sl), hideR(1) & QE) //& print("Step")
-    )
+  )
 
   /**
     * Returns a list of proof goals that have to be verified to proof the components contract.
@@ -496,7 +496,7 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
     else
       ODESystem(DifferentialProduct(Globals.plantT, thePlant.ode), contractDomain(if (thePlant == null) null else thePlant.constraint))
 
-  override def contractDomain(theConst: Formula) = if (theConst == null) And(True,Globals.evoDomT) else And(theConst, Globals.evoDomT)
+  override def contractDomain(theConst: Formula) = if (theConst == null) And(True, Globals.evoDomT) else And(theConst, Globals.evoDomT)
 
   override def contract(): Formula = Imply(
     contractPre(),
@@ -532,7 +532,7 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
         (hideL(-1) & implyRi partial, hideR(1) & QE) partial, //& print("Use Case")
       (andLi *) & cut(invariant) <
         (hideL(-1) & implyRi partial, hideR(1) & QE) partial //& print("Step")
-      )
+    )
     val p = proveBy(contract(), t)
     p.subgoals
   }
@@ -561,7 +561,7 @@ class DelayContract(component: Component, interface: Interface, pre: Formula, po
           )
         )
       ).asInstanceOf[Formula]
-      )
+    )
 
     )
     ret
@@ -761,7 +761,7 @@ object Contract {
       preTactic partial, //& print("Base case")
       preTactic partial, //& print("Use Case")
       preTactic partial //& print("Step")
-      )
+    )
     val p = proveBy(changeContract(component, interface, pre, post), t)
     p.subgoals
   }
@@ -785,6 +785,10 @@ object Contract {
     compose(ctr1, ctr2, X, cpo, side1, side2)
   }
 
+
+  //HACK FOR ROBIX? -> 0-no, 1-yes
+  var hack: Int = 0
+
   /**
     * Composes two contracts with port mapping X.
     * The composite component is then verified utilizing the provided tactics/provables
@@ -800,7 +804,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The verified composit contract.
     */
-  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], side1: mutable.Map[Seq[Variable], Provable], side2: mutable.Map[Seq[Variable], Provable], verify: Boolean = true, check:Boolean =false): C = {
+  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], side1: mutable.Map[Seq[Variable], Provable], side2: mutable.Map[Seq[Variable], Provable], verify: Boolean = true, check: Boolean = false): C = {
     //Initial checks
     require(ctr1.getClass.equals(ctr2.getClass), "only contracts of the same type can be composed")
     require(!verify || (ctr1.isVerified() && ctr2.isVerified()), "only verified contracts can be composed and verified")
@@ -854,15 +858,15 @@ object Contract {
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-3).asInstanceOf[AntePos]) &
           andLi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(-1).asInstanceOf[AntePos]) &
           implyRi & by(ctr2.baseCaseLemma.get)
-        ),
+      ),
         //... |- composedBootstrap
         (if (PRINT_BC) print("BC-bootstrap") else skip) &
           andL('L) * 3 & hide(-1) * 3 & close(-1, 1)
-        ),
+      ),
         //... |- globalProperty
         (if (PRINT_BC) print("BC-global") else skip) &
           andL('L) * 3 & hide(-2) * 3 & close(-1, 1)
-        )
+      )
         & (if (PRINT_BC) print("BC-done?") else skip)
     )
 
@@ -881,8 +885,8 @@ object Contract {
               prop,
               //show cut
               hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
-              )
             )
+          )
         })
 
         (0 until ctr1.interface.piOut.keySet.intersect(ctr3.interface.piOut.keySet).size - 1) foreach (i => {
@@ -895,8 +899,8 @@ object Contract {
               prop,
               //show cut
               hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
-              )
             )
+          )
         })
         //handle last port of out1
         outTactic = outTactic & hideL(-4) & hideL(-1) * 2 & cut(ctr1.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
@@ -904,7 +908,7 @@ object Contract {
           prop,
           //show cut
           hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
-          )
+        )
       }
       else {
         //... |- out1
@@ -913,7 +917,7 @@ object Contract {
           prop,
           //show cut
           hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
-          )
+        )
       }
     }
     else {
@@ -924,7 +928,7 @@ object Contract {
           prop,
           //show cut
           hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
-          )
+        )
       }
       else {
         outTactic = (if (PRINT_UC) print("UC-outTactic: none has out ports!") else skip) & prop
@@ -938,7 +942,7 @@ object Contract {
         prop,
         //show cut
         hideR(1) & implyRi & by(ctr1.useCaseLemma.get)
-        )
+      )
       ,
       //... |- post2
       hideL(-1) * 3 & cut(ctr2.useCaseLemma.get.fact.conclusion.succ(0).asInstanceOf[Imply].right) < (
@@ -946,11 +950,11 @@ object Contract {
         prop,
         //show cut
         hideR(1) & implyRi & by(ctr2.useCaseLemma.get)
-        )
-      ),
+      )
+    ),
       // ...|- out
       outTactic
-      )
+    )
       & (if (PRINT_UC) print("UC: done?") else skip)
     )
 
@@ -1007,7 +1011,8 @@ object Contract {
                   //cf. 11 - drop plant2
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)(1)
+                  & print("HACK ONE-1")
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint, 2 * hack)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1031,8 +1036,8 @@ object Contract {
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt("ANON", ctr1.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
-                  )
                 )
+              )
               ,
               //show cut - DONE
               //(1) remove all but the show-cut part
@@ -1041,7 +1046,8 @@ object Contract {
                 & implyR('R)
                 //vaphi2 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout2
                 //(3) cf. 1 - Lemma 2 to remove plant1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)('R)
+                & print("HACK ONE-2")
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint, 1 * hack)('R)
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1AB('R)
@@ -1062,7 +1068,7 @@ object Contract {
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1)
                   & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
-              ) & (if (PRINT_STEP) print("C1;C2 done!") else skip)
+            ) & (if (PRINT_STEP) print("C1;C2 done!") else skip)
             ,
             //inv1-C2;C1 - DONE
             (if (PRINT_STEP) print("inv1-C2;C1") else skip)
@@ -1099,7 +1105,8 @@ object Contract {
                   //cf. 11 - drop plant2
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)(1)
+                  & print("HACK TWO-1")
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint, 2 * hack)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant1][?in1][in1:=*]...[?in1][in1:=*][ports1]inv1
                   //cf. 13 - drop ctr2
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1123,8 +1130,8 @@ object Contract {
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt("ANON", ctr1.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
-                  )
                 )
+              )
               ,
               //show cut - DONE
               //(1) remove all but the show-cut part
@@ -1133,7 +1140,8 @@ object Contract {
                 & implyR('R)
                 //vaphi2 ==> [dp][ctrl2;ctrl1][told][{plant1,plant2}]piout2
                 //(3) cf. 1 - Lemma 2 to remove plant1
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)('R)
+                & print("HACK TWO-2")
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint, 1 * hack)('R)
                 //vaphi2 ==> [dp;ctrl1;ctrl2;told][{plant2}]piout2
                 //(4) cf. 2 - Lemma 1 to remove ctrl1
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1152,8 +1160,8 @@ object Contract {
                 else (boxAnd('R) & andR('R)
                   < (skip, ComposeProofStuff.closeSide(side2)('R) & prop)) * (ctr2.interface.piOut.size - 1) & ComposeProofStuff.closeSide(side2)('R) & prop
                 ) //closed!
-              ) & (if (PRINT_STEP) print("C2;C1 done!") else skip)
-            )
+            ) & (if (PRINT_STEP) print("C2;C1 done!") else skip)
+          )
           ,
           //inv2 - DONE
           (if (PRINT_STEP) print("inv2 ") else skip)
@@ -1193,7 +1201,8 @@ object Contract {
                   //cf. 11 - drop plant1
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)(1)
+                  & print("HACK THREE-1")
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint, 1 * hack)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl1;ctrl2;told;plant1][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1218,8 +1227,8 @@ object Contract {
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
-                  )
                 )
+              )
               ,
               //show cut - DONE
               //(1) remove all but the show-cut part
@@ -1228,7 +1237,8 @@ object Contract {
                 & implyR('R)
                 //vaphi1 ==> [dp][ctrl1;ctrl2][told][{plant1,plant2}]piout1
                 //(3) cf. 1 - Lemma 2 to remove plant2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)('R)
+                & print("HACK THREE-2")
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint, 2 * hack)('R)
                 //vaphi1 ==> [dp;ctrl1;ctrl2;told][{plant1}]piout1
                 //(4) cf. 2 - Lemma 1 to remove ctrl2
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1249,7 +1259,7 @@ object Contract {
                   & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
               //closed!
-              ) & (if (PRINT_STEP) print("C1;C2 done!") else skip)
+            ) & (if (PRINT_STEP) print("C1;C2 done!") else skip)
             ,
             //inv2-C2;C1 - DONE
             (if (PRINT_STEP) print("inv2-C2;C1") else skip)
@@ -1286,7 +1296,8 @@ object Contract {
                   //cf. 11 - drop plant1
                   & composeb(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told][[plant1,plant2}][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
-                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint)(1)
+                  & print("HACK FOUR-1")
+                  & Lemmas.lemma2_DC(mutable.Seq(ctr1.variables().toSeq: _*), if (ctr1.component.plant == null) null else ctr1.component.plant.constraint, 1 * hack)(1)
                   //F,global,boot,inv1,inv2 ==> [dp3;ctrl2;ctrl1;told;plant2][?in2][in2:=*]...[?in2][in2:=*][ports2]inv2
                   //cf. 13 - drop ctr1
                   & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: 1 :: Nil)
@@ -1310,8 +1321,8 @@ object Contract {
                     //close
                     & closeId,
                   cohide(2) & implyR('R) & useAt("ANON", ctr2.stepLemma.get.fact, PosInExpr(1 :: Nil))(1) & prop
-                  )
                 )
+              )
               ,
               //show cut - DONE
               //(1) remove all but the show-cut part
@@ -1320,7 +1331,8 @@ object Contract {
                 & implyR('R)
                 //vaphi1 ==> [dp][ctrl2;ctrl1][told][{plant1,plant2}]piout1
                 //(3) cf. 1 - Lemma 2 to remove plant2
-                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint)('R)
+                & print("HACK FOUR-2")
+                & useAt("[;] compose", PosInExpr(1 :: Nil))('R) * 2 & Lemmas.lemma2_DC(mutable.Seq(ctr2.variables().toSeq: _*), if (ctr2.component.plant == null) null else ctr2.component.plant.constraint, 2 * hack)('R)
                 //vaphi1 ==> [dp;ctrl2;ctrl1;told][{plant1}]piout1
                 //(4) cf. 2 - Lemma 1 to remove ctrl2
                 & composeb(1) * 2 & composeb(1, 1 :: Nil) & Lemmas.lemma1(1, 1 :: Nil)
@@ -1340,17 +1352,17 @@ object Contract {
                   & ComposeProofStuff.closeSide(side1)('R) & prop
                 )
               //closed!
-              ) & (if (PRINT_STEP) print("C2;C1 done!") else skip)
-            )
+            ) & (if (PRINT_STEP) print("C2;C1 done!") else skip)
+          )
 
-          ),
+        ),
         //pre boot - DONE
         //TODO does this master() always close, or should I try to reduce the thing further? (how??)
         hideL(-1) & composeb('R) & G('R) & master() //& print("boot closed?")
-        ),
+      ),
       //global - DONE
       V('R) & prop & (if (PRINT_STEP) print("global closed?") else skip)
-      )
+    )
       & (if (PRINT_STEP) print("step done?") else skip)
     )
 
@@ -1470,7 +1482,7 @@ object Contract {
         }
         if (n == vInDrop.size && vInDrop.nonEmpty) {
           t = t & (if (PRINT_DROP_IN) print("dropIn: introduceEmptyTest in dropIn, n=" + n + ", vIn.size=" + vInDrop.size + ", vIn=" + vInDrop) else skip) &
-            Lemmas.lemma5T("true".asFormula)(pos.top) & (if (PRINT_DROP_IN) print("dropIn: after lemma5") else skip)<
+            Lemmas.lemma5T("true".asFormula)(pos.top) & (if (PRINT_DROP_IN) print("dropIn: after lemma5") else skip) <
             (skip, (if (PRINT_DROP_IN) printIndexed("dropIn: before boxTrue") else skip) & cohide(1) & boxTrue(1) & (if (PRINT_DROP_IN) print("dropIn: after boxTrue") else skip))
         }
         t & (if (PRINT_DROP_IN) print("dropIn: done") else skip)
@@ -1716,7 +1728,7 @@ object Contract {
             //TODO DOES IT?
             & hide(-1)
             & QE
-          ) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done weakening") else skip)
+        ) & (if (PRINT_INTRODUCE_AND_WEAKEN_FOR) print("introduceTestFor: done weakening") else skip)
 
         //[p][in...][ports...][ports3*...]A
         //make assignment non-deterministic
@@ -1921,7 +1933,7 @@ object Contract {
       ,
       //show cut
       hide(pos.top)
-      )
+    )
 
     def countBinary[C <: BinaryComposite](c: C): Integer = c match {
       case Compose(c1: C, c2: C) => countBinary(c1) + countBinary(c2) + 1

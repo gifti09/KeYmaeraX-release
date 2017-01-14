@@ -80,7 +80,7 @@ object DerivationInfo {
       , {case () => DifferentialTactics.DRIStep}),
     // [a] modalities and <a> modalities
     new CoreAxiomInfo("DCi","DCi","DCi",{case () => HilbertCalculus.useAt("DCi")}),
-//    new CoreAxiomInfo("DGiA","DGiA","DGiA",{case () => HilbertCalculus.useAt("DGiA")}),
+    new CoreAxiomInfo("DGiA","DGiA","DGiA",{case () => HilbertCalculus.useAt("DGiA")}),
     new CoreAxiomInfo("<> diamond"
       , AxiomDisplayInfo(("〈·〉", "<.>"), "<span class=\"k4-axiom-key\">〈a〉P </span> ↔ ¬[a]¬P")
       , "diamond", {case () => HilbertCalculus.diamond}),

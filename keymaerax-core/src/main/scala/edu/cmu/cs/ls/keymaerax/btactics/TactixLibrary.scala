@@ -96,7 +96,7 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
           (close
             | (must(normalize)
             | (loop(gen)('R)
-            | (ODE('R)
+            | ((ODE('R) & ?(allR('R) & implyR('R)*2 & allL(Variable("t_"))('Llast) & auto & done)) // try evolution domain proof with end time, but only if it works out
             | (diffSolve('L) // somehow ODE aborts before even trying diffSolve
             | exhaustiveEqL2R('L) ) ) ) ) ) ) ))*) &
       ?(OnAll(QE))

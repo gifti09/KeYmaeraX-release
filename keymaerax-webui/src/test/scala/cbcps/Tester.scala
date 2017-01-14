@@ -64,7 +64,13 @@ object Tester {
   def testBoxTrue() = {
     val f = "true->[?true;]true".asFormula
 
-    println(TactixLibrary.proveBy(f,implyR('R) & cohide(1) & boxTrue(1)).isProved)
+    println(TactixLibrary.proveBy(f, implyR('R) & cohide(1) & boxTrue(1)).isProved)
+  }
+
+  def testTwoODEAxiom() = {
+    val f="[c:=0;{a'=b,b'=a,c'=1&c<10}]c>=0".asFormula
+
+    println(TactixLibrary.proveBy(f, composeb('R) & print("before") & useAt("DGiA", PosInExpr(1::Nil))(1,1::Nil) & print("after") & assignb('R) & master()).isProved)
   }
 
   def test() = {
@@ -101,12 +107,12 @@ object Tester {
     //    posTest()
     //TacticTest
     //    tacticTest()
-
     //Verify Formula for Robix
     //    testRobixFormula()
-
     //boxTrue Test
-    testBoxTrue()
+    //    testBoxTrue()
+    //Two-ODE Axiom
+    testTwoODEAxiom()
 
 
     //        val t1 = test1(true)
@@ -123,7 +129,7 @@ object Tester {
     //    val tr = testRobix(true)
     //        val tetcs = testEtcs(false)
 
-//    val tllc = testLlc(true)
+    //    val tllc = testLlc(true)
 
     //        val trun = testRunning(true)
 
