@@ -2,6 +2,7 @@ package cbcps
 
 import java.io.{File, FileInputStream}
 
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, DependentPositionTactic, Find, OnAll}
 import edu.cmu.cs.ls.keymaerax.btactics.ArithmeticSimplification._
 import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.{print, _}
@@ -394,9 +395,16 @@ class PerformanceTest extends TacticTestBase {
     proveBy(s, tactic) shouldBe 'proved
   }
 
+/*
   /*====================================================*
    * Running Example 3 - Robot Obstacle Avoidance (pt3) *
    *====================================================*/
+
+  behavior of "Z3 Test"
+
+  it should "prove simple formula" in withZ3{ implicit tool =>
+    TactixLibrary.proveBy("a>0->a>-1".asFormula,QE) shouldBe 'proved
+  }
 
   //Mathematica
   behavior of "Component-based Robot Obstacle Avoidance"
@@ -511,8 +519,8 @@ class PerformanceTest extends TacticTestBase {
 
   it should "prove System" in withMathematica { implicit tool =>
     val t = Globals.t
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
+//    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
 
     val invariant =
       s"""ep>0 & D>=0 & S>=0
@@ -523,8 +531,6 @@ class PerformanceTest extends TacticTestBase {
          | & abs(d-d0)<=D
          | & abs(po-po0)<=S*$t
          | & po=poIn & d=dIn""".stripMargin.asFormula
-
-    println(invariant)
 
     val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
       print("Base case") & baseTactic & print("Base case done"),
@@ -648,8 +654,8 @@ class PerformanceTest extends TacticTestBase {
 
   it should "prove System" in withZ3 { implicit tool =>
     val t = Globals.t
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
+    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
 
     val invariant =
       s"""ep>0 & D>=0 & S>=0
@@ -857,13 +863,13 @@ class PerformanceTest extends TacticTestBase {
     println("CTR: " + sysCtr.contract())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
-
+*/
   behavior of "Monolithic ETCS"
 
-  it should "prove System" in withMathematica { implicit tool =>
+  ignore should "prove System" in withMathematica { implicit tool =>
     val t = Globals.t
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\Mono.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
+    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
 
     val invariant =
       """b>0
@@ -910,7 +916,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   //Z3
-
+/*
   behavior of "Component-based ETCS Z3"
 
   it should "prove RBC Component" in withZ3 { implicit tool =>
@@ -1089,13 +1095,13 @@ class PerformanceTest extends TacticTestBase {
     sysCtr shouldBe 'verified
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
-
+*/
   behavior of "Monolithic ETCS Z3"
 
-  it should "prove System" in withZ3 { implicit tool =>
+  ignore should "prove System" in withZ3 { implicit tool =>
     val t = Globals.t
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\Mono.kyx")))
+    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
 
     val invariant =
       """b>0
@@ -1141,15 +1147,12 @@ class PerformanceTest extends TacticTestBase {
     proveBy(s, tactic) shouldBe 'proved
   }
 
-
   /*============================*
    * Case Study 2 - Robix (pt5) *
    *============================*/
-
+  /*
   //Mathematica
-
   behavior of "Component-based Robix"
-
   it should "prove Robot Component" in withMathematica { implicit tool =>
     val t = Globals.runT
 
@@ -1330,7 +1333,6 @@ class PerformanceTest extends TacticTestBase {
     }
     }
   }
-
   // hack because of KeYmaeraX limitations
   it should "prove Composition" in withMathematica { implicit tool =>
     val robCtr: Contract = Contract.load("pt5-robot.cbcps")
@@ -1369,65 +1371,19 @@ class PerformanceTest extends TacticTestBase {
     println("CTR: " + sysCtr.isVerified())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
-
+  */
   behavior of "Monolithic Robix"
 
-  //Tactic missing!
   ignore should "prove System" in withMathematica { implicit tool =>
-    val t = Globals.t
     val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
+    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
 
-    val invariant =
-      """v >= 0
-        | & dx^2+dy^2 = 1
-        | & xo = xor & yo = yor
-        | & (v = 0 | abs(x-xo) > v^2 / (2*B) + V*(v/B)
-        |          | abs(y-yo) > v^2 / (2*B) + V*(v/B))""".stripMargin.asFormula
-
-    def di(a: String): DependentPositionTactic = diffInvariant(
-      "0<=t".asFormula,
-      "dx^2 + dy^2 = 1".asFormula,
-      s"v = old(v) + $a*t".asFormula,
-      s"-t * (v - $a/2*t) <= x - old(x) & x - old(x) <= t * (v - $a/2*t)".asFormula,
-      s"-t * (v - $a/2*t) <= y - old(y) & y - old(y) <= t * (v - $a/2*t)".asFormula,
-      "-t * V <= xo - old(xo) & xo - old(xo) <= t * V".asFormula,
-      "-t * V <= yo - old(yo) & yo - old(yo) <= t * V".asFormula)
-
-    val dw: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 5 /* 5 old(...) in DI */ & (andL('_) *) &
-      print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
-
-    def accArithTactic: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
-      //@todo auto-transform
-      replaceTransform("ep".asTerm, "t".asTerm)(-8) & speculativeQE & print("Proved acc arithmetic")
-
-    val tactic = implyR('_) & (andL('_) *) & loop(invariant)('R) < (
-      /* base case */ print("Base case...") & speculativeQE & print("Base case done"),
-      /* use case */ print("Use case...") & speculativeQE & print("Use case done"),
-      /* induction step */ print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
-      print("Braking branch 1") & di("-B")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Braking branch 1 done"),
-      print("Braking branch 2") & di("-B")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Braking branch 2 done"),
-      print("Stopped branch 1") & di("0")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Stopped branch 1 done"),
-      print("Acceleration branch 1") & hideL(Find.FindL(0, Some("v=0|abs(x-xo)>v^2/(2*B)+V*(v/B)|abs(y-yo)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di("a")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(hideFactsAbout("dx", "dy", "dxo", "dyo", "k", "k_0") partial) < (
-        hideFactsAbout("y", "yo") & accArithTactic,
-        hideFactsAbout("x", "xo") & accArithTactic
-      ) & print("Acceleration branch 1 done"),
-      print("Stopped branch 1") & di("0")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Stopped branch 2 done"),
-      print("Acceleration branch 2") & hideL(Find.FindL(0, Some("v=0|abs(x-xo)>v^2/(2*B)+V*(v/B)|abs(y-yo)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di("a")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(hideFactsAbout("dx", "dy", "dxo", "dyo", "k", "k_0") partial) < (
-        hideFactsAbout("y", "yo") & accArithTactic,
-        hideFactsAbout("x", "xo") & accArithTactic
-      ) & print("Acceleration branch 2 done")
-    ) & print("Induction step done")
-    ) & print("Proof done")
-
-    proveBy(s, tactic) shouldBe 'proved
+    proveBy(s, t) shouldBe 'proved
   }
 
-
   //Z3
+  /*
   behavior of "Component-based Robix Z3"
-
   it should "prove Robot Component" in withZ3 { implicit tool =>
     val t = Globals.runT
 
@@ -1610,7 +1566,6 @@ class PerformanceTest extends TacticTestBase {
     }
     }
   }
-
   // hack because of KeYmaeraX limitations
   it should "prove Composition" in withZ3 { implicit tool =>
     val robCtr: Contract = Contract.load("pt5-robot-Z3.cbcps")
@@ -1640,7 +1595,7 @@ class PerformanceTest extends TacticTestBase {
 
     //Compose
     Contract.hack = 1
-    val verify = false
+    val verify = true
     val sysCtr: Contract = Contract.composeWithLemmas(robCtr, obsCtr, X, cpo, rbcSc, trainSc, verify)
     Contract.hack = 0
 
@@ -1649,66 +1604,20 @@ class PerformanceTest extends TacticTestBase {
     //    println("CTR: " + sysCtr.contract())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
-
+  */
   behavior of "Monolithic Robix Z3"
 
-  //Tactic missing!
   ignore should "prove System" in withZ3 { implicit tool =>
-    val t = Globals.t
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Mono.kyx")))
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
+    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
 
-    val invariant =
-      """v >= 0
-        | & dx^2+dy^2 = 1
-        | & xo = xor & yo = yor
-        | & (v = 0 | abs(x-xo) > v^2 / (2*B) + V*(v/B)
-        |          | abs(y-yo) > v^2 / (2*B) + V*(v/B))""".stripMargin.asFormula
-
-    def di(a: String): DependentPositionTactic = diffInvariant(
-      "0<=t".asFormula,
-      "dx^2 + dy^2 = 1".asFormula,
-      s"v = old(v) + $a*t".asFormula,
-      s"-t * (v - $a/2*t) <= x - old(x) & x - old(x) <= t * (v - $a/2*t)".asFormula,
-      s"-t * (v - $a/2*t) <= y - old(y) & y - old(y) <= t * (v - $a/2*t)".asFormula,
-      "-t * V <= xo - old(xo) & xo - old(xo) <= t * V".asFormula,
-      "-t * V <= yo - old(yo) & yo - old(yo) <= t * V".asFormula)
-
-    val dw: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 5 /* 5 old(...) in DI */ & (andL('_) *) &
-      print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
-
-    def accArithTactic: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
-      //@todo auto-transform
-      replaceTransform("ep".asTerm, "t".asTerm)(-8) & speculativeQE & print("Proved acc arithmetic")
-
-    val tactic = implyR('_) & (andL('_) *) & loop(invariant)('R) < (
-      /* base case */ print("Base case...") & speculativeQE & print("Base case done"),
-      /* use case */ print("Use case...") & speculativeQE & print("Use case done"),
-      /* induction step */ print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
-      print("Braking branch 1") & di("-B")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Braking branch 1 done"),
-      print("Braking branch 2") & di("-B")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Braking branch 2 done"),
-      print("Stopped branch 1") & di("0")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Stopped branch 1 done"),
-      print("Acceleration branch 1") & hideL(Find.FindL(0, Some("v=0|abs(x-xo)>v^2/(2*B)+V*(v/B)|abs(y-yo)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di("a")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(hideFactsAbout("dx", "dy", "dxo", "dyo", "k", "k_0") partial) < (
-        hideFactsAbout("y", "yo") & accArithTactic,
-        hideFactsAbout("x", "xo") & accArithTactic
-      ) & print("Acceleration branch 1 done"),
-      print("Stopped branch 1") & di("0")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(speculativeQE) & print("Stopped branch 2 done"),
-      print("Acceleration branch 2") & hideL(Find.FindL(0, Some("v=0|abs(x-xo)>v^2/(2*B)+V*(v/B)|abs(y-yo)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di("a")(1) & dw & prop & OnAll(((cohide(1) & byUS("= reflexive")) | skip) partial) & OnAll(hideFactsAbout("dx", "dy", "dxo", "dyo", "k", "k_0") partial) < (
-        hideFactsAbout("y", "yo") & accArithTactic,
-        hideFactsAbout("x", "xo") & accArithTactic
-      ) & print("Acceleration branch 2 done")
-    ) & print("Induction step done")
-    ) & print("Proof done")
-
-    proveBy(s, tactic) shouldBe 'proved
+    proveBy(s, t) shouldBe 'proved
   }
 
   /*=========================================*
    * Case Study 3 - Local Lane Control (pt6) *
    *=========================================*/
-
+  /*
   //Mathematica
   behavior of "Component-based LLC"
 
@@ -1895,80 +1804,19 @@ class PerformanceTest extends TacticTestBase {
     println("CTR: " + sysCtr.contract())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
-
+*/
   behavior of "Monolithic LLC"
 
   it should "prove System" in withMathematica { implicit tool =>
-    val t = Globals.runT
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llcs.kyx")))
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\system.kyx")))
+    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llcs.kyx")))
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
+    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
 
-    val invariant =
-      s"""ep > 0
-         | & A >= 0
-         | & B > 0
-         | & 0<= vf & xf < xlIn
-         | & xf+vf^2/(2*B) < xlIn + vlIn^2/(2*B)
-         | & 0 <= $t & $t <= ep
-         | & 0 <= vlIn
-         | & -B*$t <= vlIn-vlIn0
-         | & vlIn-vlIn0 <= A*$t
-         | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t
-         | & xl-xl0 >= (vl+vl0)/2*$t
-         | & 0 <= vl
-         | & vlIn=vl
-         | & xlIn=xl
-         | & vlIn0=vl0
-         | & xlIn0=xl0""".stripMargin.asFormula
-
-
-    println(invariant)
-
-    //    val sysStepTactic = chase(1) & normalize & print("here") & //(andR('R), skip, skip) &
-    //      OnAll(diffSolve(1) partial) & print("branches...") < (
-    //      normalize & OnAll(speculativeQE) & print("brake1"),
-    //      normalize & OnAll(speculativeQE) & print("brake2"),
-    //      normalize & OnAll(speculativeQE) & print("stop1"),
-    //      print("acc1"),
-    //      normalize & OnAll(speculativeQE) & print("stop2"),
-    //      print("acc2")
-    //      //      normalize(betaRule, skip, skip) & print("branches...")
-    //    )
-    //
-    //    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
-    //      skip, //print("Base case") & baseTactic & print("Base case done"),
-    //      skip, //print("Use case") & useTactic & print("Use case done"),
-    //      print("Induction step") & sysStepTactic & printIndexed("Induction step done")
-    //    ) & print("Proof done")
-
-
-    val tactic = unfoldProgramNormalize & loop(invariant)(1) < (
-      QE,
-      QE,
-      unfoldProgramNormalize & print("HERE1") < (
-        diffSolve(1) & QE,
-        diffSolve(1) & QE,
-        diffSolve(1) & allR(1) & implyR(1) & implyR(1) & allL("t_".asTerm)(-24) & implyL(-24) & print("HERE2") < (
-          hideR(1) & QE,
-          hideL(-6) & transform("xf+vf^2/(2*B)+(A/B+1)*(A/2*t_^2+t_*vf) < xlr+vlr^2/(2*B)".asFormula)(-14) & andL(-23) & andL(-24) & andR(1) < (
-            QE,
-            andR(1) & print("HERE3") < (
-              hideL(-1) & hideL(-6) & hideL(-23) & hideL(-19) & hideL(-16) & hideL(-13) & QE,
-              andR(1) < (
-                hideL(-1) & hideL(-6) & hideL(-23) & hideL(-9) & hideL(-12) & hideL(-14) & hideL(-16) & hideL(-1) & QE,
-                hideL(-14) & QE
-              )
-            )
-          )
-        )
-      )
-    )
-
-    proveBy(s, tactic) shouldBe 'proved
+    proveBy(s, t) shouldBe 'proved
   }
-
+/*
   //Z3
-  behavior of "Component-based LLC"
+  behavior of "Component-based LLC Z3"
 
   it should "prove Leader Component" in withZ3 { implicit tool =>
     val t = Globals.runT
@@ -2155,77 +2003,14 @@ class PerformanceTest extends TacticTestBase {
     //      println("CTR: " + sysCtr.contract())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
+*/
+  behavior of "Monolithic LLC Z3"
 
-  behavior of "Monolithic LLC"
+  ignore should "prove System" in withZ3 { implicit tool =>
+    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
+    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
 
-  it should "prove System" in withZ3 { implicit tool =>
-    val t = Globals.runT
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\system.kyx")))
-
-    val invariant =
-      s"""ep > 0
-         | & A >= 0
-         | & B > 0
-         | & 0<= vf & xf < xlIn
-         | & xf+vf^2/(2*B) < xlIn + vlIn^2/(2*B)
-         | & 0 <= $t & $t <= ep
-         | & 0 <= vlIn
-         | & -B*$t <= vlIn-vlIn0
-         | & vlIn-vlIn0 <= A*$t
-         | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t
-         | & xl-xl0 >= (vl+vl0)/2*$t
-         | & 0 <= vl
-         | & vlIn=vl
-         | & xlIn=xl
-         | & vlIn0=vl0
-         | & xlIn0=xl0""".stripMargin.asFormula
-
-
-    println(invariant)
-
-    //    val sysStepTactic = chase(1) & normalize & print("here") & //(andR('R), skip, skip) &
-    //      OnAll(diffSolve(1) partial) & print("branches...") < (
-    //      normalize & OnAll(speculativeQE) & print("brake1"),
-    //      normalize & OnAll(speculativeQE) & print("brake2"),
-    //      normalize & OnAll(speculativeQE) & print("stop1"),
-    //      print("acc1"),
-    //      normalize & OnAll(speculativeQE) & print("stop2"),
-    //      print("acc2")
-    //      //      normalize(betaRule, skip, skip) & print("branches...")
-    //    )
-    //
-    //    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
-    //      skip, //print("Base case") & baseTactic & print("Base case done"),
-    //      skip, //print("Use case") & useTactic & print("Use case done"),
-    //      print("Induction step") & sysStepTactic & printIndexed("Induction step done")
-    //    ) & print("Proof done")
-
-    val tactic = chase(1) & loop(invariant)(1) < (
-      QE & print("1"),
-      QE & print("2"),
-      chase(1) & normalize & print("3") < (
-        diffSolve(1) & QE,
-        diffSolve(1) & QE,
-        diffSolve(1) & QE,
-        diffSolve(1) & QE,
-        diffSolve(1) & QE,
-        diffSolve(1) & allR(1) & implyR(1) & implyR(1) & allL("t_".asTerm)(-24) & implyL(-24) < (
-          hideR(1) & QE,
-          hideL(-6) & printIndexed("rt")
-          //            & replaceTransform("xf+vf^2/(2*B)+(A/B+1)*(A/2*t_^2+t_*vf) < xlr+vlr^2/(2*B)".asFormula,-14) & andL(-23) & andL(-24) & andR(1)  <(
-          //            QE,
-          //            andR(1) & <(
-          //              hideL(-1) & hideL(-6) & hideL(-23) & hideL(-19) & hideL(-16) & hideL(-13) & QE,
-          //              andR(1) & <(
-          //                hideL(-1) & hideL(-6) & hideL(-23) & hideL(-9) & hideL(-12) & hideL(-14) & hideL(-16) & hideL(-1) & QE,
-          //                hideL(-14) & QE
-          //              )
-        )
-      )
-    )
-
-    proveBy(s, tactic) shouldBe 'proved
+    proveBy(s, t) shouldBe 'proved
   }
 
 }

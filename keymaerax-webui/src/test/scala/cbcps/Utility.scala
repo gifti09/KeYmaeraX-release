@@ -270,12 +270,12 @@ object Lemmas {
 
       //Remove Differential Equations
       if (hack != 0) {
-        t = t & print("hacking") & useAt(", commute", PosInExpr(1 :: Nil))(pos)
+        t = t & print("hacking1") & useAt(", commute", PosInExpr(1 :: Nil))(pos) & print("hacking1.5")
         if (hack == 1) {
-          t = t & useAt("DGiA", PosInExpr(1 :: Nil))(pos) * 3 & useAt(", commute", PosInExpr(1 :: Nil))(pos) * 2
+          t = t & useAt("DGiA", PosInExpr(1 :: Nil))(pos) * 3 & print("hacking2") & useAt(", commute", PosInExpr(1 :: Nil))(pos) * 2 & print("hacking4")
         }
-        else if (hack == 0) {
-          t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) * 6 & useAt("DGiA", PosInExpr(1 :: Nil))(pos) & useAt(", commute", PosInExpr(1 :: Nil))(pos) * 7
+        else if (hack == 2) {
+          t = t & useAt(", commute", PosInExpr(1 :: Nil))(pos) * 6 & print("hacking3") & useAt("DGiA", PosInExpr(1 :: Nil))(pos) & useAt(", commute", PosInExpr(1 :: Nil))(pos) * 7 & print("hacking5")
         }
         t = t & closeId
       }
