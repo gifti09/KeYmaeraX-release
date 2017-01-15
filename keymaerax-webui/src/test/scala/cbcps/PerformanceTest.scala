@@ -1807,18 +1807,18 @@ class PerformanceTest extends TacticTestBase {
 */
   behavior of "Monolithic LLC"
 
-  it should "prove System" in withMathematica { implicit tool =>
+  ignore should "prove System" in withMathematica { implicit tool =>
     //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llcs.kyx")))
     val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
     val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
 
     proveBy(s, t) shouldBe 'proved
   }
-/*
+
   //Z3
   behavior of "Component-based LLC Z3"
 
-  it should "prove Leader Component" in withZ3 { implicit tool =>
+  ignore should "prove Leader Component" in withZ3 { implicit tool =>
     val t = Globals.runT
 
     val lead = new Component("Leader-Z3",
@@ -1862,7 +1862,7 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(leadCtr, "pt6-leader-Z3.cbcps")
   }
 
-  it should "prove Follower Component" in withZ3 { implicit tool =>
+  ignore should "prove Follower Component" in withZ3 { implicit tool =>
     val t = Globals.runT
 
     val follow = new Component("Follower-Z3",
@@ -1908,23 +1908,21 @@ class PerformanceTest extends TacticTestBase {
     followCtr.verifyUseCase(useTactic)
 
     val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
-      OnAll(diffSolve(1) partial) < (
-        normalize & OnAll(speculativeQE),
-        normalize & OnAll(speculativeQE),
-        (normalize(betaRule, skip, skip) < (
+      OnAll(diffSolve(1) & allR('R) & implyR('R)*2 & allL("s_".asVariable, "t_".asVariable)('Llast) & implyL('Llast) < (hide(1) & QE, skip)) < (
+        print("1a") & normalize & OnAll(speculativeQE) & print("1b"),
+        print("2a") & normalize & OnAll(speculativeQE) & print("2b"),
+        print("3a") & (normalize(betaRule, skip, skip) < (
           QE,
-          allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
-            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
-            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)
+          print("3b")
+            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)& print("3c")
+            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)& print("3d")
             & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
             & hide(-13) & hide(-12) & hide(-6) & QE,
-          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
-            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-22)
+          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13) & print("3e")
+            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)& print("3f")
             & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-            & allL("s_".asVariable, "t_".asVariable)(-17) & implyL(-17) < (hide(1) & QE, skip) & andL(-17)
             & hide(-13) & hide(-12) & hide(-6)
             & QE,
-          QE,
           QE
         )
           )
@@ -1937,7 +1935,7 @@ class PerformanceTest extends TacticTestBase {
     Contract.save(followCtr, "pt6-follower-Z3.cbcps")
   }
 
-  it should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
+  ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
     val leadCtr: Contract = Contract.load("pt6-leader-Z3.cbcps")
     val followCtr: Contract = Contract.load("pt6-follower-Z3.cbcps")
 
@@ -1969,7 +1967,7 @@ class PerformanceTest extends TacticTestBase {
     }
   }
 
-  it should "prove Composition" in withZ3 { implicit tool =>
+  ignore should "prove Composition" in withZ3 { implicit tool =>
     val leadCtr: Contract = Contract.load("pt6-leader-Z3.cbcps")
     val followCtr: Contract = Contract.load("pt6-follower-Z3.cbcps")
 
@@ -2003,10 +2001,10 @@ class PerformanceTest extends TacticTestBase {
     //      println("CTR: " + sysCtr.contract())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
-*/
+
   behavior of "Monolithic LLC Z3"
 
-  ignore should "prove System" in withZ3 { implicit tool =>
+  it should "prove System" in withZ3 { implicit tool =>
     val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
     val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
 
