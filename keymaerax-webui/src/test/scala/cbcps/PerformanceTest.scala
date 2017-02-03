@@ -707,18 +707,14 @@ class PerformanceTest extends TacticTestBase {
     val rbcStepTactic = master()
     rbcCtr.verifyStep(rbcStepTactic)
 
+
     rbcCtr shouldBe 'verified
 
     Contract.save(rbcCtr, "pt4-rbc"+ext+".cbcps")
   }
-
-  //Mathematica
-  behavior of "Component-based ETCS"
-  ignore should "prove RBC Component" in withMathematica { implicit tool =>
-    cb_ETCS_rbc()
-  }
-  ignore should "prove Train Component" in withMathematica { implicit tool =>
-    val train = new Component("Train",
+  /* RBC train */
+  private def cb_ETCS_train(ext: String="") = {
+    val train = new Component("Train"+ext,
       """{
         |    ?v <= vdesIn; a:=*; ?-b <= a & a <= A;
         | ++ ?v >= vdesIn; a:=*; ?-b <= a & a <  0;
@@ -763,17 +759,30 @@ class PerformanceTest extends TacticTestBase {
         |& ep>0
         |& A>=0""".stripMargin.asFormula)
 
+    println(trainCtr.contract())
+
+    /*
     trainCtr.verifyBaseCase(baseTactic)
     trainCtr.verifyUseCase(useTactic)
 
-    //--> NOPE @todo proves only when notL is disabled in normalize, because diffSolve hides facts
-    val trainStepTactic = master() //implyR('R) & chase(1) & normalize(andR('R), skip, skip) & OnAll(diffSolve()('R)) & OnAll(normalize partial) & OnAll(speculativeQE)
+    val trainStepTactic = master()
 
     trainCtr.verifyStep(trainStepTactic)
 
     trainCtr shouldBe 'verified
 
-    Contract.save(trainCtr, "pt4-train.cbcps")
+    Contract.save(trainCtr, "pt4-train"+ext+".cbcps")
+    */
+  }
+
+
+  //Mathematica
+  behavior of "Component-based ETCS"
+  ignore should "prove RBC Component" in withMathematica { implicit tool =>
+    cb_ETCS_rbc()
+  }
+  ignore should "prove Train Component" in withMathematica { implicit tool =>
+    cb_ETCS_train()
   }
   ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
     val rbcCtr: Contract = Contract.load("pt4-rbc.cbcps")
@@ -890,68 +899,12 @@ class PerformanceTest extends TacticTestBase {
   }
 
   //Z3
-
   behavior of "Component-based ETCS Z3"
   ignore should "prove RBC Component" in withZ3 { implicit tool =>
     cb_ETCS_rbc("-Z3")
   }
-  ignore should "prove Train Component" in withZ3 { implicit tool =>
-    val train = new Component("Train-Z3",
-      """{
-        |    ?v <= vdesIn; a:=*; ?-b <= a & a <= A;
-        | ++ ?v >= vdesIn; a:=*; ?-b <= a & a <  0;
-        |}
-        |SB := (v^2 - dIn^2)/(2*b) + (A/b+1)*(A/2*ep^2+ep*v);
-        |{
-        |    ?  mIn-z<=SB | stateIn=brake; a := -b;
-        | ++ ?!(mIn-z<=SB | stateIn=brake);
-        |}""".stripMargin.asProgram,
-      ODESystem(
-        s"""z'=v,
-           |v' = a""".stripMargin.asDifferentialProgram, s"v >= 0".asFormula)
-    )
-    val trainI = new Interface(
-      mutable.LinkedHashMap(
-        Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> ("(stateIn=brake & mIn0=mIn & dIn0=dIn) | (stateIn=drive & dIn >= 0 & dIn0^2 - dIn^2 <= 2*b*(mIn-mIn0) & vdesIn >= 0)").asFormula
-      ),
-      mutable.LinkedHashMap.empty,
-      mutable.LinkedHashMap(Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("stateIn0".asVariable, "mIn0".asVariable, "dIn0".asVariable, "vdesIn0".asVariable))
-    )
-    val trainCtr = new DelayContract(train, trainI,
-      """A>=0
-        | & b>0
-        | & drive=0
-        | & brake=1
-        | & stateIn=drive
-        | & vdesIn=0
-        | & dIn=0
-        | & v=0
-        | & z<=mIn
-        | & dIn0=dIn
-        | & mIn0=mIn
-        | & stateIn0=stateIn
-        | & vdesIn0=vdesIn
-        | & ep>0""".stripMargin.asFormula,
-      "z >= mIn -> v <= dIn".asFormula,
-      """v^2 - dIn^2 <= 2*b*(mIn-z)
-        |& dIn >= 0
-        |& drive=0
-        |& brake=1
-        |& b>0
-        |& ep>0
-        |& A>=0""".stripMargin.asFormula)
-
-    trainCtr.verifyBaseCase(baseTactic)
-    trainCtr.verifyUseCase(useTactic)
-
-    //--> NOPE @todo proves only when notL is disabled in normalize, because diffSolve hides facts
-    val trainStepTactic = master() //implyR('R) & chase(1) & normalize & OnAll(diffSolve('R)) & OnAll(QE)  //& normalize(andR('R), skip, skip) & OnAll(diffSolve('R)) & OnAll(normalize) & OnAll(speculativeQE) //master()
-
-    trainCtr.verifyStep(trainStepTactic)
-
-    trainCtr shouldBe 'verified
-
-    Contract.save(trainCtr, "pt4-train-Z3.cbcps")
+  it should "prove Train Component" in withZ3 { implicit tool =>
+   cb_ETCS_train("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
     val rbcCtr: Contract = Contract.load("pt4-rbc-Z3.cbcps")
@@ -1168,6 +1121,7 @@ class PerformanceTest extends TacticTestBase {
 
     Contract.save(robCtr, "pt5-robot"+ext+".cbcps")
   }
+  /* Obstacle Component */
   private def cb_robix_obstacle(ext: String="") = {
     val t = Globals.runT
 
@@ -1307,13 +1261,13 @@ class PerformanceTest extends TacticTestBase {
 
   //Z3
   behavior of "Component-based Robix Z3"
-  it should "prove Robot Component" in withZ3 { implicit tool =>
+  ignore should "prove Robot Component" in withZ3 { implicit tool =>
    cb_robix_robot("-Z3")
   }
-  it should "prove Obstacle Component" in withZ3 { implicit tool =>
+  ignore should "prove Obstacle Component" in withZ3 { implicit tool =>
    cb_robix_obstacle("-Z3")
   }
-  it should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
+  ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
     val robCtr: Contract = Contract.load("pt5-robot-Z3.cbcps")
     val obsCtr: Contract = Contract.load("pt5-obstacle-Z3.cbcps")
 
@@ -1345,7 +1299,7 @@ class PerformanceTest extends TacticTestBase {
     }
   }
   // hack because of KeYmaeraX limitations
-  it should "prove Composition" in withZ3 { implicit tool =>
+  ignore should "prove Composition" in withZ3 { implicit tool =>
     val robCtr: Contract = Contract.load("pt5-robot-Z3.cbcps")
     val obsCtr: Contract = Contract.load("pt5-obstacle-Z3.cbcps")
 
@@ -1384,7 +1338,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   behavior of "Monolithic Robix Z3"
-  it should "prove System" in withZ3 { implicit tool =>
+  ignore should "prove System" in withZ3 { implicit tool =>
     val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
     val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
 
