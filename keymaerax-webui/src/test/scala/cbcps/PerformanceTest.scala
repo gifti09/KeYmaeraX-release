@@ -386,8 +386,8 @@ class PerformanceTest extends TacticTestBase {
    *====================================================*/
 
   behavior of "Z3 Test"
-  ignore should "prove simple formula" in withZ3{ implicit tool =>
-    TactixLibrary.proveBy("a>0->a>-1".asFormula,QE) shouldBe 'proved
+  ignore should "prove simple formula" in withZ3 { implicit tool =>
+    TactixLibrary.proveBy("a>0->a>-1".asFormula, QE) shouldBe 'proved
   }
 
   //Mathematica
@@ -498,7 +498,7 @@ class PerformanceTest extends TacticTestBase {
   behavior of "Monolithic Robot Obstacle Avoidance"
   ignore should "prove System" in withMathematica { implicit tool =>
     val t = Globals.t
-//    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
+    //    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\3-robot\\Mono.kyx")))
 
     val invariant =
@@ -621,7 +621,7 @@ class PerformanceTest extends TacticTestBase {
     val sysCtr: Contract = Contract.composeWithLemmas(obsCtr, robCtr, X, cpo, obsSc, robotSc)
 
     sysCtr shouldBe 'verified
-//    println("CTR: " + sysCtr.contract())
+    //    println("CTR: " + sysCtr.contract())
     //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
   }
 
@@ -658,8 +658,8 @@ class PerformanceTest extends TacticTestBase {
    *===========================*/
 
   /* RBC component */
-  private def cb_ETCS_rbc(ext: String="") = {
-    val rbc = new Component("RBC"+ext,
+  private def cb_ETCS_rbc(ext: String = "") = {
+    val rbc = new Component("RBC" + ext,
       (
         """state := drive; m :=*; d :=*; vdes :=*; ?d >= 0 & d0^2 - d^2 <= 2*b*(m-m0) & vdes >= 0;
           |++ state := brake;"""
@@ -710,11 +710,12 @@ class PerformanceTest extends TacticTestBase {
 
     rbcCtr shouldBe 'verified
 
-    Contract.save(rbcCtr, "pt4-rbc"+ext+".cbcps")
+    Contract.save(rbcCtr, "pt4-rbc" + ext + ".cbcps")
   }
+
   /* RBC train */
-  private def cb_ETCS_train(ext: String="") = {
-    val train = new Component("Train"+ext,
+  private def cb_ETCS_train(ext: String = "") = {
+    val train = new Component("Train" + ext,
       """{
         |    ?v <= vdesIn; a:=*; ?-b <= a & a <= A;
         | ++ ?v >= vdesIn; a:=*; ?-b <= a & a <  0;
@@ -903,8 +904,8 @@ class PerformanceTest extends TacticTestBase {
   ignore should "prove RBC Component" in withZ3 { implicit tool =>
     cb_ETCS_rbc("-Z3")
   }
-  it should "prove Train Component" in withZ3 { implicit tool =>
-   cb_ETCS_train("-Z3")
+  ignore should "prove Train Component" in withZ3 { implicit tool =>
+    cb_ETCS_train("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
     val rbcCtr: Contract = Contract.load("pt4-rbc-Z3.cbcps")
@@ -1023,10 +1024,10 @@ class PerformanceTest extends TacticTestBase {
    * Case Study 2 - Robix (pt5) *
    *============================*/
   /* Robot Component */
-  private def cb_robix_robot(ext: String="") = {
+  private def cb_robix_robot(ext: String = "") = {
     val t = Globals.runT
 
-    val rob = new Component("Robix-Robot"+ext,
+    val rob = new Component("Robix-Robot" + ext,
       (
         """{ /* brake on current curve or remain stopped */
           | { a := -B; }
@@ -1119,13 +1120,14 @@ class PerformanceTest extends TacticTestBase {
 
     robCtr shouldBe 'verified
 
-    Contract.save(robCtr, "pt5-robot"+ext+".cbcps")
+    Contract.save(robCtr, "pt5-robot" + ext + ".cbcps")
   }
+
   /* Obstacle Component */
-  private def cb_robix_obstacle(ext: String="") = {
+  private def cb_robix_obstacle(ext: String = "") = {
     val t = Globals.runT
 
-    val obs = new Component("Robix-Obstacle"+ext,
+    val obs = new Component("Robix-Obstacle" + ext,
       """dxo :=*;
         |dyo :=*;
         |?dxo^2 + dyo^2 <= V^2;""".stripMargin.asProgram,
@@ -1162,15 +1164,15 @@ class PerformanceTest extends TacticTestBase {
 
     println(obsCtr.contract())
 
-//    obsCtr.verifyBaseCase(baseTactic)
-//    obsCtr.verifyUseCase(useTactic)
-//
-//    val obsStepTactic = master()
-//    obsCtr.verifyStep(obsStepTactic)
-//
-//    obsCtr shouldBe 'verified
-//
-//    Contract.save(obsCtr, "pt5-obstacle"+ext+".cbcps")
+    //    obsCtr.verifyBaseCase(baseTactic)
+    //    obsCtr.verifyUseCase(useTactic)
+    //
+    //    val obsStepTactic = master()
+    //    obsCtr.verifyStep(obsStepTactic)
+    //
+    //    obsCtr shouldBe 'verified
+    //
+    //    Contract.save(obsCtr, "pt5-obstacle"+ext+".cbcps")
   }
 
   //Mathematica
@@ -1262,10 +1264,10 @@ class PerformanceTest extends TacticTestBase {
   //Z3
   behavior of "Component-based Robix Z3"
   ignore should "prove Robot Component" in withZ3 { implicit tool =>
-   cb_robix_robot("-Z3")
+    cb_robix_robot("-Z3")
   }
   ignore should "prove Obstacle Component" in withZ3 { implicit tool =>
-   cb_robix_obstacle("-Z3")
+    cb_robix_obstacle("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
     val robCtr: Contract = Contract.load("pt5-robot-Z3.cbcps")
@@ -1349,12 +1351,11 @@ class PerformanceTest extends TacticTestBase {
    * Case Study 3 - Local Lane Control (pt6) *
    *=========================================*/
 
-  //Mathematica
-  behavior of "Component-based LLC"
-  ignore should "prove Leader Component" in withMathematica { implicit tool =>
+  /* leader */
+  private def cb_llc_leader(ext: String = "") = {
     val t = Globals.runT
 
-    val lead = new Component("Leader",
+    val lead = new Component("Leader" + ext,
       "al :=*; ?-B <= al & al <= A;".asProgram,
       ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
     )
@@ -1384,20 +1385,23 @@ class PerformanceTest extends TacticTestBase {
          | & -B*$t <= vl-vl0
          | & vl-vl0 <= A*$t""".stripMargin.asFormula)
 
-    leadCtr.verifyBaseCase(baseTactic)
-    leadCtr.verifyUseCase(useTactic)
+    println(leadCtr.contract())
 
-    val leadStepTactic = master()
-    leadCtr.verifyStep(leadStepTactic)
-
-    leadCtr shouldBe 'verified
-
-    Contract.save(leadCtr, "pt6-leader.cbcps")
+    //    leadCtr.verifyBaseCase(baseTactic)
+    //    leadCtr.verifyUseCase(useTactic)
+    //
+    //    val leadStepTactic = master()
+    //    leadCtr.verifyStep(leadStepTactic)
+    //
+    //    leadCtr shouldBe 'verified
+    //
+    //    Contract.save(leadCtr, "pt6-leader"+ext+".cbcps")
   }
-  ignore should "prove Follower Component" in withMathematica { implicit tool =>
+  /* follower */
+  private def cb_llc_follower(ext: String = "") = {
     val t = Globals.runT
 
-    val follow = new Component("Follower",
+    val follow = new Component("Follower"+ext,
       """{
         | af := -B;
         |  ++ ?vf=0; af:=0;
@@ -1436,37 +1440,48 @@ class PerformanceTest extends TacticTestBase {
          | & vlIn-vlIn0 <= A*$t
          | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t""".stripMargin.asFormula)
 
-    followCtr.verifyBaseCase(baseTactic)
-    followCtr.verifyUseCase(useTactic)
+    println(followCtr.contract())
 
-    val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
-      OnAll(diffSolve(1) partial) < (
-        normalize & OnAll(speculativeQE),
-        normalize & OnAll(speculativeQE),
-        (normalize(betaRule, skip, skip) < (
-          QE,
-          allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
-            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
-            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)
-            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-            & hide(-13) & hide(-12) & hide(-6) & QE,
-          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
-            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-22)
-            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-            & allL("s_".asVariable, "t_".asVariable)(-17) & implyL(-17) < (hide(1) & QE, skip) & andL(-17)
-            & hide(-13) & hide(-12) & hide(-6)
-            & QE,
-          QE,
-          QE
-        )
-          )
-      )
+//    followCtr.verifyBaseCase(baseTactic)
+//    followCtr.verifyUseCase(useTactic)
+//
+//    val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
+//      OnAll(diffSolve(1) partial) < (
+//        normalize & OnAll(speculativeQE),
+//        normalize & OnAll(speculativeQE),
+//        (normalize(betaRule, skip, skip) < (
+//          QE,
+//          allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
+//            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
+//            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)
+//            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
+//            & hide(-13) & hide(-12) & hide(-6) & QE,
+//          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
+//            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-22)
+//            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
+//            & allL("s_".asVariable, "t_".asVariable)(-17) & implyL(-17) < (hide(1) & QE, skip) & andL(-17)
+//            & hide(-13) & hide(-12) & hide(-6)
+//            & QE,
+//          QE,
+//          QE
+//        )
+//          )
+//      )
+//
+//    followCtr.verifyStep(followStepTactic)
+//
+//    followCtr shouldBe 'verified
+//
+//    Contract.save(followCtr, "pt6-follower"+ext+".cbcps")
+  }
 
-    followCtr.verifyStep(followStepTactic)
-
-    followCtr shouldBe 'verified
-
-    Contract.save(followCtr, "pt6-follower.cbcps")
+  //Mathematica
+  behavior of "Component-based LLC"
+  ignore should "prove Leader Component" in withMathematica { implicit tool =>
+    cb_llc_leader()
+  }
+  ignore should "prove Follower Component" in withMathematica { implicit tool =>
+    cb_llc_follower()
   }
   ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
     val leadCtr: Contract = Contract.load("pt6-leader.cbcps")
@@ -1544,119 +1559,10 @@ class PerformanceTest extends TacticTestBase {
   //Z3
   behavior of "Component-based LLC Z3"
   ignore should "prove Leader Component" in withZ3 { implicit tool =>
-    val t = Globals.runT
-
-    val lead = new Component("Leader-Z3",
-      "al :=*; ?-B <= al & al <= A;".asProgram,
-      ODESystem("xl' = vl, vl' = al".asDifferentialProgram, "vl >= 0".asFormula)
-    )
-    val leadI = new Interface(
-      mutable.LinkedHashMap.empty,
-      mutable.LinkedHashMap(
-        Seq("xl".asVariable, "vl".asVariable) -> (s"0 <= vl & -B*$t <= vl-vl0 & vl-vl0 <= A*$t & xl-xl0 >= (vl+vl0)/2*$t").asFormula
-      ),
-      mutable.LinkedHashMap(Seq("xl".asVariable, "vl".asVariable) -> Seq("xl0".asVariable, "vl0".asVariable))
-    )
-    val leadCtr = new DelayContract(lead, leadI,
-      ("""ep > 0
-         | & A >= 0
-         | & B > 0
-         | & xl = xl0
-         | & vl = vl0
-         | & 0 <= vl
-         | & t=tOld"""
-        ).stripMargin.asFormula,
-      True,
-      s"""ep > 0
-         | & A >= 0
-         | & B > 0
-         | & 0 <= $t & $t <= ep
-         | & xl-xl0 >= (vl+vl0)/2*$t
-         | & 0 <= vl
-         | & -B*$t <= vl-vl0
-         | & vl-vl0 <= A*$t""".stripMargin.asFormula)
-
-    leadCtr.verifyBaseCase(baseTactic)
-    leadCtr.verifyUseCase(useTactic)
-
-    val leadStepTactic = master()
-    leadCtr.verifyStep(leadStepTactic)
-
-    leadCtr shouldBe 'verified
-
-    Contract.save(leadCtr, "pt6-leader-Z3.cbcps")
+    cb_llc_leader("-Z3")
   }
-  ignore should "prove Follower Component" in withZ3 { implicit tool =>
-    val t = Globals.runT
-
-    val follow = new Component("Follower-Z3",
-      """{
-        | af := -B;
-        |  ++ ?vf=0; af:=0;
-        |  ++ ?xf + vf^2/(2*B) + (A/B+1)*(A/2*ep^2 + ep*vf) < xlIn + vlIn^2/(2*B); af :=*; ?-B <= af & af <= A;
-        | }""".stripMargin.asProgram,
-      ODESystem(
-        "xf' = vf,vf' = af".asDifferentialProgram, s"vf >= 0".asFormula)
-    )
-    val followI = new Interface(
-      mutable.LinkedHashMap(
-        Seq("xlIn".asVariable, "vlIn".asVariable) -> (s"0 <= vlIn & -B*$t <= vlIn-vlIn0 & vlIn-vlIn0 <= A*$t & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t").asFormula
-      ),
-      mutable.LinkedHashMap.empty,
-      mutable.LinkedHashMap(Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xlIn0".asVariable, "vlIn0".asVariable))
-    )
-    val followCtr = new DelayContract(follow, followI,
-      """ep > 0
-        | & A >= 0
-        | & B > 0
-        | & t = 0
-        | & vf >= 0
-        | & xf < xlIn & xf + vf^2/(2*B) < xlIn + vlIn^2/(2*B)
-        | & xlIn = xlIn0
-        | & vlIn = vlIn0
-        | & t = tOld
-        | & 0 <= vlIn""".stripMargin.asFormula,
-      "xf < xlIn".asFormula,
-      s"""ep > 0
-         | & A >= 0
-         | & B > 0
-         | & 0<= vf & xf < xlIn
-         | & xf+vf^2/(2*B) < xlIn + vlIn^2/(2*B)
-         | & 0 <= $t & $t <= ep
-         | & 0 <= vlIn
-         | & -B*$t <= vlIn-vlIn0
-         | & vlIn-vlIn0 <= A*$t
-         | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t""".stripMargin.asFormula)
-
-    followCtr.verifyBaseCase(baseTactic)
-    followCtr.verifyUseCase(useTactic)
-
-    val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
-      OnAll(diffSolve(1) & allR('R) & implyR('R)*2 & allL("s_".asVariable, "t_".asVariable)('Llast) & implyL('Llast) < (hide(1) & QE, skip)) < (
-        print("1a") & normalize & OnAll(speculativeQE) & print("1b"),
-        print("2a") & normalize & OnAll(speculativeQE) & print("2b"),
-        print("3a") & (normalize(betaRule, skip, skip) < (
-          QE,
-          print("3b")
-            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)& print("3c")
-            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)& print("3d")
-            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-            & hide(-13) & hide(-12) & hide(-6) & QE,
-          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13) & print("3e")
-            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)& print("3f")
-            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-            & hide(-13) & hide(-12) & hide(-6)
-            & QE,
-          QE
-        )
-          )
-      )
-
-    followCtr.verifyStep(followStepTactic)
-
-    followCtr shouldBe 'verified
-
-    Contract.save(followCtr, "pt6-follower-Z3.cbcps")
+  it should "prove Follower Component" in withZ3 { implicit tool =>
+    cb_llc_follower("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
     val leadCtr: Contract = Contract.load("pt6-leader-Z3.cbcps")
