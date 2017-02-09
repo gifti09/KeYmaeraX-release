@@ -21,6 +21,8 @@ import scala.collection.mutable
   */
 class PerformanceTest extends TacticTestBase {
 
+  val AT_HOME: Boolean = false
+
   def baseTactic: BelleExpr = QE
 
   def useTactic: BelleExpr = QE
@@ -658,7 +660,7 @@ class PerformanceTest extends TacticTestBase {
    *===========================*/
 
   /* RBC component */
-  private def cb_ETCS_rbc(ext: String = "") = {
+  private def cb_etcs_rbc(ext: String = "") = {
     val rbc = new Component("RBC" + ext,
       (
         """state := drive; m :=*; d :=*; vdes :=*; ?d >= 0 & d0^2 - d^2 <= 2*b*(m-m0) & vdes >= 0;
@@ -714,7 +716,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   /* RBC train */
-  private def cb_ETCS_train(ext: String = "") = {
+  private def cb_etcs_train(ext: String = "") = {
     val train = new Component("Train" + ext,
       """{
         |    ?v <= vdesIn; a:=*; ?-b <= a & a <= A;
@@ -776,253 +778,161 @@ class PerformanceTest extends TacticTestBase {
     */
   }
 
+  /* CPO and sidecondition */
+  private def cb_etcs_cpo_side(ext: String="") = {
+    val rbcCtr: Contract = Contract.load("pt4-rbc"+ext+".cbcps")
+    val trainCtr: Contract = Contract.load("pt4-train"+ext+".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable)
+    )
+
+    //CPO
+    rbcCtr.cpo(trainCtr, X).foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt4-cpo"+ext+"-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+
+    //Side Condition
+    rbcCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt4-rbc-side"+ext+"-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+    trainCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt4-train-side"+ext+"-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+  }
+
+  /* composition */
+  private def cb_etcs_composition(ext: String="") = {
+    val rbcCtr: Contract = Contract.load("pt4-rbc"+ext+".cbcps")
+    val trainCtr: Contract = Contract.load("pt4-train"+ext+".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable)
+    )
+
+    //CPO
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](rbcCtr.cpo(trainCtr, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("pt4-cpo"+ext+"-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Side Condition
+    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](rbcCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt4-rbc-side"+ext+"-" + v).get
+    }
+    }.toSeq: _*)
+    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](trainCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt4-train-side"+ext+"-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Compose
+    val sysCtr: Contract = Contract.composeWithLemmas(rbcCtr, trainCtr, X, cpo, rbcSc, trainSc)
+
+    sysCtr shouldBe 'verified
+    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    //    println("CTR: " + sysCtr.contract())
+  }
+
+  /* monolithic */
+  private def mon_etcs = {
+    val t = Globals.t
+    val s = {
+      if (AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
+    }
+
+    val invariant =
+      """b>0
+        | & drive=0
+        | & brake=1
+        | & ep>0
+        |& ((
+        |  state=brake
+        |  & m0=m & d0=d
+        |) | (
+        |  state=drive
+        |  & d >= 0
+        |  & d0^2 - d^2 <= 2*b*(m-m0)
+        |  & vdes >= 0
+        |))
+        |& v^2 - dIn^2 <= 2*b*(mIn-z)
+        |& dIn >= 0
+        |& drive=0
+        |& brake=1
+        |& b>0
+        |& ep>0
+        |& A>=0
+        |& d=dIn
+        |& vdes=vdesIn
+        |& state=stateIn
+        |& m=mIn""".stripMargin.asFormula
+
+    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
+      print("Base case") & baseTactic & print("Base case done"),
+      print("Use case") & useTactic & print("Use case done"),
+      print("Induction step") & stepTactic & printIndexed("Induction step done")
+    ) & print("Proof done")
+
+    proveBy(s, tactic) shouldBe 'proved
+  }
 
   //Mathematica
   behavior of "Component-based ETCS"
   ignore should "prove RBC Component" in withMathematica { implicit tool =>
-    cb_ETCS_rbc()
+    cb_etcs_rbc()
   }
   ignore should "prove Train Component" in withMathematica { implicit tool =>
-    cb_ETCS_train()
+    cb_etcs_train()
   }
   ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
-    val rbcCtr: Contract = Contract.load("pt4-rbc.cbcps")
-    val trainCtr: Contract = Contract.load("pt4-train.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable)
-    )
-
-    //CPO
-    rbcCtr.cpo(trainCtr, X).foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt4-cpo-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-
-    //Side Condition
-    rbcCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt4-rbc-side-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-    trainCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt4-train-side-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
+    cb_etcs_cpo_side()
   }
   ignore should "prove Composition" in withMathematica { implicit tool =>
-    val rbcCtr: Contract = Contract.load("pt4-rbc.cbcps")
-    val trainCtr: Contract = Contract.load("pt4-train.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable)
-    )
-
-    //CPO
-    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](rbcCtr.cpo(trainCtr, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma("pt4-cpo-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Side Condition
-    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](rbcCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt4-rbc-side-" + v).get
-    }
-    }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](trainCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt4-train-side-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Compose
-    val sysCtr: Contract = Contract.composeWithLemmas(rbcCtr, trainCtr, X, cpo, rbcSc, trainSc)
-
-    sysCtr shouldBe 'verified
-    println("CTR: " + sysCtr.contract())
-    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    cb_etcs_composition()
   }
 
   behavior of "Monolithic ETCS"
   ignore should "prove System" in withMathematica { implicit tool =>
-    val t = Globals.t
-    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
-    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
-
-    val invariant =
-      """b>0
-        | & drive=0
-        | & brake=1
-        | & ep>0
-        |& ((
-        |  state=brake
-        |  & m0=m & d0=d
-        |) | (
-        |  state=drive
-        |  & d >= 0
-        |  & d0^2 - d^2 <= 2*b*(m-m0)
-        |  & vdes >= 0
-        |))
-        |& v^2 - dIn^2 <= 2*b*(mIn-z)
-        |& dIn >= 0
-        |& drive=0
-        |& brake=1
-        |& b>0
-        |& ep>0
-        |& A>=0
-        |& d=dIn
-        |& vdes=vdesIn
-        |& state=stateIn
-        |& m=mIn""".stripMargin.asFormula
-
-    /*
-& d0=d0In
-& vdes0=vdes0In
-& state0=state0In
-& m0=m0In
-     */
-
-    println(invariant)
-
-    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
-      print("Base case") & baseTactic & print("Base case done"),
-      print("Use case") & useTactic & print("Use case done"),
-      print("Induction step") & stepTactic & printIndexed("Induction step done")
-    ) & print("Proof done")
-
-    proveBy(s, tactic) shouldBe 'proved
+    mon_etcs
   }
 
   //Z3
+
   behavior of "Component-based ETCS Z3"
   ignore should "prove RBC Component" in withZ3 { implicit tool =>
-    cb_ETCS_rbc("-Z3")
+    cb_etcs_rbc("-Z3")
   }
   ignore should "prove Train Component" in withZ3 { implicit tool =>
-    cb_ETCS_train("-Z3")
+    cb_etcs_train("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
-    val rbcCtr: Contract = Contract.load("pt4-rbc-Z3.cbcps")
-    val trainCtr: Contract = Contract.load("pt4-train-Z3.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable)
-    )
-
-    //CPO
-    rbcCtr.cpo(trainCtr, X).foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt4-cpo-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-
-    //Side Condition
-    rbcCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt4-rbc-side-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-    trainCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt4-train-side-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
+   cb_etcs_cpo_side("-Z3")
   }
   ignore should "prove Composition" in withZ3 { implicit tool =>
-    val rbcCtr: Contract = Contract.load("pt4-rbc-Z3.cbcps")
-    val trainCtr: Contract = Contract.load("pt4-train-Z3.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("stateIn".asVariable, "mIn".asVariable, "dIn".asVariable, "vdesIn".asVariable) -> Seq("state".asVariable, "m".asVariable, "d".asVariable, "vdes".asVariable)
-    )
-
-    //CPO
-    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](rbcCtr.cpo(trainCtr, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma("pt4-cpo-Z3-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Side Condition
-    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](rbcCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt4-rbc-side-Z3-" + v).get
-    }
-    }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](trainCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt4-train-side-Z3-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Compose
-    val sysCtr: Contract = Contract.composeWithLemmas(rbcCtr, trainCtr, X, cpo, rbcSc, trainSc)
-
-    sysCtr shouldBe 'verified
-    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+   cb_etcs_composition("-Z3")
   }
 
   behavior of "Monolithic ETCS Z3"
   ignore should "prove System" in withZ3 { implicit tool =>
-    val t = Globals.t
-    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\1-etcs\\sys-etcs.kyx")))
-
-    val invariant =
-      """b>0
-        | & drive=0
-        | & brake=1
-        | & ep>0
-        |& ((
-        |  state=brake
-        |  & m0=m & d0=d
-        |) | (
-        |  state=drive
-        |  & d >= 0
-        |  & d0^2 - d^2 <= 2*b*(m-m0)
-        |  & vdes >= 0
-        |))
-        |& v^2 - dIn^2 <= 2*b*(mIn-z)
-        |& dIn >= 0
-        |& drive=0
-        |& brake=1
-        |& b>0
-        |& ep>0
-        |& A>=0
-        |& d=dIn
-        |& vdes=vdesIn
-        |& state=stateIn
-        |& m=mIn""".stripMargin.asFormula
-
-    /*
-& d0=d0In
-& vdes0=vdes0In
-& state0=state0In
-& m0=m0In
-     */
-
-    println(invariant)
-
-    val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
-      print("Base case") & baseTactic & print("Base case done"),
-      print("Use case") & useTactic & print("Use case done"),
-      print("Induction step") & stepTactic & printIndexed("Induction step done")
-    ) & print("Proof done")
-
-    proveBy(s, tactic) shouldBe 'proved
+    mon_etcs
   }
 
   /*============================*
    * Case Study 2 - Robix (pt5) *
    *============================*/
+
   /* Robot Component */
   private def cb_robix_robot(ext: String = "") = {
     val t = Globals.runT
@@ -1162,17 +1072,101 @@ class PerformanceTest extends TacticTestBase {
          |& yo-yo0 <= V*$t""".stripMargin.asFormula
     )
 
-    println(obsCtr.contract())
+    obsCtr.verifyBaseCase(baseTactic)
+    obsCtr.verifyUseCase(useTactic)
 
-    //    obsCtr.verifyBaseCase(baseTactic)
-    //    obsCtr.verifyUseCase(useTactic)
-    //
-    //    val obsStepTactic = master()
-    //    obsCtr.verifyStep(obsStepTactic)
-    //
-    //    obsCtr shouldBe 'verified
-    //
-    //    Contract.save(obsCtr, "pt5-obstacle"+ext+".cbcps")
+    val obsStepTactic = master()
+    obsCtr.verifyStep(obsStepTactic)
+
+    obsCtr shouldBe 'verified
+
+    Contract.save(obsCtr, "pt5-obstacle" + ext + ".cbcps")
+  }
+
+  /* CPO and sidecondition */
+  private def cb_robix_cpo_side(ext: String = "") = {
+    val robCtr: Contract = Contract.load("pt5-robot" + ext + ".cbcps")
+    val obsCtr: Contract = Contract.load("pt5-obstacle" + ext + ".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
+      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
+    )
+    //CPO
+    robCtr.cpo(obsCtr, X).foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt5-cpo" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+
+    //Side Condition
+    robCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt5-robot-side" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+    obsCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt5-obstacle-side" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+  }
+
+  /* composition - uses hack because of KeYmaeraX limitations */
+  private def cb_robix_composition(ext: String = "") = {
+    val robCtr: Contract = Contract.load("pt5-robot" + ext + ".cbcps")
+    val obsCtr: Contract = Contract.load("pt5-obstacle" + ext + ".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
+      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
+    )
+
+    //CPO
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](robCtr.cpo(obsCtr, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("pt5-cpo" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Side Condition
+    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](robCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt5-robot-side" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](obsCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt5-obstacle-side" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Compose
+    Contract.hack = 1
+    val verify = true
+    val sysCtr: Contract = Contract.composeWithLemmas(robCtr, obsCtr, X, cpo, rbcSc, trainSc, verify)
+    Contract.hack = 0
+
+    if (verify)
+      sysCtr shouldBe 'verified
+    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    //    println("CTR: " + sysCtr.isVerified())
+  }
+
+  /* monolithic */
+  private def mon_robix = {
+    val s = {
+      if (AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
+    }
+    val t = {
+      if (AT_HOME) BelleParser(io.Source.fromInputStream(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
+      else BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
+    }
+
+    proveBy(s, t) shouldBe 'proved
   }
 
   //Mathematica
@@ -1184,81 +1178,15 @@ class PerformanceTest extends TacticTestBase {
     cb_robix_obstacle()
   }
   ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
-    val robCtr: Contract = Contract.load("pt5-robot.cbcps")
-    val obsCtr: Contract = Contract.load("pt5-obstacle.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
-      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
-    )
-    //CPO
-    robCtr.cpo(obsCtr, X).foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt5-cpo-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-
-    //Side Condition
-    robCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt5-robot-side-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-    obsCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt5-obstacle-side-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
+    cb_robix_cpo_side()
   }
-  // hack because of KeYmaeraX limitations
   ignore should "prove Composition" in withMathematica { implicit tool =>
-    val robCtr: Contract = Contract.load("pt5-robot.cbcps")
-    val obsCtr: Contract = Contract.load("pt5-obstacle.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
-      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
-    )
-
-    //CPO
-    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](robCtr.cpo(obsCtr, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma("pt5-cpo-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Side Condition
-    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](robCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt5-robot-side-" + v).get
-    }
-    }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](obsCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt5-obstacle-side-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Compose
-    Contract.hack = 1
-    val verify = true
-    val sysCtr: Contract = Contract.composeWithLemmas(robCtr, obsCtr, X, cpo, rbcSc, trainSc, verify)
-    Contract.hack = 0
-
-    if (verify)
-      sysCtr shouldBe 'verified
-    println("CTR: " + sysCtr.isVerified())
-    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    cb_robix_composition()
   }
 
   behavior of "Monolithic Robix"
   ignore should "prove System" in withMathematica { implicit tool =>
-    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
-    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
-
-    proveBy(s, t) shouldBe 'proved
+    mon_robix
   }
 
   //Z3
@@ -1270,81 +1198,15 @@ class PerformanceTest extends TacticTestBase {
     cb_robix_obstacle("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
-    val robCtr: Contract = Contract.load("pt5-robot-Z3.cbcps")
-    val obsCtr: Contract = Contract.load("pt5-obstacle-Z3.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
-      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
-    )
-    //CPO
-    robCtr.cpo(obsCtr, X).foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt5-cpo-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-
-    //Side Condition
-    robCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt5-robot-side-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-    obsCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt5-obstacle-side-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
+    cb_robix_cpo_side("-Z3")
   }
-  // hack because of KeYmaeraX limitations
   ignore should "prove Composition" in withZ3 { implicit tool =>
-    val robCtr: Contract = Contract.load("pt5-robot-Z3.cbcps")
-    val obsCtr: Contract = Contract.load("pt5-obstacle-Z3.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
-      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
-    )
-
-    //CPO
-    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](robCtr.cpo(obsCtr, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma("pt5-cpo-Z3-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Side Condition
-    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](robCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt5-robot-side-Z3-" + v).get
-    }
-    }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](obsCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt5-obstacle-side-Z3-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Compose
-    Contract.hack = 1
-    val verify = true
-    val sysCtr: Contract = Contract.composeWithLemmas(robCtr, obsCtr, X, cpo, rbcSc, trainSc, verify)
-    Contract.hack = 0
-
-    if (verify)
-      sysCtr shouldBe 'verified
-    //    println("CTR: " + sysCtr.contract())
-    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    cb_robix_composition("-Z3")
   }
 
   behavior of "Monolithic Robix Z3"
   ignore should "prove System" in withZ3 { implicit tool =>
-    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
-    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
-
-    proveBy(s, t) shouldBe 'proved
+    mon_robix
   }
 
   /*=========================================*
@@ -1385,23 +1247,22 @@ class PerformanceTest extends TacticTestBase {
          | & -B*$t <= vl-vl0
          | & vl-vl0 <= A*$t""".stripMargin.asFormula)
 
-    println(leadCtr.contract())
+    leadCtr.verifyBaseCase(baseTactic)
+    leadCtr.verifyUseCase(useTactic)
 
-    //    leadCtr.verifyBaseCase(baseTactic)
-    //    leadCtr.verifyUseCase(useTactic)
-    //
-    //    val leadStepTactic = master()
-    //    leadCtr.verifyStep(leadStepTactic)
-    //
-    //    leadCtr shouldBe 'verified
-    //
-    //    Contract.save(leadCtr, "pt6-leader"+ext+".cbcps")
+    val leadStepTactic = master()
+    leadCtr.verifyStep(leadStepTactic)
+
+    leadCtr shouldBe 'verified
+
+    Contract.save(leadCtr, "pt6-leader" + ext + ".cbcps")
   }
+
   /* follower */
   private def cb_llc_follower(ext: String = "") = {
     val t = Globals.runT
 
-    val follow = new Component("Follower"+ext,
+    val follow = new Component("Follower" + ext,
       """{
         | af := -B;
         |  ++ ?vf=0; af:=0;
@@ -1440,39 +1301,122 @@ class PerformanceTest extends TacticTestBase {
          | & vlIn-vlIn0 <= A*$t
          | & xlIn-xlIn0 >= (vlIn+vlIn0)/2*$t""".stripMargin.asFormula)
 
-    println(followCtr.contract())
+    followCtr.verifyBaseCase(baseTactic)
+    followCtr.verifyUseCase(useTactic)
 
-//    followCtr.verifyBaseCase(baseTactic)
-//    followCtr.verifyUseCase(useTactic)
-//
-//    val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
-//      OnAll(diffSolve(1) partial) < (
-//        normalize & OnAll(speculativeQE),
-//        normalize & OnAll(speculativeQE),
-//        (normalize(betaRule, skip, skip) < (
-//          QE,
-//          allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
-//            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
-//            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)
-//            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-//            & hide(-13) & hide(-12) & hide(-6) & QE,
-//          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
-//            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-22)
-//            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
-//            & allL("s_".asVariable, "t_".asVariable)(-17) & implyL(-17) < (hide(1) & QE, skip) & andL(-17)
-//            & hide(-13) & hide(-12) & hide(-6)
-//            & QE,
-//          QE,
-//          QE
-//        )
-//          )
-//      )
-//
-//    followCtr.verifyStep(followStepTactic)
-//
-//    followCtr shouldBe 'verified
-//
-//    Contract.save(followCtr, "pt6-follower"+ext+".cbcps")
+    val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
+      OnAll(diffSolve(1) partial) < (
+        normalize & OnAll(speculativeQE),
+        normalize & OnAll(speculativeQE),
+        (normalize(betaRule, skip, skip) < (
+          QE,
+          allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
+            & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
+            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-23)
+            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
+            & hide(-13) & hide(-12) & hide(-6) & QE,
+          exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
+            & cut("t_+t-t=t_".asFormula) < (skip, hide(1) & QE) & exhaustiveEqL2R(true)(-22)
+            & cut("xf+vf^2/(2*B)+(af/B+1)*(af/2*t_^2+t_*vf) < xlIn_0+vlIn_0^2/(2*B)".asFormula) < (skip, hide(1) & QE)
+            & allL("s_".asVariable, "t_".asVariable)(-17) & implyL(-17) < (hide(1) & QE, skip) & andL(-17)
+            & hide(-13) & hide(-12) & hide(-6)
+            & QE,
+          QE,
+          QE
+        )
+          )
+      )
+
+    followCtr.verifyStep(followStepTactic)
+
+    followCtr shouldBe 'verified
+
+    Contract.save(followCtr, "pt6-follower" + ext + ".cbcps")
+  }
+
+  /* CPO and sidecondition */
+  private def cb_llc_cpo_side(ext: String = "") = {
+    val leadCtr: Contract = Contract.load("pt6-leader" + ext + ".cbcps")
+    val followCtr: Contract = Contract.load("pt6-follower" + ext + ".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
+    )
+
+    //CPO
+    leadCtr.cpo(followCtr, X).foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt6-cpo" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+
+    //Side Condition
+    leadCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt6-leader-side" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+    followCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt6-follower-side" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+  }
+
+  /* composition */
+  private def cb_llc_composition(ext: String = "") = {
+    val leadCtr: Contract = Contract.load("pt6-leader" + ext + ".cbcps")
+    val followCtr: Contract = Contract.load("pt6-follower" + ext + ".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
+    )
+
+    //CPO
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](leadCtr.cpo(followCtr, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("pt6-cpo" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Side Condition
+    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](leadCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt6-leader-side" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](followCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt6-follower-side" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Compose
+    val sysCtr: Contract = Contract.composeWithLemmas(leadCtr, followCtr, X, cpo, rbcSc, trainSc)
+
+    sysCtr shouldBe 'verified
+    //    println("CTR: " + sysCtr.contract())
+    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+  }
+
+  /* monolithic */
+  private def mon_llc = {
+    val s = {
+      if (AT_HOME)
+        parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llcs.kyx")))
+      else
+        parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
+    }
+    val t = {
+      if (AT_HOME)
+        BelleParser(io.Source.fromInputStream(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
+      else
+        BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
+    }
+
+    proveBy(s, t) shouldBe 'proved
   }
 
   //Mathematica
@@ -1484,76 +1428,15 @@ class PerformanceTest extends TacticTestBase {
     cb_llc_follower()
   }
   ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
-    val leadCtr: Contract = Contract.load("pt6-leader.cbcps")
-    val followCtr: Contract = Contract.load("pt6-follower.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
-    )
-
-    //CPO
-    leadCtr.cpo(followCtr, X).foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt6-cpo-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-
-    //Side Condition
-    leadCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt6-leader-side-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-    followCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt6-follower-side-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
+    cb_llc_cpo_side()
   }
   ignore should "prove Composition" in withMathematica { implicit tool =>
-    val leadCtr: Contract = Contract.load("pt6-leader.cbcps")
-    val followCtr: Contract = Contract.load("pt6-follower.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
-    )
-
-    //CPO
-    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](leadCtr.cpo(followCtr, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma("pt6-cpo-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Side Condition
-    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](leadCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt6-leader-side-" + v).get
-    }
-    }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](followCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt6-follower-side-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Compose
-    val sysCtr: Contract = Contract.composeWithLemmas(leadCtr, followCtr, X, cpo, rbcSc, trainSc)
-
-    sysCtr shouldBe 'verified
-    println("CTR: " + sysCtr.contract())
-    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    cb_llc_composition()
   }
 
   behavior of "Monolithic LLC"
   ignore should "prove System" in withMathematica { implicit tool =>
-    //val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llcs.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
-    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
-
-    proveBy(s, t) shouldBe 'proved
+    mon_llc
   }
 
   //Z3
@@ -1561,82 +1444,19 @@ class PerformanceTest extends TacticTestBase {
   ignore should "prove Leader Component" in withZ3 { implicit tool =>
     cb_llc_leader("-Z3")
   }
-  it should "prove Follower Component" in withZ3 { implicit tool =>
+  ignore should "prove Follower Component" in withZ3 { implicit tool =>
     cb_llc_follower("-Z3")
   }
   ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
-    val leadCtr: Contract = Contract.load("pt6-leader-Z3.cbcps")
-    val followCtr: Contract = Contract.load("pt6-follower-Z3.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
-    )
-
-    //CPO
-    leadCtr.cpo(followCtr, X).foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt6-cpo-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-
-    //Side Condition
-    leadCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt6-leader-side-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
-    followCtr.sideConditions().foreach { case (v, f: Formula) => {
-      val p = ProofHelper.verify(f, sideTactic, Some("pt6-follower-side-Z3-" + v))
-      p shouldBe 'nonEmpty
-      v -> p
-    }
-    }
+    cb_llc_cpo_side("-Z3")
   }
   ignore should "prove Composition" in withZ3 { implicit tool =>
-    val leadCtr: Contract = Contract.load("pt6-leader-Z3.cbcps")
-    val followCtr: Contract = Contract.load("pt6-follower-Z3.cbcps")
-
-    //Port Connections
-    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
-      Seq("xlIn".asVariable, "vlIn".asVariable) -> Seq("xl".asVariable, "vl".asVariable)
-    )
-
-    //CPO
-    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](leadCtr.cpo(followCtr, X).map { case (v, f: Formula) => {
-      v -> Utility.loadLemma("pt6-cpo-Z3-" + v).get
-    }
-    }.toSeq: _*)
-
-    //Side Condition
-    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](leadCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt6-leader-side-Z3-" + v).get
-    }
-    }.toSeq: _*)
-    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](followCtr.sideConditions().map { case (v, f: Formula) => {
-      Seq(v: _*) -> Utility.loadLemma("pt6-follower-side-Z3-" + v).get
-    }
-    }.toSeq: _*)
-
-    //      println("llc: "+Contract.composeWithLemmas(leadCtr, followCtr, X, cpo, rbcSc, trainSc).contract())
-
-    //Compose
-    val sysCtr: Contract = Contract.composeWithLemmas(leadCtr, followCtr, X, cpo, rbcSc, trainSc)
-
-    sysCtr shouldBe 'verified
-    //      println("CTR: " + sysCtr.contract())
-    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    cb_llc_composition("-Z3")
   }
 
   behavior of "Monolithic LLC Z3"
   ignore should "prove System" in withZ3 { implicit tool =>
-    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\sys-llc.kyx")))
-    val t = BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\3-llc\\LLC System-Proof.kyt"))).mkString)
-
-    proveBy(s, t) shouldBe 'proved
+    mon_llc
   }
-
 }
 
