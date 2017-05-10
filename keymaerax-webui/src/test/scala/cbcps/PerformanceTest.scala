@@ -95,7 +95,7 @@ class PerformanceTest extends TacticTestBase {
    *===========================================================*/
 
   behavior of "Component-based Automated Robot Cruise Control"
-  ignore should "prove Automated Controller Component" in withMathematica { implicit tool =>
+  it should "prove Automated Controller Component" in withMathematica { implicit tool =>
     val ac: Component = new Component("Automated Controller",
       """ sAcTr:=*;
         | ?(0<=sAcTr & sAcTr<=S & abs(sAcTr-sAc)<=deltaS);
@@ -117,7 +117,7 @@ class PerformanceTest extends TacticTestBase {
 
     Contract.save(acCtr, "pt2-controller-automated.cbcps")
   }
-  ignore should "prove Actuator Component" in withMathematica { implicit tool =>
+  it should "prove Actuator Component" in withMathematica { implicit tool =>
     val eps = Globals.eps.name
     val act: Component = new Component("Actuator",
       s" aAct:=(sActTr-sAct)/$eps;".asProgram,
@@ -142,7 +142,7 @@ class PerformanceTest extends TacticTestBase {
 
     Contract.save(actCtr, "pt2-actuator.cbcps")
   }
-  ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
+  it should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
     val acCtr: Contract = Contract.load("pt2-controller-automated.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -174,7 +174,7 @@ class PerformanceTest extends TacticTestBase {
     }
     }
   }
-  ignore should "prove Composition" in withMathematica { implicit tool =>
+  it should "prove Composition" in withMathematica { implicit tool =>
     val acCtr: Contract = Contract.load("pt2-controller-automated.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -209,7 +209,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   behavior of "Monolithic Automated Robot Cruise Control"
-  ignore should "prove Automated System" in withMathematica { implicit tool =>
+  it should "prove Automated System" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
 
@@ -225,7 +225,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   behavior of "Expert Automated Robot Cruise Control"
-  ignore should "prove Automated System" in withMathematica { implicit tool =>
+  it should "prove Automated System" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
 
@@ -246,7 +246,7 @@ class PerformanceTest extends TacticTestBase {
    *========================================================*/
 
   behavior of "Component-based Guided Robot Cruise Control"
-  ignore should "prove Guided Controller Component" in withMathematica { implicit tool =>
+  it should "prove Guided Controller Component" in withMathematica { implicit tool =>
     val gc: Component = new Component("Guided Controller",
       """ {
         |   { ?(sGcUsr-sGc >= deltaS); sGcTr:=sGc+deltaS; } /* user velocity is too fast -> use current+delta */
@@ -277,13 +277,13 @@ class PerformanceTest extends TacticTestBase {
 
     Contract.save(gcCtr, "pt2-controller-guided.cbcps")
   }
-  ignore should "reuse Actuator Component" in withMathematica { implicit tool =>
+  it should "reuse Actuator Component" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\cbcps-dP-dT\\draft\\models\\examples\\components\\etcs\\multiport_rbc.kyx")))
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
     actCtr shouldBe 'verified
   }
-  ignore should "prove new CPO and Sideconditions" in withMathematica { implicit tool =>
+  it should "prove new CPO and Sideconditions" in withMathematica { implicit tool =>
     val gcCtr: Contract = Contract.load("pt2-controller-guided.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -315,7 +315,7 @@ class PerformanceTest extends TacticTestBase {
     //    }
     //    }
   }
-  ignore should "prove Composition" in withMathematica { implicit tool =>
+  it should "prove Composition" in withMathematica { implicit tool =>
     val gcCtr: Contract = Contract.load("pt2-controller-guided.cbcps")
     val actCtr: Contract = Contract.load("pt2-actuator.cbcps")
 
@@ -350,7 +350,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   behavior of "Monolithic Guided Robot Cruise Control"
-  ignore should "prove Guided System" in withMathematica { implicit tool =>
+  it should "prove Guided System" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
 
@@ -367,7 +367,7 @@ class PerformanceTest extends TacticTestBase {
 
 
   behavior of "Expert Guided Robot Cruise Control"
-  ignore should "prove Guided System" in withMathematica { implicit tool =>
+  it should "prove Guided System" in withMathematica { implicit tool =>
     //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
     val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedExpert.kyx")))
 
@@ -1457,6 +1457,287 @@ class PerformanceTest extends TacticTestBase {
   behavior of "Monolithic LLC Z3"
   ignore should "prove System" in withZ3 { implicit tool =>
     mon_llc
+  }
+
+
+  /*=====================================*
+    * Case Study 2b - Global Robix (pt7) *
+    *====================================*/
+
+  /* Robot Component */
+  private def cb_robix_global_robot(ext: String = "") = {
+    val t = Globals.runT
+
+    val rob = new Component("Robix-Robot" + ext,
+      (
+        """{ /* brake on current curve or remain stopped */
+          | { a := -B; }
+          | ++
+          | { ?v = 0; a := 0; w := 0; }
+          | ++
+          | /* or choose a new safe curve */
+          | { a :=*; ?-B <= a & a <= A;
+          |   k :=*;
+          |   w :=*; ?v * k = w;
+          |
+          | /* use that curve, if it is a safe one (admissible velocities) */
+          | ? abs(x-xoIn) > v^2/(2*B) + V*v/B + (A/B + 1) * (A/2 * ep^2 + ep*(v+V))
+          |              | abs(y-yoIn) > v^2/(2*B) + V*v/B + (A/B + 1) * (A/2 * ep^2 + ep*(v+V));
+          | }
+          |}"""
+        ).stripMargin.asProgram,
+      ODESystem(
+        (
+          """x' = v * dx,
+            |y' = v * dy,
+            |dx' = -w * dy,
+            |dy' = w * dx,
+            |v' = a,
+            |w' = a*k""").stripMargin.asDifferentialProgram,
+        "v >= 0".asFormula)
+    )
+    val robI = new Interface(
+      mutable.LinkedHashMap(
+        Seq("xoIn".asVariable) -> ("-V*" + t + " <= xoIn-xoIn0 & xoIn-xoIn0 <= V*" + t).asFormula,
+        Seq("yoIn".asVariable) -> ("-V*" + t + " <= yoIn-yoIn0 & yoIn-yoIn0 <= V*" + t).asFormula
+      ),
+      mutable.LinkedHashMap.empty,
+      mutable.LinkedHashMap(Seq("xoIn".asVariable) -> Seq("xoIn0".asVariable), Seq("yoIn".asVariable) -> Seq("yoIn0".asVariable))
+    )
+    val robCtr = new DelayContract(rob, robI,
+      (
+        """ v >= 0
+          | & ( abs(x-xoIn) > v^2 / (2*B) + V*(v/B)
+          |               | abs(y-yoIn) > v^2 / (2*B) + V*(v/B))
+          | & dx^2 + dy^2 = 1
+          | & A >= 0
+          | & B > 0
+          | & V >= 0
+          | & ep > 0
+          | & xoIn0 = xoIn
+          | & yoIn0 = yoIn
+          | & t=tOld"""
+        ).stripMargin.asFormula,
+      "(v > 0 -> (x - xoIn)^2 + (y - yoIn)^2 > 0)".asFormula,
+      s"""v >= 0
+         | & A >= 0
+         | & B > 0
+         | & V >= 0
+         | & ep > 0
+         | & dx^2+dy^2 = 1
+         | & 0 <= $t & $t <= ep
+         | & -V*($t) <= xoIn-xoIn0 & xoIn-xoIn0 <= V*($t) & -V*($t) <= yoIn-yoIn0 & yoIn-yoIn0 <= V*($t)
+         | & (v = 0 | abs(x-xoIn) > v^2 / (2*B) + V*(v/B)
+         |          | abs(y-yoIn) > v^2 / (2*B) + V*(v/B))""".stripMargin.asFormula
+    )
+
+    robCtr.verifyBaseCase(baseTactic)
+    robCtr.verifyUseCase(useTactic)
+
+    def di1(a: String, t: String): DependentPositionTactic = diffInvariant(
+      s"0<=$t".asFormula,
+      "dx^2 + dy^2 = 1".asFormula,
+      s"v = old(v) + $a*($t)".asFormula,
+      s"-($t) * (v - $a/2*($t)) <= x - old(x) & x - old(x) <= ($t) * (v - $a/2*($t))".asFormula,
+      s"-($t) * (v - $a/2*($t)) <= y - old(y) & y - old(y) <= ($t) * (v - $a/2*($t))".asFormula)
+
+    val dw1: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 3 /* 3 old(...) in DI */ & (andL('_) *) &
+      print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
+
+    def accArithTactic1: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
+      replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-9) & print("After replaceTransform") &
+      speculativeQE & print("Proved acc arithmetic")
+
+    val robStepTactic = print("Induction step") & implyR('R) & (andL('L) *) & chase(1) & print("After chase") & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
+      print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+      print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+      print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
+        di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
+        hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
+        hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
+      ) & print("Acceleration branch done")
+    ) & print("Induction step done")
+    robCtr.verifyStep(robStepTactic)
+
+    robCtr shouldBe 'verified
+
+    Contract.save(robCtr, "pt5-robot" + ext + ".cbcps")
+  }
+
+  /* Obstacle Component */
+  private def cb_robix_global_obstacle(ext: String = "") = {
+    val t = Globals.runT
+
+    val obs = new Component("Robix-Obstacle" + ext,
+      """dxo :=*;
+        |dyo :=*;
+        |?dxo^2 + dyo^2 <= V^2;""".stripMargin.asProgram,
+      ODESystem(
+        """xo' = dxo,
+          |yo' = dyo""".stripMargin.asDifferentialProgram)
+    )
+    val obsI = new Interface(
+      mutable.LinkedHashMap.empty,
+      mutable.LinkedHashMap(
+        Seq("xo".asVariable) -> s"-V*$t <= xo-xo0 & xo-xo0 <= V*$t".asFormula,
+        Seq("yo".asVariable) -> s"-V*$t <= yo-yo0 & yo-yo0 <= V*$t".asFormula
+      ),
+      mutable.LinkedHashMap(
+        Seq("xo".asVariable) -> Seq("xo0".asVariable),
+        Seq("yo".asVariable) -> Seq("yo0".asVariable)
+      )
+    )
+    val obsCtr = new DelayContract(obs, obsI,
+      """ep > 0
+        |& t = tOld
+        |& V >= 0
+        |& xo = xo0
+        |& yo = yo0""".stripMargin.asFormula,
+      "true".asFormula,
+      s"""V >= 0
+         |& 0 <= $t
+         |& $t <= ep
+         |& -V*$t <= xo-xo0
+         |& xo-xo0 <= V*$t
+         |& -V*$t <= yo-yo0
+         |& yo-yo0 <= V*$t""".stripMargin.asFormula
+    )
+
+    obsCtr.verifyBaseCase(baseTactic)
+    obsCtr.verifyUseCase(useTactic)
+
+    val obsStepTactic = master()
+    obsCtr.verifyStep(obsStepTactic)
+
+    obsCtr shouldBe 'verified
+
+    Contract.save(obsCtr, "pt5-obstacle" + ext + ".cbcps")
+  }
+
+  /* CPO and sidecondition */
+  private def cb_robix_global_cpo_side(ext: String = "") = {
+    val robCtr: Contract = Contract.load("pt5-robot" + ext + ".cbcps")
+    val obsCtr: Contract = Contract.load("pt5-obstacle" + ext + ".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
+      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
+    )
+    //CPO
+    robCtr.cpo(obsCtr, X).foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt5-cpo" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+
+    //Side Condition
+    robCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt5-robot-side" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+    obsCtr.sideConditions().foreach { case (v, f: Formula) => {
+      val p = ProofHelper.verify(f, sideTactic, Some("pt5-obstacle-side" + ext + "-" + v))
+      p shouldBe 'nonEmpty
+      v -> p
+    }
+    }
+  }
+
+  /* composition - uses hack because of KeYmaeraX limitations */
+  private def cb_robix_global_composition(ext: String = "") = {
+    val robCtr: Contract = Contract.load("pt5-robot" + ext + ".cbcps")
+    val obsCtr: Contract = Contract.load("pt5-obstacle" + ext + ".cbcps")
+
+    //Port Connections
+    val X = mutable.LinkedHashMap[Seq[Variable], Seq[Variable]](
+      Seq("xoIn".asVariable) -> Seq("xo".asVariable),
+      Seq("yoIn".asVariable) -> Seq("yo".asVariable)
+    )
+
+    //CPO
+    val cpo: mutable.Map[(Seq[Variable], Seq[Variable]), Lemma] = mutable.Map[(Seq[Variable], Seq[Variable]), Lemma](robCtr.cpo(obsCtr, X).map { case (v, f: Formula) => {
+      v -> Utility.loadLemma("pt5-cpo" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Side Condition
+    val rbcSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](robCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt5-robot-side" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+    val trainSc: mutable.Map[Seq[Variable], Lemma] = mutable.Map[Seq[Variable], Lemma](obsCtr.sideConditions().map { case (v, f: Formula) => {
+      Seq(v: _*) -> Utility.loadLemma("pt5-obstacle-side" + ext + "-" + v).get
+    }
+    }.toSeq: _*)
+
+    //Compose
+    Contract.hack = 1
+    val verify = true
+    val sysCtr: Contract = Contract.composeWithLemmas(robCtr, obsCtr, X, cpo, rbcSc, trainSc, verify)
+    Contract.hack = 0
+
+    if (verify)
+      sysCtr shouldBe 'verified
+    //    println("DONE? " + proveBy(sysCtr.contract(), sysCtr.tactic(sysCtr.baseCaseLemma.get,sysCtr.useCaseLemma.get, sysCtr.stepLemma.get)).isProved)
+    //    println("CTR: " + sysCtr.isVerified())
+  }
+
+  /* monolithic */
+  private def mon_robix_global = {
+    val s = {
+      if (AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\sys-robix.kyx")))
+    }
+    val t = {
+      if (AT_HOME) BelleParser(io.Source.fromInputStream(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
+      else BelleParser(io.Source.fromInputStream(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\casestudies\\2-robix\\Robix System-Proof.kyt"))).mkString)
+    }
+
+    proveBy(s, t) shouldBe 'proved
+  }
+
+  //Mathematica
+  behavior of "Component-based Robix"
+  ignore should "prove Robot Component" in withMathematica { implicit tool =>
+    cb_robix_robot()
+  }
+  ignore should "prove Obstacle Component" in withMathematica { implicit tool =>
+    cb_robix_obstacle()
+  }
+  ignore should "prove CPO and Sideconditions" in withMathematica { implicit tool =>
+    cb_robix_cpo_side()
+  }
+  ignore should "prove Composition" in withMathematica { implicit tool =>
+    cb_robix_composition()
+  }
+
+  behavior of "Monolithic Robix"
+  ignore should "prove System" in withMathematica { implicit tool =>
+    mon_robix
+  }
+
+  //Z3
+  behavior of "Component-based Robix Z3"
+  ignore should "prove Robot Component" in withZ3 { implicit tool =>
+    cb_robix_robot("-Z3")
+  }
+  ignore should "prove Obstacle Component" in withZ3 { implicit tool =>
+    cb_robix_obstacle("-Z3")
+  }
+  ignore should "prove CPO and Sideconditions" in withZ3 { implicit tool =>
+    cb_robix_cpo_side("-Z3")
+  }
+  ignore should "prove Composition" in withZ3 { implicit tool =>
+    cb_robix_composition("-Z3")
+  }
+
+  behavior of "Monolithic Robix Z3"
+  ignore should "prove System" in withZ3 { implicit tool =>
+    mon_robix
   }
 }
 
