@@ -46,7 +46,7 @@ object AxiomIndex {
     case "[*] iterate" | "<*> iterate" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
     case "[d] dual"    | "<d> dual" | "[d] dual direct"    | "<d> dual direct"    => (PosInExpr(0::Nil), PosInExpr(0::Nil)::Nil)
 
-    case "DW"              => (PosInExpr(Nil), Nil)
+    case "DW base"              => (PosInExpr(Nil), Nil)
     case "DC differential cut" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DCd diamond differential cut" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DE differential effect" | "DE differential effect (system)" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::PosInExpr(Nil)::Nil)
@@ -67,7 +67,7 @@ object AxiomIndex {
     case "&' derive and" => binaryDefault
     case "|' derive or" => binaryDefault
     case "->' derive imply" => binaryDefault
-    case "forall' derive forall" | "exists' derive exists" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
+    case "forall' derive forall" | "exists' derive exists" => (PosInExpr(0::Nil), PosInExpr(0::Nil)::Nil)
     case "c()' derive constant fn" => nullaryDefault
     // recursors for derivative formula axioms
     case "=' derive ="   => binaryDefault
@@ -107,6 +107,7 @@ object AxiomIndex {
     case "DW differential weakening" => (PosInExpr(0::Nil), unknown)
     case "DI differential invariant" => (PosInExpr(1::Nil), PosInExpr(1::1::Nil)::Nil)
     case "DIo open differential invariance >" | "DIo open differential invariance <" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
+    case "DIo open differential invariance >=" | "DIo open differential invariance <=" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DV differential variant >=" | "DV differential variant <=" => (PosInExpr(1::Nil), PosInExpr(0::1::1::1::0::Nil)::PosInExpr(0::1::1::1::1::0::Nil)::PosInExpr(0::1::Nil)::PosInExpr(Nil)::Nil)
     //@todo other axioms
 
@@ -134,6 +135,12 @@ object AxiomIndex {
     case "neg<= up" | "<=neg down" => (PosInExpr(1::Nil), PosInExpr(0::Nil)::Nil)
     case "+<= up" | "-<= up" | "abs<= up" | "max<= up" | "min<= up" | "<=+ down" | "<=- down" | "<=abs down" | "<=max down" | "<=min down" | "pow<= up" | "<=pow down" => (PosInExpr(1::Nil), PosInExpr(0::0::Nil)::PosInExpr(0::1::Nil)::Nil)
     case "*<= up" | "<=* down" | "Div<= up" | "<=Div down" => (PosInExpr(1::Nil),  PosInExpr(0::0::0::Nil)::PosInExpr(0::0::1::Nil)::PosInExpr(0::1::0::Nil)::PosInExpr(0::1::1::Nil)::Nil)
+
+    case "<= to <" => (PosInExpr(1::Nil), Nil)
+    case "metric < & <" => (PosInExpr(0::Nil), Nil)
+    case "metric <= & <=" => (PosInExpr(0::Nil), Nil)
+    case "metric < | <" => (PosInExpr(0::Nil), Nil)
+    case "metric <= | <=" => (PosInExpr(0::Nil), Nil)
 
     // default position
     case _ => (PosInExpr(0::Nil), Nil)
@@ -217,14 +224,14 @@ object AxiomIndex {
         //@note Neither "loop" nor "[*] iterate" are automatic if invariant generator wrong and infinite unfolding useless.
 //        case _: Loop => "loop" :: "[*] iterate" :: Nil
         //@note This misses the case where differential formulas are not top-level, but strategically that's okay. Also strategically, DW can wait until after DE.
-        case ODESystem(ode, constraint) if post.isInstanceOf[DifferentialFormula] => ode match {
+        case ODESystem(ode, _) if post.isInstanceOf[DifferentialFormula] => ode match {
           case _: AtomicODE => "DE differential effect" :: Nil
           case _: DifferentialProduct => "DE differential effect (system)" :: Nil
           case _ => Nil
         }
         //@todo The following is a global search list unlike the others
         //@todo "diffSolve" should go first since the right thing to do for stepAt if solvable.
-        case ODESystem(ode, constraint) => "DW differential weaken" :: odeList
+        case ODESystem(_, _) => "DW base" :: odeList
 //        case ODESystem(ode, constraint) =>
 //          /*@todo strategic "diffInvariant" would be better than diffInd since it does diffCut already ::*/
 //          val tactics: List[String] = "diffSolve" :: "diffInd" :: Nil
@@ -261,7 +268,7 @@ object AxiomIndex {
         case _: Less => "! <" :: Nil
         case _: LessEqual => "! <=" :: Nil
         case _: Greater => "! >" :: Nil
-        case _: GreaterEqual => "< negate" :: Nil
+        case _: GreaterEqual => "! >=" :: Nil
         case _: Not => "!! double negation" :: Nil
         case _: And => "!& deMorgan" :: Nil
         case _: Or => "!| deMorgan" :: Nil

@@ -19,7 +19,7 @@ angular.module('keymaerax.controllers').controller('ModelProofCreateCtrl', funct
 
   $scope.proveFromTactic = function(modelId) {
     spinnerService.show('modelListProofLoadingSpinner');
-    var uri     = 'models/users/' + $cookies.get('userId') + '/model/' + modelId + '/proveFromTactic'
+    var uri     = 'models/users/' + $cookies.get('userId') + '/model/' + modelId + '/createTacticProof'
     $http.post(uri, {}).success(function(data) {
       var proofId = data.id;
       $location.path('proofs/' + proofId);
@@ -59,9 +59,32 @@ var pollProofStatus = function(proof, userId, http) {
 }
 
 /* Proof list (those of an individual model if the route param modelId is defined, all proofs otherwise) */
-angular.module('keymaerax.controllers').controller('ProofListCtrl', function ($scope, $http, $cookies, $location, $routeParams, $route, FileSaver, Blob) {
+angular.module('keymaerax.controllers').controller('ProofListCtrl', function (
+    $scope, $http, $cookies, $location, $routeParams, $route, FileSaver, Blob, spinnerService) {
   $scope.modelId = $routeParams.modelId;
   $scope.userId = $cookies.get('userId')
+
+  $scope.intro.introOptions = {
+    steps:[
+    {
+        element: '#proofsarchiving',
+        intro: "Extract all proofs into .kya archives.",
+        position: 'bottom'
+    },
+    {
+        element: '#proofsactions',
+        intro: "Continue, inspect, export, or delete proofs here.",
+        position: 'bottom'
+    }
+    ],
+    showStepNumbers: false,
+    exitOnOverlayClick: true,
+    exitOnEsc:true,
+    nextLabel: 'Next', // could use HTML in labels
+    prevLabel: 'Previous',
+    skipLabel: 'Exit',
+    doneLabel: 'Done'
+  }
 
   $scope.openPrf = function(proofId) {
       $location.path('/proofs/' + proofId)
@@ -108,6 +131,43 @@ angular.module('keymaerax.controllers').controller('ProofListCtrl', function ($s
       var data = new Blob([response.data.fileContents], { type: 'text/plain;charset=utf-8' });
       FileSaver.saveAs(data, proof.name + '.kyp');
     });
+  }
+
+  //@todo duplicate with provingawesome.js downloadProofArchive
+  $scope.downloadPartialProof = function(proof) {
+    $http.get("/proofs/user/" + $scope.userId + "/" + proof.id + "/download").then(function(response) {
+      var data = new Blob([response.data.fileContents], { type: 'text/plain;charset=utf-8' });
+      FileSaver.saveAs(data, proof.name + '.kya');
+    });
+  }
+
+  currentDateString = function() {
+    var today = new Date();
+    var dd = today.getDate();
+    var mm = today.getMonth() + 1; //@note January is 0
+    var yyyy = today.getFullYear();
+
+    if(dd < 10) dd = '0' + dd
+    if(mm < 10) mm='0'+mm
+    return mm + dd + yyyy;
+  }
+
+  $scope.downloadModelProofs = function(modelId) {
+    spinnerService.show('proofExportSpinner');
+    $http.get("/models/user/" + $scope.userId + "/model/" + modelId + "/downloadProofs").then(function(response) {
+      var data = new Blob([response.data.fileContents], { type: 'text/plain;charset=utf-8' });
+      FileSaver.saveAs(data, modelId + '_' + currentDateString() + '.kya');
+    })
+    .finally(function() { spinnerService.hide('proofExportSpinner'); });
+  }
+
+  $scope.downloadAllProofs = function() {
+    spinnerService.show('proofExportSpinner');
+    $http.get("/proofs/user/" + $scope.userId + "/downloadAllProofs").then(function(response) {
+      var data = new Blob([response.data.fileContents], { type: 'text/plain;charset=utf-8' });
+      FileSaver.saveAs(data, 'proofs_'+ currentDateString() +'.kya');
+    })
+    .finally(function() { spinnerService.hide('proofExportSpinner'); });
   }
 
   //Load the proof list and emit as a view.

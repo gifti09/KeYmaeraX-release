@@ -1,6 +1,8 @@
 package edu.cmu.cs.ls.keymaerax.bellerophon.parser
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
+import edu.cmu.cs.ls.keymaerax.core.Expression
+
 import scala.collection.immutable._
 
 /**
@@ -22,6 +24,8 @@ case class BelleBranchingOpSpec(terminal: BelleTerminal, precedence: Int, leftAs
 case class BelleSaturatingOpSpec(terminal: BelleTerminal, precedence: Int, leftAssoc: Boolean, constructor : (BelleExpr, BelleType) => BelleExpr) extends BelleOpSpec
 case class BelleRepeatOpSpec(terminal: BelleTerminal, precedence: Int, leftAssoc: Boolean, constructor : (BelleExpr, Int, BelleType) => BelleExpr) extends BelleOpSpec
 case class BelleUSubstOpSpec(terminal: BelleTerminal, precedence: Int, leftAssoc: Boolean, constructor : (Seq[(BelleType, RenUSubst => BelleExpr)]) => BelleExpr) extends BelleOpSpec
+case class BelleLetOpSpec(terminal: BelleTerminal, precedence: Int, leftAssoc: Boolean, constructor : (Expression, Expression, BelleExpr) => BelleExpr) extends BelleOpSpec
+case class BelleDefTacticOpSpec(terminal: BelleTerminal, precedence: Int, leftAssoc: Boolean, constructor : (String, BelleExpr) => BelleExpr) extends BelleOpSpec
 
 case class BelleUnitOpSpec[T,S](terminal: BelleTerminal, precedence:Int, leftAssoc: Boolean, constructor: T => S) extends BelleOpSpec
 
@@ -32,14 +36,16 @@ object BelleOpSpec {
 
   val base     = BelleUnitOpSpec(none, 0, false, (s:String) => ???)
   val seq      = BelleBinaryOpSpec(SEQ_COMBINATOR,    200, false)
-  val either   = BelleUnaryOpSpec(EITHER_COMBINATOR, 220, false)
-  val star     = BelleUnaryOpSpec(KLEENE_STAR,        300, false)
-  val saturate = BelleSaturatingOpSpec(SATURATE, 300, false, (child: BelleExpr, annotation: BelleType) => SaturateTactic.apply(child))
-  val repeat   = (i: Int) => BelleRepeatOpSpec(N_TIMES(i), 300, false, (child: BelleExpr, times: Int, annotation: BelleType) => RepeatTactic.apply(child, times))
+  val either   = BelleBinaryOpSpec(EITHER_COMBINATOR, 220, false)
+  val star     = BelleUnaryOpSpec(KLEENE_STAR,        150, false)
+  val saturate = BelleSaturatingOpSpec(SATURATE, 150, false, (child: BelleExpr, annotation: BelleType) => SaturateTactic.apply(child))
+  val repeat   = (i: Int) => BelleRepeatOpSpec(N_TIMES(i), 150, false, (child: BelleExpr, times: Int, annotation: BelleType) => RepeatTactic.apply(child, times))
   val branch   = BelleBranchingOpSpec(BRANCH_COMBINATOR, 100, false, BranchTactic.apply)
   val partial  = BelleUnaryOpSpec(PARTIAL, 300, false)
   val onall    = BelleUnaryOpSpec(ON_ALL, 100, false)
   val usubst   = BelleUSubstOpSpec(US_MATCH, 100, false, USubstPatternTactic.apply)
+  val let      = BelleLetOpSpec(LET, 100, false, Let.apply)
+  val defTactic      = BelleDefTacticOpSpec(TACTIC, 100, false, DefTactic.apply)
 
   def op(e : BelleExpr): BelleOpSpec = e match {
     case e:SeqTactic      => seq
@@ -53,6 +59,8 @@ object BelleOpSpec {
     case e:BuiltInTactic       => base
     case e:AppliedPositionTactic => base
     case e:AppliedDependentPositionTactic => base
+    case _: DefTactic => defTactic
+    case _: Let => let
     case _ => base
   }
 }

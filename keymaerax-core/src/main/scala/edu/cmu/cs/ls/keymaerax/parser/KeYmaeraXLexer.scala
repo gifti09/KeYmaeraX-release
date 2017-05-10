@@ -161,6 +161,8 @@ private object ASSIGN  extends OPERATOR(":=")
 private object TEST    extends OPERATOR("?") {
   override def regexp = """\?""".r
 }
+private object IF extends OPERATOR("if")
+private object ELSE extends OPERATOR("else")
 private object SEMI    extends OPERATOR(";")
 private object CHOICE  extends OPERATOR("++") {
   override def regexp = """\+\+""".r
@@ -276,7 +278,7 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
 
 
   /** Normalize all new lines in input to a s*/
-  def normalizeNewlines(input: String): String = input.replace("\r\n", "\n").replace("\r", "\n")
+  def normalizeNewlines(input: String): String = input.replace("\r\n", "\n").replace("\r", "\n").replaceAll(" *\n", "\n")
   /**
    * The lexer has multiple modes for the different sorts of files that are supported by KeYmaeraX.
    * The lexer will disallow non-expression symbols from occuring when the lexer is in expression mode.
@@ -534,6 +536,8 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
 
       case COMMA.startPattern(_*) => consumeTerminalLength(COMMA, loc)
 
+      case IF.startPattern(_*) => consumeTerminalLength(IF, loc)
+      case ELSE.startPattern(_*) => consumeTerminalLength(ELSE, loc)
       //This has to come before PLUS because otherwise ++ because PLUS,PLUS instead of CHOICE.
       case CHOICE.startPattern(_*) => consumeTerminalLength(CHOICE, loc)
       //This has to come before MINUS because otherwise -- because MINUS,MINUS instead of DCHOICE.

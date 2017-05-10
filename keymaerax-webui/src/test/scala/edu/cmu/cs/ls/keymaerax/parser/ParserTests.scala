@@ -6,14 +6,16 @@ package edu.cmu.cs.ls.keymaerax.parser
 */
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
-import edu.cmu.cs.ls.keymaerax.parser._
 import testHelper.CustomAssertions.withSafeClue
 
 import org.scalatest._
 
 import scala.collection.immutable._
 
-class ParserParenTests extends FlatSpec with Matchers {
+class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
+  override def beforeEach(): Unit = { PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp) }
+  override def afterEach(): Unit = { KeYmaeraXParser.setAnnotationListener((prg, fml) =>{}) }
+
   // type declaration header for tests
   def makeInput(program : String) : String = {
     "Functions. B a. B b. B c. End." +
@@ -33,7 +35,7 @@ class ParserParenTests extends FlatSpec with Matchers {
         |  R x.
         |End.
         |Problem.
-        |  [x := ${s};]x > 3
+        |  [x := $s;]x > 3
         |End.
       """.stripMargin
     KeYmaeraXProblemParser(input("1")) //the problem should be exactly the fact that we pass in some unicode.
@@ -125,8 +127,7 @@ class ParserParenTests extends FlatSpec with Matchers {
     }
   }
 
-  // TODO adapt example files to new parser
-  ignore should "parse all positive examples" in {
+  it should "parse all positive examples" in {
     val files =
       "abs.key" ::
       "dia.key" ::
@@ -145,37 +146,70 @@ class ParserParenTests extends FlatSpec with Matchers {
     for(testFile <- files) {
       val src = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/dev/t/parsing/positive/" + testFile)).mkString
       withSafeClue(testFile) {
-        KeYmaeraXParser(src) //test fails on exception.
+        KeYmaeraXProblemParser(src) //test fails on exception.
       }
     }
   }
 
-  // TODO adapt input file to new parser
-  ignore should "parse predicates using functions" in {
+  it should "parse predicates using functions" in {
     val src = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/dev/t/parsing/positive/functions.key")).mkString
-    KeYmaeraXParser(src)
+    KeYmaeraXProblemParser(src)
   }
 
   it should "not parse any negative examples" in {
     val files =
-      "finishparse.key" ::
-      "scolon1.key" ::
-      "scolon2.key" ::
-      "scolon3.key" ::
-      "UndeclaredVariables.key" :: Nil
+      ("finishparse.key", """<somewhere> Semantic analysis error
+                            |semantics: Expect unique names_index that identify a unique type.
+                            |ambiguous: x:Trafo and x:Real
+                            |symbols:   x, x""".stripMargin) ::
+      ("scolon1.key", "6:10 Unexpected token cannot be parsed\nFound:    > (RDIA$) at 6:10") ::
+      ("scolon2.key", "6:12 Unexpected token cannot be parsed\nFound:    = (EQ$) at 6:12") ::
+      ("scolon3.key", "6:12 Unexpected token cannot be parsed\nFound:    > (RDIA$) at 6:12") :: Nil
+      //("UndeclaredVariables.key", "TODO") :: Nil //@note not yet caught (LAX?)
 
-    for(testFile <- files) {
+    for((testFile, message) <- files) {
       val src = io.Source.fromInputStream(getClass.getResourceAsStream("/examples/dev/t/parsing/negative/" + testFile)).mkString
       try {
-        KeYmaeraXParser(src)
+        KeYmaeraXProblemParser(src)
         fail("A negative file parsed correctly: " + testFile)
       }
       catch {
-        case _ : Throwable => { } // ok
+        case e: Throwable =>
+          withSafeClue(testFile) { e.getMessage should startWith (message) }
       }
     }
   }
-  
+
+  it should "elaborate variables to function in type analysis" in {
+    val input =
+      """
+        |Functions. R A. End.
+        |ProgramVariables. R x. End.
+        |Problem. A>=0 -> [x:=A;]x>=0 End.
+      """.stripMargin
+
+    val fml = KeYmaeraXProblemParser(input)
+    val x = Variable("x")
+    val a = FuncOf(Function("A", None, Unit, Real), Nothing)
+    fml shouldBe Imply(
+      GreaterEqual(a, Number(0)),
+      Box(Assign(x, a), GreaterEqual(x, Number(0))))
+  }
+
+  it should "not elaborate bound variables to functions in type analysis" in {
+    val input =
+      """
+        |Functions. R A. End.
+        |ProgramVariables. R x. End.
+        |Problem. A>=0 -> [x:=A;A:=2;]x>=0 End.
+      """.stripMargin
+
+    the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
+      """2:14 Type analysis: A was declared as a function but used as a non-function.
+        |Found:    <unknown> at 2:14
+        |Expected: <unknown>""".stripMargin
+  }
+
   /*
    *@TODO setup pretty-printer so that it can be parsed again.
   it should "parse pretty-prints of random formulas" in {
@@ -190,6 +224,137 @@ class ParserParenTests extends FlatSpec with Matchers {
     }
   }
   */
+
+  "Annotation parsing" should "populate easy loop annotations" in {
+    val input = "x>=2 -> [{x:=x+1;}*@invariant(x>=1)]x>=0"
+    //@todo mock objects
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=1".asFormula
+    })
+    KeYmaeraXParser(input)
+    called shouldBe true
+  }
+
+  it should "add () to functions used as variables" in {
+    val input = "Functions. R y(). End. ProgramVariables. R x. End. Problem. x>=y+2 -> [{x:=x+1;}*@invariant(x>=y+1)]x>=y End."
+    //@todo mock objects
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=y()+1".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=y()+2 -> [{x:=x+1;}*]x>=y()".asFormula
+    called shouldBe true
+  }
+
+  it should "expand functions to their definition" in {
+    val input = "Functions. R y() = (3+7). End. ProgramVariables. R x. End. Problem. x>=y+2 -> [{x:=x+1;}*@invariant(x>=y()+1)]x>=y End."
+    //@todo mock objects
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=(3+7)+1".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=(3+7)+2 -> [{x:=x+1;}*]x>=3+7".asFormula
+    called shouldBe true
+  }
+
+  it should "expand functions recursively to their definition" in {
+    val input = "Functions. R y() = (3+z()). R z() = (7). End. ProgramVariables. R x. End. Problem. x>=y+2 -> [{x:=x+1;}*@invariant(x>=y()+1)]x>=y End."
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=(3+7)+1".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=(3+7)+2 -> [{x:=x+1;}*]x>=3+7".asFormula
+    called shouldBe true
+  }
+
+  //@todo
+  it should "detect cycles when expanding functions recursively to their definition" ignore {
+    val input = "Functions. R y() = (3+z()). R z() = (7*y()). End. ProgramVariables. R x. End. Problem. x>=y+2 -> [{x:=x+1;}*@invariant(x>=y()+1)]x>=y End."
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=(3+7)+1".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=(3+7)+2 -> [{x:=x+1;}*]x>=3+7".asFormula
+    called shouldBe true
+  }
+
+  it should "add () and then expand functions to their defintion" in {
+    val input = "Functions. R y() = (3+7). End. ProgramVariables. R x. End. Problem. x>=y+2 -> [{x:=x+1;}*@invariant(x>=y+1)]x>=y End."
+    //@todo mock objects
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=(3+7)+1".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=(3+7)+2 -> [{x:=x+1;}*]x>=3+7".asFormula
+    called shouldBe true
+  }
+
+  it should "expand properties to their definition" in {
+    //@todo support for n-ary functions/predicates
+    val input = "Functions. B init() <-> (x>=2). B safe(R) <-> (.>=0). End. ProgramVariables. R x. End. Problem. init() -> [{x:=x+1;}*]safe(x) End."
+    KeYmaeraXProblemParser(input) shouldBe "x>=2 -> [{x:=x+1;}*]x>=0".asFormula
+  }
+
+  it should "expand properties to their definition in annotations" in {
+    val input = "Functions. B inv() <-> (x>=1). End. ProgramVariables. R x. End. Problem. x>=2 -> [{x:=x+1;}*@invariant(inv())]x>=0 End."
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=1".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=2 -> [{x:=x+1;}*]x>=0".asFormula
+    called shouldBe true
+  }
+
+  it should "expand functions in properties" in {
+    val input = "Functions. R y() = (3+7). B inv() <-> (x>=y()). End. ProgramVariables. R x. End. Problem. x>=2 -> [{x:=x+1;}*@invariant(inv())]x>=0 End."
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+1;}*".asProgram
+      fml shouldBe "x>=3+7".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=2 -> [{x:=x+1;}*]x>=0".asFormula
+    called shouldBe true
+  }
+
+  it should "complain about sort mismatches in function declaration and operator" in {
+    val input = "Functions. R y() <-> (3+7). End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
+    the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
+      """1:18 Operator and sort mismatch
+        |Found:    <-> <EQUIV$> at 1:18 to 1:20
+        |Expected: = <EQ$>""".stripMargin
+  }
+
+  it should "complain about sort mismatches" in {
+    val input = "Functions. R y() = (3>2). End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
+    the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
+      """1:18 Definition sort does not match declaration
+        |Found:    <Bool> at 1:18 to 1:25
+        |Expected: <Real>""".stripMargin
+  }
+
+  it should "complain about non-delimited definitions" in {
+    val input = "Functions. R y() = (3>2. End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
+    the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
+      """1:18 Non-delimited function definition
+        |Found:    NUM(2.) at 1:18 to 1:23
+        |Expected: )""".stripMargin
+  }
   
   //////////////////////////////////////////////////////////////////////////////
   // Begin ALP Parser tests

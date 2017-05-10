@@ -1,4 +1,4 @@
-angular.module('keymaerax.services').factory('derivationInfos', ['$http', function($http) {
+angular.module('keymaerax.services').factory('derivationInfos', ['$http', '$rootScope', '$q', function($http, $rootScope, $q) {
   var serviceDef = {
     formulaDerivationInfos: function(userId, proofId, nodeId, formulaId) {
       var promise = $http.get('proofs/user/' + userId + '/' + proofId + '/' + nodeId + '/' + formulaId + '/list')
@@ -37,9 +37,7 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', functi
         return info.reduceBranching ? info.comfortDerivation : info.standardDerivation;
       }
       info.reduceBranching = reduceBranchingByDefault && info.comfortDerivation !== undefined;
-      info.isOpen = (info.selectedDerivation().derivation.input !== undefined &&
-        info.selectedDerivation().derivation.input !== null &&
-        info.selectedDerivation().derivation.input.length > 0);
+      info.isOpen = false;
       return info;
     },
 
@@ -64,6 +62,10 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', functi
           isClosed: premise.isClosed
         };
       });
+      tactic.missingInputNames = function() {
+        var missingInputs = $.grep(tactic.derivation.input, function(input, idx) { return input.value == undefined; });
+        return $.map(missingInputs, function(val, i) { return val.param; });
+      };
       return tactic;
     },
 
@@ -80,8 +82,13 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', functi
       var inputs = $.grep(tactic.derivation.input, function(input, i) { return formula.indexOf(input.param) >= 0; });
       var inputBoundaries = $.map(inputs, function(input, i) {
         var inputStart = formula.indexOf(input.param);
-        return {start: inputStart, end: inputStart + input.param.length };
-      }).sort(function(a, b) { a.start <= b.start ? -1 : 1; });
+        var occurrences = [];
+        while (inputStart >= 0) {
+          occurrences.push({start: inputStart, end: inputStart + input.param.length });
+          inputStart = formula.indexOf(input.param, inputStart + input.param.length);
+        }
+        return occurrences;
+      }).sort(function(a, b) { return a.start - b.start; });
 
       if (inputBoundaries.length > 0) {
         result[0] = {text: formula.slice(0, inputBoundaries[0].start), isInput: false};
@@ -102,17 +109,40 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', functi
 
     createInput: function(formula, tactic, inputBoundary) {
       var inputId = formula.slice(inputBoundary.start, inputBoundary.end);
-      return {
+      var inputObject = {
         text: inputId,
         isInput: true,
         placeholder: inputId,
-        value: function(newValue) {
-          //@note check arguments.length to determine if we're called as getter or as setter
-          return arguments.length ?
-            ($.grep(tactic.derivation.input, function(elem, i) { return elem.param === inputId; })[0].value = newValue) :
-             $.grep(tactic.derivation.input, function(elem, i) { return elem.param === inputId; })[0].value;
+        value: $.grep(tactic.derivation.input, function(elem, i) { return elem.param === inputId; })[0].value,
+        saveValue: function(userId, proofId, nodeId, newValue) {
+          var input = $.grep(tactic.derivation.input, function(elem, i) { return elem.param === inputId; })[0];
+          input.value = newValue;
+          var d = $q.defer();
+          var uri = 'proofs/user/' + userId + '/' + proofId + '/' + nodeId + '/checkInput/' + tactic.id;
+          $http.get(uri, {params: input}).then(function(response) {
+            if (response.data.success) d.resolve();
+            else d.resolve("Warning: executing tactic may fail, because " + response.data.errorText);
+          })
+          .catch(function(err) {
+            d.resolve(err.data);
+          });
+          return d.promise;
         }
       };
+      // auto-update all input elements that are scattered around different parts of the premise
+      $rootScope.$watch(
+        // what to watch
+        function(scope) { return $.grep(tactic.derivation.input, function(elem, i) { return elem.param === inputId; })[0].value; },
+        // what to do on change
+        function(newVal, oldVal) { inputObject.value = newVal; }
+      );
+      $rootScope.$watch(
+        function(scope) { return inputObject.value; },
+        function(newVal, oldVal) {
+          $.grep(tactic.derivation.input, function(elem, i) { return elem.param === inputId; })[0].value = newVal;
+        }
+      );
+      return inputObject;
     }
   }
   return serviceDef;

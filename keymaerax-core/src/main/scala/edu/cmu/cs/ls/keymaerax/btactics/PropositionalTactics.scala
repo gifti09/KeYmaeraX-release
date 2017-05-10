@@ -8,6 +8,7 @@ import edu.cmu.cs.ls.keymaerax.core.{Close, Cut, EquivLeft, NotLeft}
 import edu.cmu.cs.ls.keymaerax.core._
 import Augmentors._
 import edu.cmu.cs.ls.keymaerax.core
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.annotation.tailrec
 import scala.language.postfixOps
@@ -17,27 +18,22 @@ import scala.language.postfixOps
  */
 object PropositionalTactics {
   /**
-   * Inverse of [[ProofRuleTactics.implyR]].
-   *
- *
+   * Inverse of [[SequentCalculus.implyR]].
    * @author Nathan Fulton
    * @author Stefan Mitsch
-   * @see [[ProofRuleTactics.implyR]]
+   * @see [[SequentCalculus.implyR]]
    */
-  lazy val implyRi: DependentTactic = implyRi()
-  def implyRi(antePos: AntePos = AntePos(0), succPos: SuccPos = SuccPos(0)): DependentTactic = new SingleGoalDependentTactic("inverse imply right") {
-    override def computeExpr(sequent: Sequent): BelleExpr = {
-      require(sequent.ante.length > antePos.getIndex && sequent.succ.length > succPos.getIndex,
-        "Ante position " + antePos + " or succ position " + succPos + " is out of bounds; provable has ante size " +
-          sequent.ante.length + " and succ size " + sequent.succ.length)
-      val left = sequent.ante(antePos.getIndex)
-      val right = sequent.succ(succPos.getIndex)
-      val cutUsePos = AntePos(sequent.ante.length)
-      cut(Imply(left, right)) <(
-        /* use */ implyL(cutUsePos) & OnAll(TactixLibrary.close),
-        /* show */ (assertE(right, "")(succPos) & hideR(succPos) & assertE(left, "")(antePos) & hideL(antePos)) partial /* This is the result. */)
-    }
-  }
+  lazy val implyRi: AppliedBuiltinTwoPositionTactic = implyRi()(AntePos(0), SuccPos(0))
+  def implyRi(keep: Boolean = false): BuiltInTwoPositionTactic = "implyRi" by ((p: ProvableSig, a: Position, s: Position) => {
+    assert(p.subgoals.length == 1, "Assuming one subgoal.")
+    val sequent = p.subgoals.head
+    require(a.isIndexDefined(sequent) && s.isIndexDefined(sequent),
+      "Ante position " + a + " or succ position " + s + " is out of bounds; provable has ante size " +
+        sequent.ante.length + " and succ size " + sequent.succ.length)
+    val left = sequent.ante(a.checkAnte.top.getIndex)
+    val impl = p(CutRight(left, s.checkSucc.top), 0)(Close(a.checkAnte.top, s.checkSucc.top), 0)
+    if (keep) impl else impl(core.HideLeft(a.checkAnte.top), 0)
+  })
 
   /**
    * Inverse of [[ProofRuleTactics.orR]].
@@ -147,16 +143,14 @@ object PropositionalTactics {
    *   (A ^ B) -> (S \/ T \/ U)
    * }}}
    */
-  val toSingleFormula: DependentTactic  = new SingleGoalDependentTactic("toSingleFormula") {
-    override def computeExpr(sequent: Sequent): BelleExpr = {
-      cut(sequent.toFormula) <(
-        /* use */ implyL('Llast) <(
-          hideR(1)*sequent.succ.size & (andR(1) <(close, (close | skip) partial))*(sequent.ante.size-1) & ?(close),
-          hideL(-1)*sequent.ante.size & (orL(-1) <(close, (close | skip) partial))*(sequent.succ.size-1) & ?(close)),
-        /* show */ cohide('Rlast) partial
-        )
-    }
-  }
+  val toSingleFormula: DependentTactic  = "toSingleFormula" by ((sequent: Sequent) => {
+    cut(sequent.toFormula) <(
+      /* use */ implyL('Llast) <(
+        hideR(1)*sequent.succ.size & (andR(1) <(close, skip))*(sequent.ante.size-1) & onAll(close),
+        hideL(-1)*sequent.ante.size & (orL(-1) <(close, skip))*(sequent.succ.size-1) & onAll(close)),
+      /* show */ cohide('Rlast)
+      )
+  })
 
   //region Equivalence Rewriting
 
@@ -192,7 +186,7 @@ object PropositionalTactics {
     *   \forall x. p(x) <-> q(z), p(x) |-
     * }}}
     */
-    val equivRewriting = "equivRewriting" byTactic ((p: Provable, equivPos: Position, targetPos: Position) => {
+    val equivRewriting = "equivRewriting" byTactic ((p: ProvableSig, equivPos: Position, targetPos: Position) => {
       assert(p.subgoals.length == 1, "Assuming one subgoal.")
       val target = p.subgoals(0)(targetPos).asInstanceOf[Formula]
       p.subgoals(0)(equivPos) match {
@@ -299,7 +293,7 @@ object PropositionalTactics {
     *   P<->Q, Q |-
     * }}}
     */
-  private def instantiatedEquivRewritingImpl(p: Provable, equivPos: Position, targetPos: Position) = {
+  private def instantiatedEquivRewritingImpl(p: ProvableSig, equivPos: Position, targetPos: Position) = {
     import Augmentors._
     assert(p.subgoals.length == 1, "Assuming one subgoal.")
 
@@ -373,10 +367,10 @@ object PropositionalTactics {
         .apply(HideLeft(AntePos(postCut.subgoals(1).ante.length-2)), 0)
     }
   }
-  val instantiatedEquivRewriting = "instantiatedEquivRewriting" by ((p: Provable, equivPos: Position, targetPos: Position) => instantiatedEquivRewritingImpl(p, equivPos, targetPos))
+  val instantiatedEquivRewriting = "instantiatedEquivRewriting" by ((p: ProvableSig, equivPos: Position, targetPos: Position) => instantiatedEquivRewritingImpl(p, equivPos, targetPos))
   /** @todo explain why this exists and maybe find a better name. */
   private def builtInEquivRewriting(equivPos: Position, targetPos: Position) = new BuiltInTactic("") {
-    override def result(p:Provable) = instantiatedEquivRewritingImpl(p, equivPos, targetPos)
+    override def result(p:ProvableSig) = instantiatedEquivRewritingImpl(p, equivPos, targetPos)
   }
 
   //endregion

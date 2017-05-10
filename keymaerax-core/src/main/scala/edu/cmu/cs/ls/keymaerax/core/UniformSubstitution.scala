@@ -16,9 +16,9 @@ package edu.cmu.cs.ls.keymaerax.core
 // require favoring immutable Seqs for soundness
 
 import scala.collection.immutable
-
 import SetLattice.bottom
 import SetLattice.allVars
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 
 /**
@@ -51,8 +51,11 @@ final case class SubstitutionPair (what: Expression, repl: Expression) {
     case sp: SpaceDependent => sp.space match {
       case AnyArg        => true
       case Except(taboo) =>
-        //@note this assumes that only sort Real is ever used for taboos, for simplicity.
-        val taboos = SetLattice(Set(taboo, DifferentialSymbol(taboo)))
+        //@note this assumes no higher-order differential symbols
+        val taboos = SetLattice(
+          if (taboo.isInstanceOf[DifferentialSymbol] || taboo.sort!=Real) Set(taboo)
+          else Set(taboo, DifferentialSymbol(taboo))
+        )
         sp match {
           //@note by previous insists, repl has to be a DifferentialProgram
           case _: DifferentialProgramConst => val vc = StaticSemantics(repl.asInstanceOf[DifferentialProgram])
@@ -166,6 +169,7 @@ final case class SubstitutionPair (what: Expression, repl: Expression) {
   * and all occurrences of program constant b by a hybrid program.
   *
   * This type implements the application of uniform substitutions to terms, formulas, programs, and sequents.
+ *
   * @note Implements the "global" version that checks admissibility eagerly at bound variables rather than computing bounds on the fly and checking upon occurrence.
   * Main ingredient of prover core.
   * @note soundness-critical
@@ -174,7 +178,7 @@ final case class SubstitutionPair (what: Expression, repl: Expression) {
   * @see Andre Platzer. [[http://dx.doi.org/10.1007/978-3-319-21401-6_32 A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015.
   * @see Andre Platzer. [[http://arxiv.org/pdf/1503.01981.pdf A uniform substitution calculus for differential dynamic logic.  arXiv 1503.01981]], 2015.
   * @see Andre Platzer. [[http://dx.doi.org/10.1145/2817824 Differential game logic]]. ACM Trans. Comput. Log. 17(1), 2015. [[http://arxiv.org/pdf/1408.1980 arXiv 1408.1980]]
-  * @see [[edu.cmu.cs.ls.keymaerax.core.Provable.apply(edu.cmu.cs.ls.keymaerax.core.UniformSubstitution)]]
+  * @see [[edu.cmu.cs.ls.keymaerax.core.ProvableSig.apply(edu.cmu.cs.ls.keymaerax.core.UniformSubstitution)]]
   * @example Uniform substitution can be applied to a formula
   * {{{
   *   val p = Function("p", None, Real, Bool)
@@ -308,11 +312,12 @@ final case class USubst(subsDefsInput: immutable.Seq[SubstitutionPair]) extends 
 
   /**
     * Apply uniform substitution to a Provable (convenience method).
+ *
     * @return `pr(this)`
     * @note Convenience method not used in the core.
-    * @see [[Provable.apply(USubst)]]
+    * @see [[ProvableSig.apply(USubst)]]
     */
-  def apply(pr: Provable): Provable = pr.apply(this)
+  def apply(pr: ProvableSig): ProvableSig = pr.apply(this)
 
 
   /** Union of uniform substitutions, i.e., both replacement lists merged.

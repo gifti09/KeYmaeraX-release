@@ -3,7 +3,7 @@ package bellerophon.pptests
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.btactics._
-import edu.cmu.cs.ls.keymaerax.core.Provable
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -80,7 +80,7 @@ class MoreSimpleBelleParserTests extends TacticTestBase {
   }
 
   it should "parse formula tactics" in {
-    val tactic = parser("Loop({`v >= 0`})")
+    val tactic = parser("loop({`v >= 0`})")
     tactic.isInstanceOf[DependentPositionTactic] shouldBe true
     val dpt = tactic.asInstanceOf[DependentPositionTactic]
   }
@@ -90,10 +90,23 @@ class MoreSimpleBelleParserTests extends TacticTestBase {
     parser("allL({`j(x)`})") shouldBe TactixLibrary.allL("j(x)".asTerm)
   }
 
+  it should "parse exact matching search" in {
+    parser("implyR('R=={`x>0->x>=0`})") shouldBe TactixLibrary.implyR('R, "x>0->x>=0".asFormula)
+    parser("andL('L=={`x>0&x>=0`})") shouldBe TactixLibrary.andL('L, "x>0&x>=0".asFormula)
+    parser("absExp('L=={`abs(x*y)`})") shouldBe TactixLibrary.abs('L, "abs(x*y)".asTerm)
+    parser("andL('_=={`x>0&x>=0`})") shouldBe TactixLibrary.andL('_, "x>0&x>=0".asFormula)
+  }
+
+  it should "parse unifiable matching search" in {
+    parser("implyR('R~={`x>0->x>=0`})") shouldBe TactixLibrary.implyR('Rlike, "x>0->x>=0".asFormula)
+    parser("andL('L~={`x>0&x>=0`})") shouldBe TactixLibrary.andL('Llike, "x>0&x>=0".asFormula)
+    parser("absExp('L~={`abs(x)`})") shouldBe TactixLibrary.abs('Llike, "abs(x)".asTerm)
+  }
+
   "Propositional Examples" should "close p() -> p()" in {
-    val tactic = parser("implyR(1) & TrivialCloser")
+    val tactic = parser("implyR(1) & closeId")
 //    val tactic = ExposedTacticsLibrary.tactics("implyR") & ExposedTacticsLibrary.tactics("TrivialCloser")
-    val value = BelleProvable(Provable.startProof("p() -> p()".asFormula))
+    val value = BelleProvable(ProvableSig.startProof("p() -> p()".asFormula))
     val result = SequentialInterpreter()(tactic, value)
     result match {
       case BelleProvable(resultingProvable, _) => resultingProvable.isProved shouldBe true

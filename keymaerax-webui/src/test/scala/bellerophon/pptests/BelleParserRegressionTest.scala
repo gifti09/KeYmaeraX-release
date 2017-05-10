@@ -1,8 +1,6 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser._
-import edu.cmu.cs.ls.keymaerax.btactics.{DifferentialTactics, TacticTestBase}
-import edu.cmu.cs.ls.keymaerax.core.Variable
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 
 /**
@@ -17,18 +15,12 @@ class BelleParserRegressionTest extends TacticTestBase {
   "expression pattern" should "match multi-expression-argument input" in {
     "{`1=1`}, {`1=2`}, 1)" match {
       case EXPRESSION2.startPattern(e) => e shouldBe "{`1=1`}"
-      case _ => assert(false, "Expected EXPRESSION2 to match the current input")
+      case _ => fail("Expected EXPRESSION2 to match the current input")
     }
   }
 
-  "diffGhost" should "parse" in {
-    BelleParser("diffGhost({`t`}, {`0`}, {`1`}, {`2`}, 1)") shouldBe DifferentialTactics.diffGhost("{t'=0*t+1}".asDifferentialProgram, "2".asTerm)(1)
-  }
-
   "DG" should "parse" in {
-    val parseResult = BelleParser("DGTactic({`t`}, {`0`}, {`1`}, 1)")
-    val expected = DifferentialTactics.DG("{t'=0*t+1}".asDifferentialProgram)(1)
-
-    parseResult shouldBe expected
+    BelleParser("dG({`t`}, {`0`}, {`1`}, 1)") shouldBe DifferentialTactics.dG("{t'=0*t+1}".asDifferentialProgram, None)(1)
+    BelleParser("dG({`t`}, {`0`}, {`1`}, {`x>0`}, 1)") shouldBe DifferentialTactics.dG("{t'=0*t+1}".asDifferentialProgram, Some("x>0".asFormula))(1)
   }
 }

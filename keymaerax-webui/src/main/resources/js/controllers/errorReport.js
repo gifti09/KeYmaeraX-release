@@ -132,7 +132,7 @@ angular.module('keymaerax.controllers').controller('ErrorAlertCtrl', function($s
     var modalInstance = $uibModal.open({
         templateUrl: 'partials/error_report.html',
         controller: 'ErrorReportCtrl',
-        size: 'md',
+        size: 'lg',
         resolve: {
            error: function () { return error; }
         }
@@ -150,7 +150,7 @@ angular.module('keymaerax.controllers').controller('ClientErrorAlertCtrl', funct
     var modalInstance = $uibModal.open({
         templateUrl: 'partials/error_report.html',
         controller: 'ErrorReportCtrl',
-        size: 'md',
+        size: 'lg',
         resolve: {
            error: function () { return error; }
         }
@@ -190,7 +190,7 @@ angular.module('keymaerax.controllers').controller('TacticErrorCtrl', function($
     var modalInstance = $uibModal.open({
       templateUrl: 'partials/error_report.html',
       controller: 'ErrorReportCtrl',
-      size: 'md',
+      size: 'lg',
       resolve: {
         error: function () { return error; }
       }
@@ -207,6 +207,16 @@ angular.module('keymaerax.controllers').controller('ErrorReportCtrl', function($
     });
   $scope.errorText = error.textStatus;
   $scope.errorTrace = error.errorThrown;
+  $scope.userDescription = undefined
+  $scope.subjectText = "KeYmaera X error report"
+
+  $scope.bodyText = function() {
+    return "Description%0D%0A" + ($scope.userDescription ? $scope.userDescription : "") +
+    ($scope.omitSysConfig ? "%0D%0A%0D%0ASystem configuration unreported" : "%0D%0A%0D%0ASystem configuration%0D%0A" + $scope.kyxConfig) +
+    "%0D%0A%0D%0AError message%0D%0A" + $scope.errorText +
+    "%0D%0A%0D%0AError trace%0D%0A" + $scope.errorTrace
+  }
+
   $scope.cancel = function() {
       $uibModalInstance.dismiss('cancel');
   }
@@ -236,7 +246,7 @@ angular.module('keymaerax.controllers').controller('LoginDialogCtrl', ['$scope',
         size: 'lg'
       });
       modalInstance.result.then(function() {
-        $http.get("/user/" + username + "/" + password).then(function(response) {
+        $http.get("/user/" + username + "/" + password + "/mode/0").then(function(response) {
           if(response.data.type == "LoginResponse") {
             if(response.data.success) {
               sessionService.setToken(response.data.sessionToken);
@@ -250,7 +260,7 @@ angular.module('keymaerax.controllers').controller('LoginDialogCtrl', ['$scope',
         });
       })
     } else {
-      $http.get("/user/" + username + "/" + password)
+      $http.get("/user/" + username + "/" + password + "/mode/0")
       .then(function(response) {
         if(response.data.type == "LoginResponse") {
           if(response.data.success) {

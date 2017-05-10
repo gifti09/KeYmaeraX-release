@@ -10,8 +10,10 @@ import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.ExpressionTraversalF
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.StopTraversal
 import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
+import edu.cmu.cs.ls.keymaerax.btactics.helpers.DifferentialHelper
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.tools.SimplificationTool
 
 import scala.collection.immutable
@@ -62,7 +64,7 @@ object ModelPlex extends ModelPlexTrait {
     }
 
     val proofStart = Platform.currentTime
-    val result = TactixLibrary.proveBy(Provable.startProof(mxInputSequent), tactic)
+    val result = TactixLibrary.proveBy(ProvableSig.startProof(mxInputSequent), tactic)
     val proofDuration = Platform.currentTime - proofStart
     Console.println("[proof time " + proofDuration + "ms]")
 
@@ -110,7 +112,7 @@ object ModelPlex extends ModelPlexTrait {
       assert(boundVars.forall(v => !v.isInstanceOf[Variable] || v.isInstanceOf[DifferentialSymbol] || vars.contains(v)),
         "all bound variables " + StaticSemantics.boundVars(prg).prettyString + " must occur in monitor list " + vars.mkString(", ") +
           "\nMissing: " + (StaticSemantics.boundVars(prg).symbols.toSet diff vars.toSet).mkString(", "))
-      val posteqs = vars.map(v => Equal(FuncOf(Function(v.name + "post", v.index, Unit, v.sort), Nothing), v)).reduce(And)
+      val posteqs = vars.map(v => Equal(FuncOf(Function(v.name + "post", v.index, Unit, v.sort), Nothing), v)).reduceRight(And)
       //@note suppress assumptions mentioning bound variables
       val nonboundAssumptions = FormulaTools.conjuncts(assumptions).filter(a => boundVars.intersect(StaticSemantics.freeVars(a).symbols).isEmpty)
       (Diamond(prg, posteqs), nonboundAssumptions)
@@ -161,21 +163,104 @@ object ModelPlex extends ModelPlexTrait {
     * @see [[createMonitorSpecificationConjecture]]
     * @return The tactic.
     */
-  def modelMonitorByChase: DependentPositionTactic = "modelMonitor" by ((pos: Position, seq: Sequent) => chase(3,3, (e:Expression) => e match {
+  lazy val modelMonitorByChase: DependentPositionTactic = modelMonitorByChase()
+  def modelMonitorByChase(ode: DependentPositionTactic = AxiomaticODESolver.axiomaticSolve()): DependentPositionTactic = "modelMonitor" by ((pos: Position, seq: Sequent) => chase(3,3, (e:Expression) => e match {
     // remove loops
     case Diamond(Loop(_), _) => "<*> approx" :: Nil
     // keep ODEs, solve later
     case Diamond(ODESystem(_, _), _) => Nil
     case _ => println("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
-  })(pos) & solveAllIn(pos))
+  })(pos) & applyAtAllODEs(ode)(pos))
 
-  /** Solve all ODEs somewhere underneath pos */
-  private def solveAllIn: DependentPositionTactic = TacticFactory.anon((pos: Position, sequent: Sequent) => {
+  /** Applies tatic `t` at all ODEs underneath this tactic's position. */
+  def applyAtAllODEs(t: DependentPositionTactic): DependentPositionTactic = TacticFactory.anon((pos: Position, sequent: Sequent) => {
     val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
-      case (Diamond(_: ODESystem, _), pp) => Some(AxiomaticODESolver.axiomaticSolve()(pp))
+      case (Diamond(_: ODESystem, _), pp) => Some(t(pp))
       case _ => None
     })
     positions.reduceRightOption[BelleExpr](_ & _).getOrElse(skip)
+  })
+
+  /** Euler-approximates all atomic ODEs somewhere underneath pos */
+  def eulerAllIn: DependentPositionTactic = "ANON" by ((pos: Position, sequent: Sequent) => {
+    val eulerAxiom = "<{x_'=f(x_)}>p(x_) <-> \\exists t_ (t_>=0 & \\forall e_ (e_>0 -> \\forall h0_ (h0_>0 -> \\exists h_ (0<h_&h_<h0_&<{x_:=x_+h_*f(x_);}*>(t_>=0 & \\exists y_ (abs(x_-y_) < e_ & p(y_))) ))))".asFormula
+    val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
+      case (Diamond(_: ODESystem, _), pp) => Some(useAt(ProvableSig.startProof(eulerAxiom), PosInExpr(0::Nil))(pp))
+      case _ => None
+    })
+    positions.reduceRightOption[BelleExpr](_ & _).getOrElse(skip)
+  })
+
+  /** Euler-approximates all ODEs somewhere underneath pos. Systematic tactic, but not a proof. */
+  def eulerSystemAllIn: DependentPositionTactic = "ANON" by ((pos: Position, sequent: Sequent) => {
+    /** Simultaneous updates of all variables with step size h */
+    def createSystemApprox(atoms: List[AtomicODE], h: Term): Program = {
+      val initial: Map[Variable, Variable] = atoms.map({ case AtomicODE(DifferentialSymbol(x), _) =>
+        x -> TacticHelper.freshNamedSymbol(x, sequent)}).toMap
+      val initials = initial.map({case (v, v0) => Assign(v0, v)}).reduce(Compose)
+      val eulerSteps: Program = atoms.map({case AtomicODE(DifferentialSymbol(x), f) =>
+        Assign(x, Plus(x, Times(h, initial.foldLeft(f)({case (ff, (y, y0)) => ff.replaceFree(y, y0)}))))}).reduce(Compose)
+      Compose(initials, eulerSteps)
+    }
+
+    /** Error norm */
+    def createErrorMargin(primed: List[Variable], e: Term, p: Formula): Formula = {
+      // \exists y_ (norm(x_-y_) < e_ & p(y_))
+      val ys: Map[Variable, Variable] = primed.map(x => x -> TacticHelper.freshNamedSymbol(Variable("y" + x.name, x.index, x.sort), sequent)).toMap
+      val py = ys.foldLeft(p)({case (pp, (x, y)) => pp.replaceFree(x, y)})
+      val norm = ys.map({case (x, y) => Power(Minus(x, y), Number(2))}).reduce(Plus)
+      val marginP = And(Less(norm, Power(e, Number(2))), py)
+      //Exists(ys.values.toList, margin)
+      ys.foldLeft[Formula](marginP)({case (m, (_, y)) => Exists(y::Nil, m)})
+    }
+
+    def createEulerAxiom(ode: ODESystem, p: Formula): Formula = {
+      val h = "h_".asVariable
+      val e = "e_".asVariable
+      val systemApprox = createSystemApprox(DifferentialHelper.atomicOdes(ode), h)
+      val errorMargin = createErrorMargin(DifferentialHelper.getPrimedVariables(ode), e, p)
+      s"<{c_&q_(||)}>p_(||) <-> \\exists t_ (t_>=0 & \\forall $e ($e>0 -> \\forall h0_ (h0_>0 -> \\exists $h (0<$h&$h<h0_&<{$systemApprox}*>(t_>=0 & $errorMargin) ))))".asFormula
+    }
+
+    val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
+      //@note OnAll necessary since the "show axiom" branches are left open by useAt (because we cut in the desired result, not use an actual axiom)
+      case (Diamond(ode: ODESystem, p), dpos) => Some(OnAll(useAt(ProvableSig.startProof(createEulerAxiom(ode, p)), PosInExpr(0::Nil))(dpos) | skip))
+      case _ => None
+    })
+    positions.reduceRightOption[BelleExpr](_ & _).getOrElse(skip)
+  })
+
+  /** Unsound approximation step */
+  def flipUniversalEulerQuantifiers(fml: Formula): Formula = {
+    ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+      override def preF(p: PosInExpr, f: Formula): Either[Option[StopTraversal], Formula] = f match {
+        case Forall(e, Imply(pe, Forall(h0, Imply(ph0, ph)))) => Right(Exists(e, And(pe, Exists(h0, And(ph0,ph)))))
+        case _ => Left(None)
+      }
+    }, fml).getOrElse(fml)
+  }
+
+  /** Unrolls diamond loops */
+  def unrollLoop(n: Int): DependentPositionTactic = "ANON" by ((pos: Position, sequent: Sequent) => {
+    if (n <= 0) skip
+    else {
+      val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
+        case (Diamond(_: Loop, _), pp) =>
+          if (n == 1) Some(useAt("<*> approx")(pp))
+          else Some(useAt("<*> iterate", PosInExpr(0 :: Nil))(pp))
+        case _ => None
+      })
+      positions.reduceRightOption[BelleExpr](_ & _).getOrElse(skip) & unrollLoop(n-1)(pos)
+    }
+  })
+
+  /** Chases remaining assignments. */
+  lazy val chaseEulerAssignments: DependentPositionTactic = "ANON" by ((pos: Position, sequent: Sequent) => {
+    val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
+      case (Diamond(_, _), pp) => Some(chase(pp))
+      case _ => None
+    })
+    positions.lastOption.getOrElse(skip)
   })
 
   /**
@@ -297,20 +382,6 @@ object ModelPlex extends ModelPlexTrait {
     here | left | right
   })
 
-  /** Returns the position of the outermost universal quantifier underneath position p in sequent s, if any. None otherwise. */
-  private def positionOfOutermostQuantifier(s: Sequent, p: Position): Option[Position] = {
-    var outermostPos: Option[Position] = None
-    ExpressionTraversal.traverse(new ExpressionTraversalFunction {
-      override def preF(pos: PosInExpr, f: Formula): Either[Option[StopTraversal], Formula] = f match {
-        case Forall(_, _) =>
-          outermostPos = Some(p ++ pos)
-          Left(Some(ExpressionTraversal.stop))
-        case _ => Left(None)
-      }
-    }, s.sub(p).getOrElse(throw new IllegalArgumentException("Formula " + s(p.top) + " is not a formula at sub-position " + p.inExpr)).asInstanceOf[Formula])
-    outermostPos
-  }
-
   /** Opt. 1 from Mitsch, Platzer: ModelPlex, i.e., instantiates existential quantifiers with an equal term phrased
     * somewhere in the quantified formula.
     *
@@ -325,6 +396,13 @@ object ModelPlex extends ModelPlexTrait {
     val simplForall1 = proveBy("p(f()) -> \\forall x_ (x_=f() -> p(x_))".asFormula, implyR(1) & allR(1) & implyR(1) & eqL2R(-2)(1) & close)
     val simplForall2 = proveBy("p(f()) -> \\forall x_ (f()=x_ -> p(x_))".asFormula, implyR(1) & allR(1) & implyR(1) & eqR2L(-2)(1) & close)
 
+    def solutionQE(existsFml: Formula, qeFml: Formula, signature: Set[Function], assumptions: List[Formula]) = "ANON" by ((pp: Position, seq: Sequent) => {
+      val simplified = tool.simplify(qeFml, assumptions)
+      val backSubst = signature.foldLeft[Formula](simplified)((fml, t) => fml.replaceAll(Variable(t.name, t.index), FuncOf(t, Nothing)))
+      val pqe = proveBy(Imply(backSubst, existsFml), QE & done)
+      cutAt(backSubst)(pp) < (skip, (if (pp.isSucc) cohideR(pp.topLevel) else cohideR('Rlast)) & CMon(pp.inExpr) & by(pqe))
+    })
+
     val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
         case (Forall(xs, Imply(Equal(x, _), _)), pp) if pp.isSucc && xs.contains(x) => Some(useAt(simplForall1, PosInExpr(1::Nil))(pp))
         case (Forall(xs, Imply(Equal(_, x), _)), pp) if pp.isSucc && xs.contains(x) => Some(useAt(simplForall2, PosInExpr(1::Nil))(pp))
@@ -334,10 +412,9 @@ object ModelPlex extends ModelPlexTrait {
             case Function(_, _, Unit, _, false) => true case _ => false }).map(_.asInstanceOf[Function])
           val edo = signature.foldLeft[Formula](ode)((fml, t) => fml.replaceAll(FuncOf(t, Nothing), Variable(t.name, t.index)))
           val transformed = proveBy(edo, partialQE)
-          val simplified = tool.simplify(transformed.subgoals.head.succ.head, assumptions)
-          val backSubst = signature.foldLeft[Formula](simplified)((fml, t) => fml.replaceAll(Variable(t.name, t.index), FuncOf(t, Nothing)))
-          val pqe = proveBy(Imply(backSubst, ode), QE)
-          Some(cutAt(backSubst)(pp) <(skip, (if (pp.isSucc) cohideR(pp.topLevel) else cohideR('Rlast)) & CMon(pp.inExpr) & by(pqe)))
+          Some(solutionQE(ode, transformed.subgoals.head.succ.head, signature, assumptions)(pp) |
+               solutionQE(ode, transformed.subgoals.head.succ.head, signature, Nil)(pp) |
+               skip)
         case (Exists(_, _), pp) if pp.isSucc => Some(optimizationOneWithSearchAt(pp))
         case (Forall(_, _), pp) if pp.isAnte => Some(optimizationOneWithSearchAt(pp))
         case _ => None
@@ -408,59 +485,51 @@ object ModelPlex extends ModelPlexTrait {
 
   /** Simplifies reflexive comparisons and implications/conjunctions/disjunctions with true. */
   def simplify(): DependentTactic = "ModelPlex Simplify" by ((sequent: Sequent) => {
-    simplifyReflexivity & (simplifyTrue*)
+    sequent.ante.indices.map(i => SimplifierV2.simpTac(AntePosition.base0(i))).reduceOption[BelleExpr](_ & _).getOrElse(skip) &
+    sequent.succ.indices.map(i => SimplifierV2.simpTac(SuccPosition.base0(i))).reduceOption[BelleExpr](_ & _).getOrElse(skip)
   })
 
-  /** Simplifies reflexive comparisons to true. */
-  private def simplifyReflexivity: DependentTactic = "ModelPlex Simplify Reflexivity" by ((sequent: Sequent) => {
-    val equalReflexTrue = trueFact("s_()=s_()".asFormula, DerivedAxioms.equalReflex)
-    val geqReflexTrue = trueFact("s_()>=s_()".asFormula, DerivedAxioms.greaterEqualReflex)
+  /** Turns the formula `fml` into a single inequality. */
+  def toMetric(fml: Formula): Formula = {
+    val cmpNF = chase(3, 3, (e: Expression) => e match {
+      case Equal(_, _) => "= expand"::Nil
+      case And(_, _) => "& recursor"::Nil
+      case Or(_, _) => "| recursor"::Nil
+      case _ => Nil
+    })
 
-    def m(e: Expression) = e match {
-      case Equal(lhs, rhs) => lhs == rhs
-      case GreaterEqual(lhs, rhs) => lhs == rhs
-      case _ => false
-    }
+    val arithNF = chase(3, 3, (e: Expression) => e match {
+      case Less(_, r) if r != Number(0) => "metric <"::Nil
+      case LessEqual(_, r) if r != Number(0) => "metric <="::Nil
+      case And(_,_) => "& recursor"::Nil
+      case Or(_,_) => "| recursor"::Nil
+      case _ => Nil
+    })
 
-    val positions =
-      sequent.ante.indices.flatMap(i => collectSubpositions(AntePos(i), sequent, m)) ++
-      sequent.succ.indices.flatMap(i => collectSubpositions(SuccPos(i), sequent, m))
+    val propNF = chaseCustom({
+      case LessEqual(_, _) => fromAxIndex("<= to <")::Nil
+      case And(Less(_, _), Less(_, _)) => fromAxIndex("metric < & <")::Nil
+      case And(LessEqual(_, _), LessEqual(_, _)) => fromAxIndex("metric <= & <=")::Nil
+      case And(LessEqual(_, _), Less(_, _)) => fromAxIndex("& recursor")::Nil
+      case And(Less(_, _), LessEqual(_, _)) => fromAxIndex("& recursor")::Nil
+      case And(_: BinaryCompositeFormula, _: BinaryCompositeFormula) => fromAxIndex("& recursor")::Nil
+      case And(_: BinaryCompositeFormula, _) => (DerivedAxioms.andRecursor.fact, PosInExpr(0::Nil), PosInExpr(0::Nil)::Nil)::Nil
+      case And(_, _: BinaryCompositeFormula) => (DerivedAxioms.andRecursor.fact, PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)::Nil
+      case Or(Less(_, _), Less(_, _)) => fromAxIndex("metric < | <")::Nil
+      case Or(LessEqual(_, _), LessEqual(_, _)) => fromAxIndex("metric <= | <=")::Nil
+      case Or(LessEqual(_, _), Less(_, _)) => fromAxIndex("| recursor")::Nil
+      case Or(Less(_, _), LessEqual(_, _)) => fromAxIndex("| recursor")::Nil
+      case Or(_: BinaryCompositeFormula, _: BinaryCompositeFormula) => fromAxIndex("| recursor")::Nil
+      case Or(_: BinaryCompositeFormula, _) => (DerivedAxioms.orRecursor.fact, PosInExpr(0::Nil), PosInExpr(0::Nil)::Nil)::Nil
+      case Or(_, _: BinaryCompositeFormula) => (DerivedAxioms.orRecursor.fact, PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)::Nil
+      case _ => Nil
+    })
 
-    positions.map(p => useAt(equalReflexTrue, PosInExpr(0::Nil))(p) | useAt(geqReflexTrue, PosInExpr(0::Nil))(p)).
-      reduceRightOption[BelleExpr]((a, b) => a & b).getOrElse(skip)
-  })
-
-  /** Simplifies implications, conjunctions, and disjunctions having one operand true. */
-  private def simplifyTrue: DependentTactic = "ModelPlex Simplify True" by ((sequent: Sequent) => {
-    def m(e: Expression) = e match {
-      case Imply(True, _) => true
-      case Imply(_, True) => true
-      case And(True, _) => true
-      case And(_, True) => true
-      case Or(True, _) => true
-      case Or(_, True) => true
-      case _ => false
-    }
-    val positions =
-      sequent.ante.indices.flatMap(i => collectSubpositions(AntePos(i), sequent, m)) ++
-      sequent.succ.indices.flatMap(i => collectSubpositions(SuccPos(i), sequent, m))
-
-    positions.map(chase(_)).reduceRightOption[BelleExpr]((a, b) => a & b).getOrElse(skip)
-  })
-
-  private def trueFact(fact: Formula, factProof: Lemma): Provable =
-    TactixLibrary.proveBy(Equiv(fact, True), equivR(1) <(closeT, cohide(1) & byUS(factProof)))
-
-  /** Collects the subpositions at/under pos that satisfy condition cond. Ordered: reverse depth (deepest first). */
-  private def collectSubpositions(pos: Position, sequent: Sequent, cond: Expression => Boolean): List[Position] = {
-    var positions: List[Position] = Nil
-    ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
-      override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] =
-        if (cond(e)) { positions = (pos ++ p) :: positions; Left(None) } else Left(None)
-      override def preT(p: PosInExpr, t: Term): Either[Option[StopTraversal], Term] =
-        if (cond(t)) { positions = (pos ++ p) :: positions; Left(None) } else Left(None)
-    }, sequent.sub(pos).get.asInstanceOf[Formula])
-    positions
+    val (nnf, _) = IsabelleSyntax.normalise(fml)
+    val result = proveBy(nnf, cmpNF(1) & arithNF(1) &
+      Idioms.repeatWhile(_.isInstanceOf[BinaryCompositeFormula])(propNF(1))(1))
+    assert(result.subgoals.length == 1 && result.subgoals.head.ante.isEmpty && result.subgoals.head.succ.length == 1)
+    result.subgoals.head.succ.head
   }
 
   private def mapSubpositions[T](pos: Position, sequent: Sequent, trafo: (Expression, Position) => Option[T]): List[T] = {

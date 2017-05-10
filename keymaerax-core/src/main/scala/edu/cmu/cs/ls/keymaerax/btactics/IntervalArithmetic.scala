@@ -13,6 +13,7 @@ import edu.cmu.cs.ls.keymaerax.btactics.Idioms._
 import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.print
 import edu.cmu.cs.ls.keymaerax.btactics.SimplifierV2._
 import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.collection.immutable._
 
@@ -118,7 +119,7 @@ object IntervalArithmetic {
   )
 
   //todo: negation lemma just strips the negation and flips the inequality
-  private val NegLem = proveBy("g_()<=f_() -> -(f_()) <= -(g_())".asFormula,QE)
+  private val NegLem = proveBy("g_()<=f_() -> -(f_()) <= -(g_())".asFormula,QE & done)
 
   private def liftSubst(s:Option[Subst]) : Subst =
     s match{
@@ -151,8 +152,8 @@ object IntervalArithmetic {
       useAt("<=- down",PosInExpr(1::Nil))(SuccPosition(1,1::Nil)) & prop)
 
   //Rewrites for max/min, not to be confused with the actual lemmas
-  private val rwMax = proveBy( "h_() <= f_() | h_() <= g_() -> h_() <= max(f_(),g_()) ".asFormula,QE)
-  private val rwMin = proveBy( "f_() <= H_() | g_() <= H_() -> min(f_(),g_()) <= H_()".asFormula,QE)
+  private val rwMax = proveBy( "h_() <= f_() | h_() <= g_() -> h_() <= max(f_(),g_()) ".asFormula,QE & done)
+  private val rwMin = proveBy( "f_() <= H_() | g_() <= H_() -> min(f_(),g_()) <= H_()".asFormula,QE & done)
 
   //Specialization of both arguments
   private val TimesULemSpec = proveBy(("(\\forall x \\forall y (x * y <= TimesU(x,y))) ->" +
@@ -189,7 +190,7 @@ object IntervalArithmetic {
         allL("F_()".asTerm)(-1) & allL("G_()".asTerm)(-1)) &
       OnAll(close))
 
-  private val rwPow2 = proveBy("f_()^2 = f_() * f_()".asFormula,QE)
+  private val rwPow2 = proveBy("f_()^2 = f_() * f_()".asFormula,QE & done)
 
   //specific bounds
   private val uPowLemSpec = proveBy(("(\\forall x \\forall y (x * y <= TimesU(x,y))) ->" +
@@ -214,7 +215,7 @@ object IntervalArithmetic {
 
   //generic lower bound ^2 lemmas
   //When the interval is entirely positive
-  private val lpowLem1 = proveBy("(0<=ff_() & ff_() <= f_() & h_() <= ff_()*ff_()) -> h_() <= f_()^2".asFormula,QE)
+  private val lpowLem1 = proveBy("(0<=ff_() & ff_() <= f_() & h_() <= ff_()*ff_()) -> h_() <= f_()^2".asFormula,QE & done)
   private val poslPowLem = proveBy(
     ("((\\forall x \\forall y (TimesL(x,y) <= x * y)) & 0 <= ff_() & ff_() <= f_()) -> " +
       "TimesL(ff_(),ff_()) <= f_()^2").asFormula,
@@ -223,7 +224,7 @@ object IntervalArithmetic {
       allL("ff_()".asTerm)(-1) &
       allL("ff_()".asTerm)(-1) & close)
   //When the interval is entirely negative
-  private val lpowLem2 = proveBy("(F_()<=0 & f_() <= F_() & h_() <= F_()*F_()) -> h_() <= f_()^2".asFormula,QE)
+  private val lpowLem2 = proveBy("(F_()<=0 & f_() <= F_() & h_() <= F_()*F_()) -> h_() <= f_()^2".asFormula,QE & done)
   private val neglPowLem = proveBy(
     ("((\\forall x \\forall y (TimesL(x,y) <= x * y)) & F_() <= 0 & f_() <= F_()) -> " +
       "TimesL(F_(),F_()) <= f_()^2").asFormula,
@@ -232,7 +233,7 @@ object IntervalArithmetic {
       allL("F_()".asTerm)(-1) &
       allL("F_()".asTerm)(-1) & close)
   //When it is inconclusive
-  private val bothlPowLem = proveBy("0 <= F_()^2".asFormula,QE)
+  private val bothlPowLem = proveBy("0 <= F_()^2".asFormula,QE & done)
 
   //Optimized divison checking
   //Divisor >0 upper bound division
@@ -284,11 +285,11 @@ object IntervalArithmetic {
       OnAll(close))
 
   //Upper bound for max, min
-  private val MaxULem = proveBy("f_() <= F_() & g_() <= G_() -> max(f_(),g_()) <= max(F_(),G_())".asFormula,QE)
-  private val MaxLLem = proveBy("ff_() <= f_() & gg_() <= g_() -> max(ff_(),gg_()) <= max(f_(),g_())".asFormula,QE)
+  private val MaxULem = proveBy("f_() <= F_() & g_() <= G_() -> max(f_(),g_()) <= max(F_(),G_())".asFormula,QE & done)
+  private val MaxLLem = proveBy("ff_() <= f_() & gg_() <= g_() -> max(ff_(),gg_()) <= max(f_(),g_())".asFormula,QE & done)
 
-  private val MinULem = proveBy("f_() <= F_() & g_() <= G_() -> min(f_(),g_()) <= min(F_(),G_())".asFormula,QE)
-  private val MinLLem = proveBy("ff_() <= f_() & gg_() <= g_() -> min(ff_(),gg_()) <= min(f_(),g_())".asFormula,QE)
+  private val MinULem = proveBy("f_() <= F_() & g_() <= G_() -> min(f_(),g_()) <= min(F_(),G_())".asFormula,QE & done)
+  private val MinLLem = proveBy("ff_() <= f_() & gg_() <= g_() -> min(ff_(),gg_()) <= min(f_(),g_())".asFormula,QE & done)
 
   //todo: abs is tricky because the interval can cross 0
 
@@ -486,12 +487,12 @@ object IntervalArithmetic {
 
   //Decompose across Imply
   //These are single sided implications
-  private val decomposeAnd = proveBy("((P_() -> PP_()) & (Q_() -> QQ_())) -> (P_() & Q_() -> PP_() & QQ_())".asFormula,prop)
-  private val decomposeOr = proveBy("((P_() -> PP_()) & (Q_() -> QQ_())) -> (P_() | Q_() -> PP_() | QQ_())".asFormula,prop)
-  private val decomposeLE = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (F_() <= gg_() -> f_() <= g_())".asFormula,QE)
-  private val decomposeLT = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (F_() < gg_() -> f_() < g_())".asFormula,QE)
-  private val decomposeGE = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (gg_() >= F_() -> g_() >= f_())".asFormula,QE)
-  private val decomposeGT = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (gg_() > F_() -> g_() > f_())".asFormula,QE)
+  private val decomposeAnd = proveBy("((P_() -> PP_()) & (Q_() -> QQ_())) -> (P_() & Q_() -> PP_() & QQ_())".asFormula,prop & done)
+  private val decomposeOr = proveBy("((P_() -> PP_()) & (Q_() -> QQ_())) -> (P_() | Q_() -> PP_() | QQ_())".asFormula,prop & done)
+  private val decomposeLE = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (F_() <= gg_() -> f_() <= g_())".asFormula,QE & done)
+  private val decomposeLT = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (F_() < gg_() -> f_() < g_())".asFormula,QE & done)
+  private val decomposeGE = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (gg_() >= F_() -> g_() >= f_())".asFormula,QE & done)
+  private val decomposeGT = proveBy("(f_() <= F_() & gg_() <= g_() ) -> (gg_() > F_() -> g_() > f_())".asFormula,QE & done)
 
   // These can be used to decompose the big formula generated at the end
   //private val decomposeDiamTestAnd = proveBy("<?p_() & q_();>r_() <-> <?p_();?q_();>r_()".asFormula,
@@ -512,7 +513,7 @@ object IntervalArithmetic {
   private val lastImplyRi: DependentTactic  = new SingleGoalDependentTactic("lastImplyRi") {
     override def computeExpr(sequent: Sequent): BelleExpr = {
       assert(sequent.ante.length > 0)
-      implyRi(AntePos(sequent.ante.length-1),SuccPos(0))
+      implyRi()(AntePos(sequent.ante.length-1),SuccPos(0))
     }
   }
 
@@ -577,7 +578,7 @@ object IntervalArithmetic {
   def debugPrint(str:String) : BelleExpr =
     if (DEBUG) print(str) else ident
 
-  def deriveFormulaProof(f:Formula) : (Program,Provable) =
+  def deriveFormulaProof(f:Formula) : (Program,ProvableSig) =
   {
     // f must be in NNF, with negations completely pushed into comparisons
     // Also, >, >= should be flipped to <, <=
@@ -673,14 +674,9 @@ object IntervalArithmetic {
     }
   }
 
-  private def fromAxIndex(s:String) : (Provable,PosInExpr, List[PosInExpr]) = {
-    val (ax,rec) = AxiomIndex.axiomIndex(s)
-    (ProvableInfo(s).provable,ax,rec)
-  }
-
   private val equivExpand = proveBy("(p_() <-> q_()) <-> ((p_() -> q_()) & (q_() -> p_()))".asFormula,prop)
 
-  private val minusExpand = proveBy("f_()-g_() = f_() +(-g_())".asFormula,QE)
+  private val minusExpand = proveBy("f_()-g_() = f_() +(-g_())".asFormula,QE & done)
 
   private val plusRec = proveBy("f_() + g_() = f_() + g_()".asFormula,byUS("= reflexive"))
   private val timesRec = proveBy("f_() * g_() = f_() * g_()".asFormula,byUS("= reflexive"))
@@ -690,14 +686,14 @@ object IntervalArithmetic {
   private val lessEqualRec = proveBy("f_() <= g_() <-> f_() <= g_()".asFormula,byUS("<-> reflexive"))
   private val lessRec = proveBy("f_() < g_() <-> f_() < g_()".asFormula,byUS("<-> reflexive"))
 
-  private def binaryDefault(ax:Provable) = (ax,PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(1::Nil)::Nil)
+  private def binaryDefault(ax:ProvableSig) = (ax,PosInExpr(0::Nil), PosInExpr(0::Nil)::PosInExpr(1::Nil)::Nil)
   //Converts an input formula (FOL, no quantifiers) into a formula satisfying:
   //1) NNF (negations pushed into (in)equalities)
   //2) Flip inequalities
   //3) Rewrite arithmetic, e.g. push (a-b) to a + (-b), custom rewrites of powers to squares
-  def normalise(f:Formula) : (Formula,Provable) = {
+  def normalise(f:Formula) : (Formula,ProvableSig) = {
     val refl = proveBy(Equiv(f,f),byUS("<-> reflexive"))
-    val nnf = chaseCustom((exp: Expression) => exp match {
+    val nnf = chaseCustomFor((exp: Expression) => exp match {
       case And(_,_) => fromAxIndex("& recursor"):: Nil
       case Or(_,_) => fromAxIndex("| recursor") :: Nil
       case Imply(_,_) => fromAxIndex("-> expand") :: Nil
@@ -706,7 +702,7 @@ object IntervalArithmetic {
       case _ => Nil
     })(SuccPosition(1,1::Nil))(refl)
 
-    val flip = chaseCustom((exp: Expression) => exp match {
+    val flip = chaseCustomFor((exp: Expression) => exp match {
       case And(_,_) => fromAxIndex("& recursor"):: Nil
       case Or(_,_) => fromAxIndex("| recursor") :: Nil
       case Greater(_,_) => fromAxIndex("> flip")::Nil
@@ -715,7 +711,7 @@ object IntervalArithmetic {
     })(SuccPosition(1,1::Nil))(nnf)
 
     //Recurses into all sub terms
-    val arith = chaseCustom((exp:Expression) => exp match {
+    val arith = chaseCustomFor((exp:Expression) => exp match {
       case And(_,_) => fromAxIndex("& recursor"):: Nil
       case Or(_,_) => fromAxIndex("| recursor") :: Nil
       case LessEqual(a,b) => binaryDefault(lessEqualRec)::Nil

@@ -53,13 +53,37 @@ class UIKeYmaeraXPrettyPrinter(val topId: String, val plainText: Boolean) extend
   }
 
   protected override def emit(q: PosInExpr, s: String): String = {
-    val plain = plainText || (topExpr match {
+    val hasStep = plainText || (topExpr match {
       case t: Term => UIIndex.allStepsAt(t.sub(q).get, Some(pos++q), None).isEmpty
       case f: Formula => UIIndex.allStepsAt(f.sub(q).get, Some(pos++q), None).isEmpty
     })
-    // emit complicated span only for elements with actual
-    //@note problematic for drag&drop
-    wrap(topId + (if (q.pos.nonEmpty) "," + q.pos.mkString(",") else ""), s, plain)
+
+    val editable = !plainText && (topExpr match {
+      case _: Term => false
+      case f: Formula => f.sub(q).get match {
+        case fml: Formula => fml.isFOL
+        case _: Variable => false
+        case _: Number => false
+        case _: Term => true
+        case _ => false
+      }
+    })
+
+    //@note base pretty printer emits a quantifier and its variable with same ID -> avoid spans with same ID
+    val isQuantifiedVar = topExpr match {
+      case f: Formula => f.sub(q) match {
+        case Some(quant: Quantified) => !s.startsWith(op(quant).opcode)
+        case _ => false
+      }
+      case _ => false
+    }
+
+    if (isQuantifiedVar) s
+    else {
+      // emit complicated span only for elements with actual rule
+      //@note problematic for drag&drop
+      wrap(topId + (if (q.pos.nonEmpty) "," + q.pos.mkString(",") else ""), s, hasStep, editable)
+    }
   }
 
   protected override def pp(q: PosInExpr, term: Term): String = emit(q, term match {
@@ -68,16 +92,28 @@ class UIKeYmaeraXPrettyPrinter(val topId: String, val plainText: Boolean) extend
     case _ => super.pp(q, term)
   })
 
-  private def wrap(id: String, content: String, plain: Boolean): String =
-    if (plain) s"""${HTML_OPEN}span id="fml_$id"$HTML_CLOSE$content$HTML_OPEN/span$HTML_CLOSE"""
-    else s"""${HTML_OPEN}span ng-class="{'hl':true, 'hlhover':isFormulaHighlighted('$id')}" id="$id"
-        |  ng-mouseover="$$event.stopPropagation();highlightFormula('$id')"
-        |  ng-mouseleave="$$event.stopPropagation();highlightFormula(undefined)"
+  private def wrap(id: String, content: String, plain: Boolean, editable: Boolean): String =
+    if (plain && editable)
+      s"""${HTML_OPEN}span id="fml_$id" ng-class="{'hl':modeIsEdit(), 'edithover':isEditFormulaHighlighted('$id')}"
+         |  ng-mouseover="highlightFormula($$event, '$id', 'edit')"
+         |  ng-mouseleave="highlightFormula($$event, undefined, 'edit')"
+         |  ng-click="editClick('$id', $$event)"
+         |  uib-popover-template="'templates/editFormulaPopoverTemplate.html'"
+         |  popover-is-open="editFormulaPopover.isOpen('$id')"
+         |  popover-trigger="'none'"
+         |  popover-append-to-body="true"
+         |  popover-placement="auto bottom"
+         |$HTML_CLOSE$content$HTML_OPEN/span$HTML_CLOSE""".stripMargin
+    else if (plain && !editable)
+      s"""${HTML_OPEN}span id="fml_$id"$HTML_CLOSE$content$HTML_OPEN/span$HTML_CLOSE""".stripMargin
+    else s"""${HTML_OPEN}span ng-class="{'hl':modeIsProve(), 'hlhover':isProveFormulaHighlighted('$id')}" id="$id"
+        |  ng-mouseover="highlightFormula($$event, '$id', 'prove')"
+        |  ng-mouseleave="highlightFormula($$event, undefined, 'prove')"
         |  ng-click="formulaClick('$id', $$event)"
         |  ng-right-click="formulaRightClick('$id', $$event)"
         |  uib-popover-template="'templates/axiomPopoverTemplate.html'"
         |  popover-is-open="tacticPopover.isOpen('$id')"
-        |  popover-trigger="none"
+        |  popover-trigger="'none'"
         |  popover-append-to-body="true"
         |  popover-placement="auto bottom"$HTML_CLOSE$content$HTML_OPEN/span$HTML_CLOSE""".stripMargin
 

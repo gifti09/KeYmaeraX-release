@@ -9,22 +9,31 @@ angular.module('keymaerax.controllers').controller('DashboardCtrl.ShutdownDialog
 
 }]);
 
-angular.module('keymaerax.controllers').controller('DashboardCtrl.ExtractDB', ['$scope', '$uibModalInstance', function($scope, $uibModalInstance, path) {
-    $scope.extractedDatabaseLocation = path
+angular.module('keymaerax.controllers').controller('DashboardCtrl.ExtractDB', ['$scope', '$uibModalInstance', 'path', function($scope, $uibModalInstance, path) {
+    $scope.extractedDatabaseLocation = path;
     $scope.close = function() {
         $uibModalInstance.dismiss('cancel');
     }
 }]);
 
 angular.module('keymaerax.controllers').controller('DashboardCtrl', ['$scope', '$uibModal', '$cookies', '$http', function ($scope, $uibModal, $cookies, $http) {
+  $scope.intro = {
+    introOptions: {},
+    firstTime: false
+  }
+
+  $scope.showOverlayHelp = function() {
+    $('body').chardinJs('start');
+  }
+
   // Set the view for menu active class
   $scope.$on('routeLoaded', function (event, args) {
     $scope.theview = args.theview;
   });
 
-  $scope.toolIsConfigured = true;
-  $http.get("/config/toolStatus").success(function(data) {
-    $scope.toolIsConfigured = data.configured;
+  $scope.toolConfig = {};
+  $http.get("/config/toolStatus").then(function(response) {
+    $scope.toolConfig = response.data;
   });
 
 
@@ -64,14 +73,14 @@ angular.module('keymaerax.controllers').controller('DashboardCtrl', ['$scope', '
 
   $scope.extractdb = function() {
       $http.post('/extractdb')
-          .success(function(data) {
-              var modalInstance = $uibModal.open({
+          .then(function(response) {
+              $uibModal.open({
                   templateUrl: 'partials/extractdb.html',
                   controller: 'DashboardCtrl.ExtractDB',
                   backdrop: "static",
                   size: 'md',
                   resolve: {
-                      path: function () { return data.path; },
+                      path: function () { return response.data.path; },
                   }
               });
           })

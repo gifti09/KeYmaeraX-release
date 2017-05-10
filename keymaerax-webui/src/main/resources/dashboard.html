@@ -23,14 +23,22 @@
     <link href="css/presentation_small.css" title="KeYmaera X Presentation Mode Small" rel="alternate stylesheet" type="text/css">
     <link href="css/presentation.css" title="KeYmaera X Presentation Mode Medium" rel="alternate stylesheet" type="text/css">
     <link href="css/presentation_large.css" title="KeYmaera X Presentation Mode Large" rel="alternate stylesheet" type="text/css">
-    <link href="css/sticky-footer-navbar.css" rel="stylesheet" type="text/css">
-
 
     <!-- plugins -->
+    <link href="/css/intro/introjs.css" rel="stylesheet" type="text/css">
+    <link href="/css/chardin/chardinjs.css" rel="stylesheet" type="text/css">
+    <link href="css/sticky-footer-navbar.css" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/js/highlight/styles/default.css">
 
 </head>
 
 <body ng-controller="DashboardCtrl">
+
+<script type="text/ng-template" id="firstTimePopover.html">
+    <div uib-alert class="alert-success"
+         style="margin-bottom:0px;"
+         close="intro.firstTime=false;"><strong>Quick help</strong></div>
+</script>
 
 <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
     <div class="container">
@@ -46,7 +54,7 @@
         <!-- Collect the nav links, forms, and other content for toggling -->
         <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
             <ul class="nav navbar-nav nav-pills">
-                <li ng-class="{active: theview == 'dashboard'}"><a href="dashboard.html?#/dashboard">Dashboard</a></li>
+                <!--<li ng-class="{active: theview == 'dashboard'}"><a href="dashboard.html?#/dashboard">Dashboard</a></li>-->
                 <li ng-class="{active: theview == 'models'}"><a href="dashboard.html?#/models">Models</a></li>
                 <!--<li><a href="#">Lemmas</a></li>-->
                 <!-- TODO nav pill shows how many updates where made to proofs since last logged in. Currently, it shows the number of OPEN proofs! -->
@@ -64,54 +72,75 @@
                     <a class="dropdown-toggle" data-toggle="dropdown">Help <span class="caret"></span></a>
                     <ul class="dropdown-menu" role="menu">
                         <!--<li><a href="#">Examples</a></li>-->
-                        <li><a href="dashboard.html?#/tutorials">Tutorials</a></li>
-                        <li><a href="dashboard.html?#/usage">Using KeYmaera&#160;X</a></li>
-                        <li><a href="dashboard.html?#/tools" ng-show="isLocal">Backend Tool Configuration</a></li>
-                        <li><a href="dashboard.html?#/license">License</a></li>
+                        <li><a ng-click="showOverlayHelp()"><i class="fa fa-question-circle"></i> Quick Usage Help</a></li>
+                        <li><a href="dashboard.html?#/tutorials"><i class="fa fa-info-circle"></i> Tutorials</a></li>
+                        <!--<li><a ng-click="startIntro();"><i class="fa fa-question-circle"></i> Step-by-step help</a></li>-->
+                        <li><a href="dashboard.html?#/usage"><i class="fa fa-info-circle"></i> Using KeYmaera&#160;X</a></li>
+                        <li class="divider"></li>
+                        <li><a href="dashboard.html?#/tools" ng-show="isLocal"><i class="fa fa-wrench"></i> Tool Configuration</a></li>
+                        <li><a href="dashboard.html?#/license"><i class="fa fa-copyright"></i> License</a></li>
+                        <li><a href="dashboard.html?#/import"><i class="fa fa-upload"></i> Import Case Study</a></li>
                         <!--<li><a href="#">Videos</a></li>-->
                         <li class="divider"></li>
-                        <li><a href="dashboard.html?#/syntax">Hybrid Program Syntax and Semantics</a></li>
-                        <li><a href="http://keymaerax.org/KeYmaeraX-sheet.pdf">KeYmaera&#160;X Cheat Sheet</a></li>
+                        <li><a href="dashboard.html?#/syntax"><i class="fa fa-info-circle"></i> Syntax and Semantics</a></li>
+                        <li><a href="http://keymaerax.org/KeYmaeraX-sheet.pdf"><i class="fa fa-info-circle"></i> KeYmaera&#160;X Cheat Sheet</a></li>
                         <li class="divider"></li>
-                        <li><a ng-click="extractdb()" ng-show="isLocal">Extract Database</a></li>
+                        <li><a ng-click="extractdb()" ng-show="isLocal"><i class="fa fa-archive"></i> Extract Database</a></li>
                         <li class="divider"></li>
-                        <li><a href="http://www.keymaerax.org">Download</a></li>
-                        <!--<li><a href="#">Hybrid Program Semantics</a></li>-->
-                        <!--<li class="divider"></li>-->
-                        <!--<li><a href="dashboard.html?#/dev">Developer Actions</a></li>-->
+                        <li><a href="http://www.keymaerax.org"><i class="fa fa-download"></i> Download</a></li>
                     </ul>
                 </li>
                 <li class="dropdown">
-                    <a ng-click="shutdown()" ng-show="isLocal"/><!--class="dropdown-toggle" data-toggle="dropdown"--><i class="fa fa-power-off"></i></a>
-                    <!--<ul class="dropdown-menu" role="menu">-->
-                        <!--<li><a  ng-controller="DashboardCtrl">Shutdown KeYmaera X</a></li>-->
-                    <!--</ul>-->
+                    <a>
+                        <i class="fa fa-question-circle" ng-click="showOverlayHelp()"
+                           uib-popover-template="'firstTimePopover.html'" popover-trigger="'none'"
+                           popover-class="increase-popover-width"
+                           popover-is-open="intro.firstTime" popover-placement="bottom"
+                           uib-tooltip="Quick usage help" tooltip-placement="auto bottom">
+                        </i>
+                    </a>
                 </li>
                 <li class="dropdown">
-                    <a ng-click="logoff()" title="Log off"/><i class="fa fa-sign-out"></i></a>
+                    <a ng-click="shutdown()" ng-show="isLocal" uib-tooltip="Shutdown KeYmaera X" tooltip-placement="auto bottom"><i class="fa fa-power-off"></i></a>
+                </li>
+                <li class="dropdown">
+                    <a ng-click="logoff()" uib-tooltip="Log off" tooltip-placement="auto bottom"><i class="fa fa-sign-out"></i></a>
                 </li>
             </ul>
         </div><!--/.navbar-collapse -->
     </div>
 </div>
 
-<div class="container" ng-if="!toolIsConfigured" ng-cloak>
+<div class="container">
+
+<div ng-if="toolConfig.tool !== undefined && (toolConfig.tool !== 'Mathematica' || !toolConfig.configured)" ng-cloak>
     <div class="alert alert-warning" role="alert">
         <button type="button" class="close" data-dismiss="alert">&times;</button>
-        <b><i class="fa fa-exclamation-triangle"></i> Warning:</b> Backend tool is not configured.
-        Most problems <b>will not be proved</b> and all the existing proofs <b>will not be reloaded</b>. <a href="dashboard.html#/tools"><b>Configure now.</b></a>
+        <b><i class="fa fa-exclamation-triangle"></i> Warning:</b> Limited functionality: Mathematica is not configured.
+            <a href="dashboard.html#/tools"><b>Configure now.</b></a>
     </div>
 </div>
 
+<div ng-controller="ServerInfoCtrl">
+    <div class="alert alert-warning" role="alert" ng-if="!upToDate && versionInfoAvailable" ng-cloak>
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+        <span class="text-warning"><b>Update:</b> version {{latestVersion}} is now available from <a href="http://keymaerax.org">KeYmaeraX.org</a>.</span>
+    </div>
+</div>
+
+<div ng-intro-options="intro.introOptions" ng-intro-method="startIntro" ng-intro-autostart="false">
 <div class="container" ng-view></div>
+</div>
+
+</div>
 
 <div class="footer" ng-controller="ServerInfoCtrl">
     <div class="container">
         <p class="text-muted">KeYmaera X version {{keymaeraXVersion}}
-            <span ng-if="!upToDate && versionInfoAvailable">(<b>version {{latestVersion}} is now available from <a href="http://keymaerax.org">KeYmaeraX.org</a></b>).</span>
+            <span class="text-danger" ng-if="!upToDate && versionInfoAvailable">(<b>version {{latestVersion}} is now available from <a class="text-danger" href="http://keymaerax.org">KeYmaeraX.org</a></b>).</span>
             <span ng-if="!versionInfoAvailable">(could not retrieve version information from KeYmaeraX.org).</span>
             <span ng-if="upToDate && versionInfoAvailable">(latest release).</span>
-            &copy; <a href="http://www.ls.cs.cmu.edu/" target="_blank">Logical Systems Lab</a>, Carnegie Mellon University 2016</p>
+            <i class="fa fa-copyright"></i> <a href="http://www.ls.cs.cmu.edu/" target="_blank">Logical Systems Lab</a>, Carnegie Mellon University 2017</p>
     </div>
 </div>
 
@@ -130,7 +159,7 @@
 <script src="/js/angular/angular-animate.min.js"></script>
 <script src="/js/angular-spinners/angular-spinners.min.js"></script>
 <script src="/js/xeditable.min.js"></script> <!-- for inline editing -->
-<script src="/js/angular/bootstrap/ui-bootstrap-tpls-1.1.0.min.js" ></script>
+<script src="/js/angular/bootstrap/ui-bootstrap-tpls-2.5.0.min.js" ></script>
 <script src="/js/angular-textcomplete/ng-textcomplete.js"></script>
 <script src="/js/google-diffmatchpatch/diff_match_patch.js"></script>
 <script src="/js/angular-diffmatchpatch/angular-diff-match-patch.js"></script>
@@ -138,6 +167,13 @@
 <script src="/js/rangy/rangy-core.min.js"></script>
 <script src="/js/rangy/rangy-classapplier.min.js"></script>
 <script src="/js/rangy/rangy-textrange.min.js"></script>
+<script src="/js/angular-chart/Chart.min.js"></script> <!-- Simulation and test synthesis -->
+<script src="/js/angular-chart/angular-chart.min.js"></script> <!-- Simulation and test synthesis -->
+<script src="/js/intro/intro.min.js"></script> <!-- Step-by-step Help -->
+<script src="/js/chardin/chardinjs.min.js"></script> <!-- Help -->
+<script src="/js/intro/angular-intro.min.js"></script> <!-- angular wrapper for intro -->
+<script src="/js/highlight/highlight.pack.js"></script>
+<script src="/js/angular-highlightjs/angular-highlightjs.min.js"></script>
 <script src="/js/app.js"></script>
 <!-- Load services -->
 <script src="/js/services/services.js"></script>
@@ -153,7 +189,6 @@
 <script src="/js/controllers/factories.js"></script>
 <script src="/js/controllers/errorReport.js"></script>
 <script src="/js/controllers/counterExample.js"></script>
-<script src="/js/controllers/transformFormula.js"></script>
 <script src="/js/controllers/dashboard.js"></script>
 <script src="/js/controllers/dev.js"></script>
 <!--<script src="/js/controllers/hacmstree.js"></script>-->
@@ -169,6 +204,7 @@
 <script src="/js/controllers/derivationInfoDialog.js"></script>
 <script src="/js/controllers/tacticExtraction.js"></script>
 <script src="/js/controllers/modelplex.js"></script>
+<script src="/js/controllers/testsynthesis.js"></script>
 <script src="/js/controllers/login.js"></script>
 <script src="/js/controllers/serverinfo.js"></script>
 <script src="/js/controllers/proofapp.js"></script>
@@ -183,6 +219,9 @@
 <script src="js/keymaera-ui/sequentproof.js"></script>
 <script src="js/keymaera-ui/autohidealert.js"></script>
 <script src="js/keymaera-ui/tacticeditor.js"></script>
+<script src="js/keymaera-ui/replaceinclude.js"></script>
+
+<script>hljs.initHighlightingOnLoad();</script>
 
 </body>
 </html>

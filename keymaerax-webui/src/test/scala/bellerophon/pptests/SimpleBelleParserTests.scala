@@ -3,11 +3,13 @@ package bellerophon.pptests
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.btactics._
-import edu.cmu.cs.ls.keymaerax.parser.UnknownLocation
+import edu.cmu.cs.ls.keymaerax.core.SubstitutionPair
+import edu.cmu.cs.ls.keymaerax.parser.{ParseException, UnknownLocation}
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.tags.UsualTest
 
 import scala.language.postfixOps
+import org.scalatest.Inside._
 
 /**
   * Very simple positive unit tests for the Bellerophon parser. Useful for TDD and bug isolation but probably not
@@ -64,6 +66,20 @@ class SimpleBelleParserTests extends TacticTestBase {
   it should "Parse a loop tactic and print it back out" in {
     BelleParser("loop({`1=1`}, 1)") shouldBe TactixLibrary.loop("1=1".asFormula)(1)
     BellePrettyPrinter(TactixLibrary.loop("1=1".asFormula)(1)) shouldBe "loop({`1=1`}, 1)"
+  }
+
+  it should "parse a tactic with optional argument specified" in {
+    val t = TactixLibrary.discreteGhost("5".asTerm, Some("x".asVariable))(1)
+    val s = "discreteGhost({`5`}, {`x`}, 1)"
+    BelleParser(s) shouldBe t
+    BellePrettyPrinter(t) shouldBe s
+  }
+
+  it should "parse a tactic without optional argument specified" in {
+    val t = TactixLibrary.discreteGhost("5".asTerm, None)(1)
+    val s = "discreteGhost({`5`}, 1)"
+    BelleParser(s) shouldBe t
+    BellePrettyPrinter(t) shouldBe s
   }
 
   //endregion
@@ -244,9 +260,9 @@ class SimpleBelleParserTests extends TacticTestBase {
   }
 
   it should "get precedence right" in {
-    val tactic = BelleParser("andR(1) & andR(2)+")
+    val tactic = BelleParser("andR(1) & andR(2)*")
     tactic shouldBe a [SeqTactic]
-    tactic shouldBe TactixLibrary.andR(1) & (TactixLibrary.andR(2)+)
+    tactic shouldBe TactixLibrary.andR(1) & (TactixLibrary.andR(2)*)
   }
 
   "doall combinator parser" should "parse doall(closeId)" in {
@@ -320,11 +336,11 @@ class SimpleBelleParserTests extends TacticTestBase {
               |  QE,
               |  QE,
               |  partial(composeb(1) & choiceb(1) & andR(1) <(
-              |    assignb(1) & diffSolve(1) & nil,
-              |    testb(1) & implyR(1) & diffSolve(1) & nil
+              |    assignb(1) & solve(1) & nil,
+              |    testb(1) & implyR(1) & solve(1) & nil
               |  ))
               |)""".stripMargin
-    BelleParser(t) //should not cause an exception.
+    BelleParser(t) shouldBe a [BelleExpr] //should not cause an exception.
   }
 
   //endregion
@@ -363,6 +379,124 @@ class SimpleBelleParserTests extends TacticTestBase {
   it should "parse in a branch" in {
     val tactic = BelleParser("andR(1) & <(closeId & done, done)")
     tactic shouldBe TactixLibrary.andR(1) & Idioms.<(TactixLibrary.closeId & TactixLibrary.done, TactixLibrary.done)
+  }
+
+  //endregion
+
+  //region let
+
+  "let tactic parser" should "parse a simple example" in {
+    val tactic = BelleParser("let ({`a()=a`}) in (done)")
+    tactic shouldBe Let("a()".asTerm, "a".asTerm, TactixLibrary.done)
+  }
+
+  it should "parse dI" in withMathematica { _ =>
+    val inner =
+      """
+        |DI(1) ; implyR(1) ; andR(1) ; <(
+        |  QE,
+        |  derive(1.1) ; DE(1) ; Dassignb(1.1) ; GV(1) ; QE
+        |)
+      """.stripMargin
+    val tactic = BelleParser(s"let ({`a()=a`}) in ($inner)")
+    tactic shouldBe Let("a()".asTerm, "a".asTerm, BelleParser(inner))
+  }
+
+  it should "parse let as part of a larger tactic" in {
+    val tactic = BelleParser("implyR(1) ; let ({`a()=a`}) in (nil) ; closeId")
+    tactic shouldBe TactixLibrary.implyR(1) & (Let("a()".asTerm, "a".asTerm, TactixLibrary.skip) & TactixLibrary.closeId)
+  }
+
+  "def tactic parser" should "parse a simple example" in {
+    val tactic = BelleParser("tactic t as (assignb('R))")
+    tactic shouldBe DefTactic("t", TactixLibrary.assignb('R))
+  }
+
+  it should "parse multipe tactic defs" in {
+    val tactic = BelleParser("tactic t as (assignb('R)) ; tactic s as (implyR(1))")
+    tactic shouldBe DefTactic("t", TactixLibrary.assignb('R)) & DefTactic("s", TactixLibrary.implyR(1))
+  }
+
+  it should "parse a simple example with application" in {
+    val tactic = BelleParser("tactic t as (assignb('R)) ; implyR(1) ; t")
+    val tDef = DefTactic("t", TactixLibrary.assignb('R))
+    tactic shouldBe tDef & (TactixLibrary.implyR(1) & ApplyDefTactic(tDef))
+  }
+
+  it should "parse with multiple application" in {
+    val tactic = BelleParser("tactic t as (assignb('R)) ; andR(1) ; <(t ; prop ; done, prop ; doall(t))")
+    val tDef = DefTactic("t", TactixLibrary.assignb('R))
+    tactic shouldBe tDef & (TactixLibrary.andR(1) <(
+      ApplyDefTactic(tDef) & (TactixLibrary.prop & TactixLibrary.done),
+      TactixLibrary.prop & OnAll(ApplyDefTactic(tDef))))
+  }
+
+  it should "reject duplicate definitions" in {
+    a [ParseException] should be thrownBy BelleParser("tactic t as (assignb('R)) ; tactic t as (implyR(1))")
+  }
+
+  it should "allow scoped definitions" in {
+    val tactic = BelleParser("tactic t as (assignb('R)) ; andR(1) ; <(t ; prop ; done, prop ; doall(tactic t as (unfold) ; t); t)")
+    val tDef1 = DefTactic("t", TactixLibrary.assignb('R))
+    val tDef2 = DefTactic("t", TactixLibrary.unfoldProgramNormalize)
+    tactic shouldBe tDef1 & (TactixLibrary.andR(1) <(
+      ApplyDefTactic(tDef1) & (TactixLibrary.prop & TactixLibrary.done),
+      TactixLibrary.prop & (OnAll(tDef2 & ApplyDefTactic(tDef2)) & ApplyDefTactic(tDef1))))
+  }
+
+  it should "allow nested defs" in {
+    val tactic = BelleParser("tactic t as (tactic s as (assignb('R)) ; andR(1) ; <(s, s)) ; t")
+    val sDef = DefTactic("s", TactixLibrary.assignb('R))
+    val tDef = DefTactic("t", sDef & TactixLibrary.andR(1) <(ApplyDefTactic(sDef), ApplyDefTactic(sDef)))
+    tactic shouldBe tDef & ApplyDefTactic(tDef)
+  }
+
+  "def function" should "parse a simple definition" in {
+    val tactic = BelleParser("def {`f(x)=x^2+1`} ; implyR(1) ; expand {`f(x)`}")
+    val fDef = DefExpression("f(x)=x^2+1".asFormula)
+    tactic shouldBe fDef & (TactixLibrary.implyR(1) & ExpandDef(fDef))
+  }
+
+  it should "parse multiple defs" in {
+    val tactic = BelleParser("def {`f(x)=x^2+1`} ; def {`g(x)=x+1`} ; implyR(1) ; expand {`f(x)`}")
+    val fDef = DefExpression("f(x)=x^2+1".asFormula)
+    val gDef = DefExpression("g(x)=x+1".asFormula)
+    tactic shouldBe fDef & (gDef & (TactixLibrary.implyR(1) & ExpandDef(fDef)))
+  }
+
+  //endregion
+
+  //region argument parser
+
+  "Tactic argument parser" should "parse string arguments" in {
+    BelleParser("print({`a message`})") shouldBe DebuggingTactics.print("a message")
+  }
+
+  it should "parse formula arguments" in {
+    BelleParser("dC({`x>0`},1)") shouldBe TactixLibrary.dC("x>0".asFormula)(1)
+  }
+
+  it should "parse term arguments" in {
+    BelleParser("transform({`x+2`},1)") shouldBe TactixLibrary.transform("x+2".asTerm)(1)
+  }
+
+  it should "parse mixed arguments" in {
+    BelleParser("dG({`z`},{`-1`},{`0`},{`x*z^2=1`},1)") shouldBe TactixLibrary.dG("z'=-1*z+0".asDifferentialProgram, Some("x*z^2=1".asFormula))(1)
+  }
+
+  it should "expand definitions when parsing arguments" in {
+    inside(BelleParser.parseWithInvGen("MR({`safeDist()>0`},1)", None, Nil)) {
+      case adpt: AppliedDependentPositionTactic => adpt.pt should have (
+        'inputs ("safeDist()>0".asFormula::Nil)
+      )
+    }
+
+    inside(BelleParser.parseWithInvGen("MR({`safeDist()>0`},1)", None,
+      SubstitutionPair("safeDist()".asTerm, "y".asTerm)::Nil)) {
+      case adpt: AppliedDependentPositionTactic => adpt.pt should have (
+        'inputs ("y>0".asFormula::Nil)
+      )
+    }
   }
 
   //endregion

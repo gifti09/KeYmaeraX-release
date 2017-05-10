@@ -27,9 +27,12 @@ object DifferentialHelper {
   }
 
   /** Sorts ODEs in dependency order; so v'=a, x'=v is sorted into x'=v,v'=a. */
-  def sortAtomicOdes(odes : List[AtomicODE]) : List[AtomicODE] = {
-    sortAtomicOdesHelper(odes).map(v => odes.find(_.xp.x.equals(v)).get)
+  def sortAtomicOdes(odes : List[AtomicODE], diffArg:Term) : List[AtomicODE] = {
+    val sorted = sortAtomicOdesHelper(odes).map(v => odes.find(_.xp.x.equals(v)).get)
+    val (l1, l2) = sorted.partition(atom => atom.xp.x == diffArg)
+    l2 ++ l1
   }
+
   //@todo check this implementation.
   def sortAtomicOdesHelper(odes : List[AtomicODE], prevOdes : List[AtomicODE] = Nil) : List[Variable] = {
     var primedVars = odes.map(_.xp.x)
@@ -55,8 +58,9 @@ object DifferentialHelper {
     case Some(x) => StaticSemantics.boundVars(x).contains(v)
     case None => true //over-approximate set of initial conditions if no ODE is provided.
   }
+
   def containsPrimedVariables(vs: Set[Variable], system: ODESystem) =
-    vs.find(v => isPrimedVariable(v, Some(system.ode))).nonEmpty
+    vs.exists(v => isPrimedVariable(v, Some(system.ode)))
 
 
   /**
@@ -187,7 +191,7 @@ object DifferentialHelper {
   }
   //@todo performance: could consider replacing this by a direct recursive computation without proof.
   def lieDerivative(ode: DifferentialProgram, fml: Formula): Formula = {
-    TactixLibrary.proveBy(Box(ODESystem(ode, True), fml), TactixLibrary.diffInd('diffInd)(1) <(
+    TactixLibrary.proveBy(Box(ODESystem(ode, True), fml), TactixLibrary.dI('diffInd)(1) <(
       TactixLibrary.skip,
       TactixLibrary.Dassignb(1)*(StaticSemantics.boundVars(ode).symbols.count(_.isInstanceOf[DifferentialSymbol])))
     ).

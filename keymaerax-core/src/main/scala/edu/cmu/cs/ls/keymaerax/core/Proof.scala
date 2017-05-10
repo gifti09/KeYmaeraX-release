@@ -19,6 +19,8 @@ package edu.cmu.cs.ls.keymaerax.core
 
 // require favoring immutable Seqs for soundness
 
+import edu.cmu.cs.ls.keymaerax.pt.{NoProofTermProvable, ProvableSig}
+
 import scala.collection.immutable
 
 /*--------------------------------------------------------------------------------*/
@@ -368,7 +370,7 @@ final case class Sequent(ante: immutable.IndexedSeq[Formula], succ: immutable.In
   *  )
   * }}}
   */
-final case class Provable private (conclusion: Sequent, subgoals: immutable.IndexedSeq[Sequent]) {
+final case class Provable private(conclusion: Sequent, subgoals: immutable.IndexedSeq[Sequent]) {
   /**
     * Position types for the subgoals of a Provable.
     */
@@ -669,7 +671,7 @@ object Provable {
     //@note soundness-critical
     val fact = Provable.oracle(new Sequent(immutable.IndexedSeq(), immutable.IndexedSeq(Equiv(f, equivalent))),
       immutable.IndexedSeq())
-    Lemma(fact, Lemma.requiredEvidence(fact, evidence :: Nil), None)
+    Lemma(NoProofTermProvable(fact), Lemma.requiredEvidence(NoProofTermProvable(fact), evidence :: Nil), None)
   }
 
   /**
@@ -1079,7 +1081,7 @@ case class EquivLeft(pos: AntePos) extends LeftRule {
   */
 object UniformRenaming {
   /** Apply uniform renaming what~>repl to provable forward in Hilbert-style (convenience) */
-  def UniformRenamingForward(provable: Provable, what: Variable, repl: Variable): Provable =
+  def UniformRenamingForward(provable: ProvableSig, what: Variable, repl: Variable): ProvableSig =
     provable(URename(what,repl)(provable.conclusion), UniformRenaming(what, repl))
 }
 
@@ -1128,8 +1130,8 @@ final case class BoundRenaming(what: Variable, repl: Variable, pos: SeqPos) exte
 
   def apply(f: Formula): Formula = { if (admissible(f))
     f match {
-      case Forall(vars, g) if vars==immutable.IndexedSeq(what) => Forall(immutable.IndexedSeq(repl), renaming(g))
-      case Exists(vars, g) if vars==immutable.IndexedSeq(what) => Exists(immutable.IndexedSeq(repl), renaming(g))
+      case Forall(vars, g) if vars.contains(what) => Forall(vars.updated(vars.indexOf(what), repl), renaming(g))
+      case Exists(vars, g) if vars.contains(what) => Exists(vars.updated(vars.indexOf(what), repl), renaming(g))
       //@note e is not in scope of x so is, unlike g, not affected by the renaming
       case Box    (Assign(x, e), g) if x==what => Box    (Assign(repl, e), renaming(g))
       case Diamond(Assign(x, e), g) if x==what => Diamond(Assign(repl, e), renaming(g))

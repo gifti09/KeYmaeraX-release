@@ -53,7 +53,8 @@ private[core] object AxiomBase {
     val context = Function("ctx_", None, Bool, Bool) // predicational symbol
     val a = ProgramConst("a_")
     val sys = SystemConst("a_")
-
+    val v = Variable("v", None, Real)
+    val Jany = UnitPredicational("J", AnyArg)
     Map(
       /**
         * Rule "CQ equation congruence".
@@ -106,7 +107,24 @@ private[core] object AxiomBase {
         */
       ("ind induction",
         (immutable.IndexedSeq(Sequent(immutable.IndexedSeq(pany), immutable.IndexedSeq(Box(a, pany)))),
-          Sequent(immutable.IndexedSeq(pany), immutable.IndexedSeq(Box(Loop(a), pany)))))
+          Sequent(immutable.IndexedSeq(pany), immutable.IndexedSeq(Box(Loop(a), pany))))),
+      /**
+        * Rule "con convergence".
+        * Premisses: v > 0, J(||) |- <a{|v|}><v:=v-1;> J(||)
+        *            v <= 0, J(||) |- P
+        * Conclusion  J(||) |- <a{|v|}*>J(||)
+        * {{{
+        *     v > 0, J(v) |- <a{|v|}>J(v-1)  v <= 0, J(v) |- P
+        *    -------------------------------------- con
+        *     J(v) |- <a{|v|}*>P
+        * }}}
+        * @todo Bugfix soundness by telling a to be SpaceDependent Except(v)
+        */
+      ("con convergence",
+        (immutable.IndexedSeq(
+            Sequent(immutable.IndexedSeq(Greater(v, Number(0)),Jany), immutable.IndexedSeq(Diamond(a, Diamond(Assign(v,Minus(v,Number(1))),Jany)))),
+            Sequent(immutable.IndexedSeq(LessEqual(v, Number(0)), Jany), immutable.IndexedSeq(pany))),
+          Sequent(immutable.IndexedSeq(Jany), immutable.IndexedSeq(Diamond(Loop(a), pany)))))
     )
   }
 
@@ -165,7 +183,7 @@ private[core] object AxiomBase {
       * DIFFERENTIAL EQUATION AXIOMS
       */
     // Figure 3
-    assert(axs("DW") == Box(ODESystem(ode, qany), qany), "DW")
+    assert(axs("DW base") == Box(ODESystem(ode, qany), qany), "DW base")
     assert(axs("DC differential cut") == Imply(Box(ODESystem(ode, qany), UnitPredicational("r",AnyArg)),
       Equiv(Box(ODESystem(ode, qany), pany),
         Box(ODESystem(ode, And(qany,UnitPredicational("r",AnyArg))), pany))), "DC differential cut")
@@ -282,7 +300,7 @@ Axiom "[*] iterate".
 End.
 
 
-Axiom "DW".
+Axiom "DW base".
   [{c&q(||)}]q(||)
 /* [x'=f(x)&q(x);]q(x) THEORY */
 End.
@@ -330,12 +348,17 @@ Axiom "DG inverse differential ghost implicational".
   [{c{|y_|}&q(|y_|)}]p(|y_|)  ->  \forall y_ [{y_'=a(||),c{|y_|}&q(|y_|)}]p(|y_|)
 End.
 
+/* @todo: , commute should be derivable from this + ghost */
+Axiom ", sort".
+  [{c,d,e&q(||)}]p(||) <-> [{c,e,d&q(||)}]p(||)
+End.
+
 Axiom ", commute".
   [{c,d&q(||)}]p(||) <-> [{d,c&q(||)}]p(||)
 End.
 
 Axiom "DS& differential equation solution".
-  [{x_'=c()&q(x_)}]p(||) <-> \forall t_ (t_>=0 -> ((\forall s_ ((0<=s_&s_<=t_) -> q(x_+(c()*s_)))) -> [x_:=x_+(c()*t_);]p(||)))
+  [{x_'=c()&q(x_)}]p(|x_'|) <-> \forall t_ (t_>=0 -> ((\forall s_ ((0<=s_&s_<=t_) -> q(x_+(c()*s_)))) -> [x_:=x_+(c()*t_);]p(|x_'|)))
 End.
 
 /** @Derived from DW (not implementable for technical reasons - abstraction of c, ??) */
@@ -345,6 +368,10 @@ End.
 
 Axiom "DIo open differential invariance >".
   ([{c&q(||)}]f(||)>g(||) <-> [?q(||);]f(||)>g(||)) <- (q(||) -> [{c&q(||)}](f(||)>g(||) -> (f(||)>g(||))'))
+End.
+
+Axiom "DIo open differential invariance >=".
+  ([{c&q(||)}]f(||)>=g(||) <-> [?q(||);]f(||)>=g(||)) <- (q(||) -> [{c&q(||)}](f(||)>=g(||) -> (f(||))'>g(||)'))
 End.
 
 Axiom "DV differential variant >=".
@@ -501,17 +528,11 @@ Axiom "const formula congruence".
 End.
 
 /**
- * DRI and Lie-based invariance checking rules.
+ * Z3 compatibility axioms (derivable with Mathematica).
  */
- Axiom "DRIStep". /* @TODO check soundness */
-  ( h(x) = 0 -> [{x' = f(x) & q(x)}]h(x) = 0 )
-  <->
-   (
-     (h(x) = 0 & q(x) -> [x' := f(x);](h(x))'=0) &
-     ([x' := f(x);](h(x))'=0 -> [{x'=f(x) & q(x) & h(x)=0}][x' := f(x);](h(x))'=0)
-     /* (f(x) = 0 -> (f(x))' = 0) &
-      ((f(x))' = 0 -> [{x' = t(||) & f(x)=0 & q(||)}](f(x))'=0) */
-   )
+
+ Axiom "dgZeroEquilibrium".
+   x=0 & n>0 -> [{x'=c*x^n}]x=0
  End.
 
 

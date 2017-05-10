@@ -8,6 +8,7 @@ package edu.cmu.cs.ls.keymaerax.btactics
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.btactics.helpers.DifferentialHelper._
 import StaticSemantics.freeVars
+import edu.cmu.cs.ls.keymaerax.bellerophon.BelleTacticFailure
 import edu.cmu.cs.ls.keymaerax.tools.{ODESolverTool, Tool, ToolBase}
 
 /**
@@ -23,7 +24,7 @@ object Integrator {
     * @return The solution as a list of equalities, one for each of the primed variables.
     */
   def apply(initialValues: Map[Variable, Term], diffArg: Term, system: ODESystem): List[Equal] = {
-    val sortedOdes = sortAtomicOdes(atomicOdes(system))
+    val sortedOdes = sortAtomicOdes(atomicOdes(system), Variable("kyxtime"))
     val primedVars = sortedOdes.map(ode => ode.xp.x).filter(_ != diffArg)
     val initializedVars = initialValues.keySet
     val timerVars = StaticSemantics.freeVars(diffArg)
@@ -86,6 +87,10 @@ object Integrator {
   private def valueFor(v: Variable, equalities: List[Equal]): Option[Equal] = equalities.find(eq => eq.left == v)
   private def hasValue(v: Variable, equalities: List[Equal]) = valueFor(v, equalities).nonEmpty
 
+  private def nonRecurrentPrimes(odes: List[AtomicODE], primedVars: Set[Variable]): Set[Variable] = {
+    odes.flatMap(ode => if (StaticSemantics.freeVars(ode.e).intersect(primedVars).isEmpty) ode.xp::ode.xp.x::Nil else Nil).toSet
+  }
+
   /**
     * A syntactic integrator for @todo something like sums of terms over polynomials univariable in t.
     *
@@ -94,31 +99,39 @@ object Integrator {
     * @param t Time variable
     * @return Integral term dt
     */
-  private def integrator(term: Term, t: Term, system: ODESystem) : Term = SimplifierV2.termSimp(term)._1 match {
-    case Plus(l, r) => Plus(integrator(l, t, system), integrator(r, t, system))
-    case Minus(l, r) => Minus(integrator(l, t, system), integrator(r, t, system))
-    case Times(c, x) if x.equals(t) && StaticSemantics.freeVars(c).intersect(StaticSemantics.freeVars(t)).isEmpty => Times(Divide(c, Number(2)), Power(x, Number(2)))
-    case Times(c, Power(x, exp)) if x.equals(t) && StaticSemantics.freeVars(exp).intersect(StaticSemantics.freeVars(t)).isEmpty &&
-        StaticSemantics.freeVars(c).intersect(StaticSemantics.freeVars(t)).isEmpty => {
-      val newExp = exp match {
-        case Number(n) => Number(n+1)
-        case _ => Plus(exp, Number(1))
+  private def integrator(term: Term, t: Term, system: ODESystem) : Term = {
+    val tsimp = SimplifierV2.termSimp(t)._1
+    val simp = SimplifierV2.termSimp(term)._1
+    simp match {
+      case e if e.equals(t) => Divide(Power(e, Number(2)),Number(2))
+      case Plus(l, r) => Plus(integrator(l, t, system), integrator(r, t, system))
+      case Times(c, x) if (x.equals(t) || x.equals(tsimp)) && StaticSemantics.freeVars(c).intersect(StaticSemantics.freeVars(t)).isEmpty => Times(Divide(c, Number(2)), Power(x, Number(2)))
+      case Times(c, Power(x, exp)) if (x.equals(t) || x.equals(tsimp)) && StaticSemantics.freeVars(exp).intersect(StaticSemantics.freeVars(t)).isEmpty &&
+          StaticSemantics.freeVars(c).intersect(StaticSemantics.freeVars(t)).isEmpty => {
+        val newExp = exp match {
+          case Number(n) => Number(n+1)
+          case _ => Plus(exp, Number(1))
+        }
+        Times(Divide(c, newExp), Power(t, newExp))
       }
-      Times(Divide(c, newExp), Power(t, newExp))
-    }
-    case Neg(c) => Neg(integrator(c, t, system))
-    case Power(base, exp) => exp match {
-      case Number(n) =>
-        if(n == 1) integrator(base, t, system)
-        else       Times(Divide(Number(1), Number(n+1)), integrator(Power(base, Number(n-1)), t, system))
-      case _ => throw new Exception("Cannot integrate terms with non-number exponents!")
-    }
-    case x: Term => {
-      val fvs = StaticSemantics.freeVars(x).toSet.filter(_.isInstanceOf[Variable])
-      if(!containsPrimedVariables(fvs, system))
-        Times(x,t)
-      else
-        throw new Exception("Expected that recurrences would be solved so that derivatives don't ever mention other primed variables.")
+      case Times(c, x) if StaticSemantics.freeVars(c).intersect(getPrimedVariables(system).toSet).isEmpty => Times(c, integrator(x, t, system))
+      case Times(x, c) if StaticSemantics.freeVars(c).intersect(getPrimedVariables(system).toSet).isEmpty => Times(c, integrator(x, t, system))
+      case Divide(num, denom) if StaticSemantics.freeVars(denom).intersect(getPrimedVariables(system).toSet).isEmpty => Divide(integrator(num, t, system), denom)
+      case Divide(num, denom) => integrator(Times(num, Power(denom, Number(-1))), t, system)
+      case Neg(c) => Neg(integrator(c, t, system))
+      case Power(base, exp) => exp match {
+        case Number(n) =>
+          if(n == 1) integrator(base, t, system)
+          else       Times(Divide(Number(1), Number(n+1)), integrator(Power(base, Number(n-1)), t, system))
+        case _ => throw new Exception("Cannot integrate terms with non-number exponents!")
+      }
+      case Minus(l, r) => Minus(integrator(l, t, system), integrator(r, t, system))
+      case x: Term =>
+        //@note should be needed only for kyxtime --> better hand in time variable
+        //@note assumes that sorting had solver already work on atomic ODEs with only constant right-hand side
+        val fvs = StaticSemantics.freeVars(x).toSet -- nonRecurrentPrimes(atomicOdes(system), getPrimedVariables(system).toSet)
+        if(!containsPrimedVariables(fvs, system)) Times(x,t)
+        else throw BelleTacticFailure(s"Expected that recurrences would be solved so that derivatives don't ever mention other primed variables, but $system contains at least one of ${fvs.mkString(",")} primed.")
     }
   }
 }

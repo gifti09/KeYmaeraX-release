@@ -80,6 +80,39 @@ class ParsePrintParseTests extends FlatSpec with Matchers {
     }
   }
 
+  it should "not print and parse a formula with if then else as variable names." in {
+    val exprs = "if = then"   ::
+                "then = else" ::
+                "if = else"   ::
+                "else = then" ::
+                "then = if"   ::
+                Nil
+    for(e <- exprs) {
+      try {
+        KeYmaeraXParser(e)
+        assert(false, "Should've thrown an exception")
+      } catch {
+        case e : Throwable => //ok.
+      }
+    }
+  }
+
+  it should "print and parse if-then-else" in {
+    val exprs =
+      "if(x < 0)  { x := -x; x := x;} else {?true;}" ::
+      "if (x < 0) { x := -x;} else {?true;}" ::
+      "if (x < 0) { x := -x;} else {x := x * 2;}" ::
+      "if (acc <= 0) { acc := 0;} else {if (SB < A) {acc := SB;} else {acc := A;}}"  ::
+      "<{if (x = 0) {x := 1; y := 0;} else {y := 3; a := a + 5; ?(x = x);}}>x != y" ::
+      "<if (x = 0) {x := 1; y := 0;} else {y := 3;} a := a + 5; ?(x = x);>x != y" ::
+      "x = 0 -> [if (x = 0){ x := 1; y := 0; }else {y := 3;} a := a + 5; ?(x = x);]x > y" ::
+        Nil
+    for (e <- exprs) {
+      val expected = KeYmaeraXParser(e)
+      KeYmaeraXParser(KeYmaeraXPrettyPrinter(expected)) shouldBe expected
+    }
+  }
+
   "Parsing pretty-printer output" should "be the same as the original expression (random)" in {
     for (i <- 1 to randomTrials) {
 		val expected = rand.nextFormula(randomComplexity)

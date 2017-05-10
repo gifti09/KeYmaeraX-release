@@ -5,29 +5,45 @@ import java.io.File
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, BelleProvable, SequentialInterpreter}
 import edu.cmu.cs.ls.keymaerax.btactics._
-import edu.cmu.cs.ls.keymaerax.core.{Formula, PrettyPrinter, Provable}
-import edu.cmu.cs.ls.keymaerax.parser.ParseException
+import edu.cmu.cs.ls.keymaerax.core.{Formula, PrettyPrinter, Program}
+import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXArchiveParser, KeYmaeraXParser, ParseException}
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 /**
   * @author Nathan Fulton
   */
 object CourseMain {
-  try {
-    val config = Map(
-      "linkName" -> "/usr/local/Wolfram/Mathematica/11.0/Executables/MathKernel",
-      "libDir" -> "/usr/local/Wolfram/Mathematica/11.0/SystemFiles/Links/JLink/SystemFiles/Libraries/Linux-x86-64")
-    val provider = new MathematicaToolProvider(config)
-    ToolProvider.setProvider(provider)
-    if(provider.tools().forall(_.isInitialized)) println("Initialized!")
-    else println("Not initialized, but without any errors -- won't be able to parse tactics or check proofs.")
-  } catch {
-    case _: Throwable => println("Won't be able to parse tactics or check proofs.")
+  /** Just enough initialization. */
+  def basicInitializer() = {
+    try {
+      val config = Map(
+        "linkName" -> "/usr0/local/Wolfram/Mathematica/10.0/Executables/MathKernel",
+        "libDir" -> "/usr0/local/Wolfram/Mathematica/10.0/SystemFiles/Links/JLink/SystemFiles/Libraries/Linux-x86-64")
+      val provider = new MathematicaToolProvider(config)
+      ToolProvider.setProvider(provider)
+      if(provider.tools().forall(_.isInitialized)) println("Initialized!")
+      else println("Not initialized, but without any errors -- won't be able to parse tactics or check proofs.")
+    } catch {
+      case _: Throwable => {
+        println("Falling back to Z3. Not a big deal but some features won't be available.")
+        ToolProvider.setProvider(new Z3ToolProvider())
+      }
+    }
+
+    //Intialize the printer, the configuration generator, the parser, and the invariant generator.
+    PrettyPrinter.setPrinter(edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter.pp)
+    val generator = new ConfigurableGenerator[Formula]()
+    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p->inv))
+    TactixLibrary.invGenerator = generator
   }
 
-  PrettyPrinter.setPrinter(edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter.pp)
-
+  /** A command-line tool that doesn't contain any of the web UI stuff. Useful because the JAR is considerably smaller, but many features aren't available.
+    * You probably want to use KeYmaeraX.scala instead of this, unless you're setting up an AutoLab sanity checker. */
   def main(input : Array[String]) = {
+    basicInitializer()
+
     val args : Map[String, ArgValue] = GetOpt(Map(
+      "check" -> StrArgType(),
       "bparse" -> StrArgType(),
       "tparse" -> StrArgType(),
       "exists" -> StrArgType(),
@@ -40,7 +56,8 @@ object CourseMain {
       args.foreach(pv => {
         val parameterName = pv._1
         val value = pv._2
-        if (parameterName == "bparse") parseProblemFileOrFail(value)
+        if (parameterName == "check") check(value)
+        else if (parameterName == "bparse") parseProblemFileOrFail(value)
         else if (parameterName == "tparse") parseTacticFileOrFail(value)
         else if (parameterName == "exists") fileExistsOrFail(value)
         else if (parameterName == "is-exported-db") isExportedDatabaseOrFail(value)
@@ -56,9 +73,54 @@ object CourseMain {
     }
     catch {
       case e : Error => {
+        println("Error propagated to top level")
         e.printStackTrace()
         System.exit(-1)
       }
+    }
+  }
+
+  private def check(archiveFile : ArgValue) = {
+    try {
+      val archiveEntries : List[KeYmaeraXArchiveParser.ParsedArchiveEntry] = try {
+        parseArchiveFileOrfail(archiveFile)
+      } catch {
+        case e : Throwable => {
+          println(s"Expected a valid .kya file but could not parse file contents: ${archiveFile}")
+          System.exit(-1)
+          Nil
+        }
+      }
+
+      if(archiveEntries.length != 1) {
+        println("Expected an archive file with exactly one model. Did you export a single proof from the Proofs page?")
+        System.exit(-1)
+      }
+      else if(archiveEntries.head._4.length != 1) {
+        println("Expected an archive file with exactly one model and exactly one proof. Did you export a single proof from the Proofs page?")
+        System.exit(-1)
+      }
+      else {
+        val f = archiveEntries.head._3.asInstanceOf[Formula]
+        val expr = archiveEntries.head._4.head._2
+        /*val f = parseProblemFileOrFail(problem)*/
+        /*val expr = parseTacticFileOrFail(solution)*/
+
+        val result = SequentialInterpreter(Seq())(expr, BelleProvable(ProvableSig.startProof(f)))
+        result match {
+          case BelleProvable(p, _) => {
+            if(!p.isProved) {
+              println(s"ERROR: " + archiveFile + " Proof did not close on grading machine:")
+              println(p.prettyString)
+              System.exit(-1)
+            }
+          }
+          case _ => throw new Exception("expected tactic execution to result in provable but found something else.")
+        }
+      }
+    } catch {case e : Any =>
+      println(s"ERROR:Exception during " + archiveFile + " proof on grading machine:" + e)
+      System.exit(-1)
     }
   }
 
@@ -66,7 +128,7 @@ object CourseMain {
     val f = parseProblemFileOrFail(problem)
     val expr = parseTacticFileOrFail(solution)
 
-    val result = SequentialInterpreter(Seq())(expr, BelleProvable(Provable.startProof(f)))
+    val result = SequentialInterpreter(Seq())(expr, BelleProvable(ProvableSig.startProof(f)))
     result match {
       case BelleProvable(p, _) => {
         if(!p.isProved) {
@@ -82,6 +144,7 @@ object CourseMain {
   /** Returns string contained within value */
   private def fileExistsOrFail(v : ArgValue) : String = {
     val fileName = v.asInstanceOf[StringValue].s
+    print("Looking for " + fileName + "\n")
     assert({
       val file = new File(fileName)
       file.exists() && file.canRead()
@@ -98,6 +161,28 @@ object CourseMain {
         println(s"Tactic in ${fileName} did not parse\n" + ex)
         System.exit(-1)
         ???
+    }
+  }
+
+  private def parseArchiveFileOrfail(v: ArgValue) : List[KeYmaeraXArchiveParser.ParsedArchiveEntry] = {
+    val fileName = fileExistsOrFail(v)
+    val bigString = scala.io.Source.fromFile(fileName, "ISO-8859-1").mkString
+    try {
+      edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXArchiveParser.parse(bigString)
+    }
+    catch {
+      case e : ParseException => {
+        println(s"Auto-grader failed because file ${fileName} needs to exist and parse but failed to parse.")
+        e.printStackTrace()
+        System.exit(-1)
+        ???
+      }
+      case e : Throwable => {
+        println(s"Unkown error encountered while parsing ${fileName}: ${e}\nContents${bigString}")
+        e.printStackTrace()
+        System.exit(-1)
+        ???
+      }
     }
   }
 

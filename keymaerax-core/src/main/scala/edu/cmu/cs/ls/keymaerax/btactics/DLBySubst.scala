@@ -8,9 +8,9 @@ import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, NamedTactic, SequentType, USubstPatternTactic}
 import edu.cmu.cs.ls.keymaerax.core.Sequent
 import BelleLabels._
-
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import Augmentors._
+import edu.cmu.cs.ls.keymaerax.btactics
 
 import scala.collection.immutable.IndexedSeq
 import scala.language.postfixOps
@@ -53,7 +53,7 @@ private object DLBySubst {
   }
 
   /** @see [[TactixLibrary.abstractionb]] */
-  def abstractionb: DependentPositionTactic = new DependentPositionTactic("abstractionb") {
+  def abstractionb: DependentPositionTactic = new DependentPositionTactic("GV") {
     override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
       override def computeExpr(sequent: Sequent): BelleExpr = {
         require(!pos.isAnte, "Abstraction only in succedent")
@@ -75,7 +75,7 @@ private object DLBySubst {
               /* use */ (implyL('Llast) <(hideR(pos.topLevel) partial /* result remains open */ , closeIdWith('Llast))) partial,
               /* show */ cohide('Rlast) & CMon(pos.inExpr) & implyR(1) &
               assertT(1, 1) & assertT(s => s.ante.head == qPhi && s.succ.head == b, s"Formula $qPhi and/or $b are not in the expected positions in abstractionb") &
-              topAbstraction(1) & ProofRuleTactics.trivialCloser
+              topAbstraction(1) & closeId
               )
         }
       }
@@ -145,7 +145,7 @@ private object DLBySubst {
                       case _ => false
                     }
                     case _ => true
-                  }, "abstractionb: foralls must match") & ProofRuleTactics.trivialCloser
+                  }, "abstractionb: foralls must match") & closeId
                 )) partial,
               /* show */ hideR(pos.topLevel) & implyR('Rlast) & V('Rlast) & closeIdWith('Llast)
             )
@@ -179,6 +179,7 @@ private object DLBySubst {
     * @incontext
     */
   lazy val assignEquality: DependentPositionTactic = "assignEquality" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+    //@note have already failed assigning directly so grab fresh name index otherwise
     // [x:=f(x)]P(x)
     case Some(fml@Box(Assign(x, t), p)) =>
       val y = TacticHelper.freshNamedSymbol(x, sequent)
@@ -191,15 +192,31 @@ private object DLBySubst {
   /** @see [[TactixLibrary.generalize()]]
    * @todo same for diamonds by the dual of K
    */
-  def generalize(c: Formula): DependentPositionTactic =
-    "generalizeb" byWithInput (c, (pos: Position, sequent: Sequent) => sequent.at(pos) match {
-      case (ctx, Box(a, _)) =>
-        cutR(ctx(Box(a, c)))(pos.checkSucc.top) <(
-          /* use */ /*label(BranchLabels.genUse)*/ ident,
-          /* show */(cohide(pos.top) & CMon(pos.inExpr++1) & implyR(pos.top)) partial //& label(BranchLabels.genShow)
+  def generalize(c: Formula, isGame:Boolean = false): DependentPositionTactic = {
+    "MR" byWithInput(c, (pos: Position, sequent: Sequent) => sequent.at(pos) match {
+      case (ctx, Box(a, p)) =>
+        val (q, useCleanup, showCleanup) = {
+          val constConjuncts =
+            sequent.ante.flatMap(FormulaTools.conjuncts).
+              filter(StaticSemantics.symbols(_).intersect(StaticSemantics.boundVars(a).toSet).isEmpty).toList
+          (constConjuncts, isGame) match {
+            case ((Nil, _) | (_, true)) => (c, skip, implyR(pos.top))
+            case (consts, false) => (And(consts.reduceRight(And), c),
+                boxAnd(pos) &
+                abstractionb(pos ++ PosInExpr(0 :: Nil)) &
+                (if (pos.isTopLevel) andR(pos) & Idioms.<(prop & done, skip)
+                else skip),
+                implyR(pos.top) & andL(-1)
+            )
+          }
+        }
+        cutR(ctx(Box(a, q)))(pos.checkSucc.top) < (
+          /* use */
+          /*label(BranchLabels.genUse)*/ useCleanup,
+          /* show */ cohide(pos.top) & CMon(pos.inExpr ++ 1) & showCleanup //& label(BranchLabels.genShow)
         )
     })
-
+  }
   /** @see [[TactixLibrary.postCut()]]
    * @todo same for diamonds by the dual of K
    * @note Uses K modal modus ponens, which is unsound for hybrid games.
@@ -212,9 +229,9 @@ private object DLBySubst {
   }
 
   /** @see [[TactixLibrary.loop]] */
-  def loop(invariant: Formula) = "loop" byWithInput(invariant, (pos, sequent) => {
+  def loop(invariant: Formula, pre: BelleExpr = alphaRule*): DependentPositionWithAppliedInputTactic = "loop" byWithInput(invariant, (pos, sequent) => {
     require(pos.isTopLevel && pos.isSucc, "loop only at top-level in succedent, but got " + pos)
-    (alphaRule*) & ("doLoop" byWithInput(invariant, (pos, sequent) => {
+    pre & ("doLoop" byWithInput(invariant, (pos, sequent) => {
        sequent.sub(pos) match {
           case Some(b@Box(Loop(a), p)) =>
             if (!FormulaTools.dualFree(a)) loopRule(invariant)(pos)
@@ -224,15 +241,17 @@ private object DLBySubst {
                 if (consts.size > 1) And(invariant, consts.reduceRight(And))
                 else if (consts.size == 1) And(invariant, consts.head)
                 else And(invariant, True)
-              cutR(Box(Loop(a), q))(pos.checkSucc.top) <(
-                /* c */ useAt("I induction")(pos) & andR(pos) <(
-                andR(pos) <(ident /* indInit */, ((andR(pos) <(closeIdWith(pos), ident))*(consts.size-1) & closeIdWith(pos)) | closeT) partial(initCase),
-                cohide(pos) & G & implyR(1) & boxAnd(1) & andR(1) <(
-                  (if (consts.nonEmpty) andL('Llast)*consts.size else andL('Llast) & hide('Llast,True)) partial(indStep),
-                  andL(-1) & hide(Fixed(-1,Nil,Some(invariant)))/*hide(-1,invariant)*/ & V(1) & ProofRuleTactics.trivialCloser) partial
-                ) partial,
+              cutR(Box(Loop(a), q))(pos.checkSucc.top) & Idioms.<(
+                /* c */ useAt("I induction")(pos) & andR(pos) & Idioms.<(
+                andR(pos) & Idioms.<(
+                  label(initCase.label),
+                  (andR(pos) & Idioms.<(closeIdWith(pos), ident))*(consts.size-1) & close & done),
+                cohide(pos) & G & implyR(1) & boxAnd(1) & andR(1) & Idioms.<(
+                  (if (consts.nonEmpty) andL('Llast)*consts.size else andL('Llast) & hideL('Llast, True)) & label(indStep.label),
+                  andL(-1) & hideL(-1, invariant) & V(1) & close(-1, 1) & done)
+                ),
                 /* c -> d */ cohide(pos) & CMon(pos.inExpr++1) & implyR(1) &
-                (if (consts.nonEmpty) andL('Llast)*consts.size else andL('Llast) & hide('Llast, True)) partial(useCase)
+                (if (consts.nonEmpty) andL('Llast)*consts.size else andL('Llast) & hideL('Llast, True)) & label(useCase.label)
                 )
             }
        }}))(pos)})
@@ -247,42 +266,51 @@ private object DLBySubst {
  *
     * @param invariant The invariant.
     */
+
   def loopRule(invariant: Formula) = "loopRule" byWithInput(invariant, (pos, sequent) => {
     //@todo maybe augment with constant conditions?
     require(pos.isTopLevel && pos.isSucc, "loopRule only at top-level in succedent, but got " + pos)
     require(sequent(pos) match { case Box(Loop(_),_)=>true case _=>false}, "only applicable for [a*]p(||)")
-    val alast = AntePosition(sequent.ante.length)
+    //val alast = AntePosition(sequent.ante.length)
     cutR(invariant)(pos.checkSucc.top) <(
-      ident partial(BelleLabels.initCase)
-      ,
-      cohide(pos) & implyR(1) & generalize(invariant)(1) <(
-        byUS("ind induction") partial(BelleLabels.indStep)
-        ,
-        ident partial(BelleLabels.useCase)
+        ident partial(BelleLabels.initCase),
+        cohide(pos) & implyR(1) & generalize(invariant, isGame = true)(1) <(
+          byUS("ind induction") partial(BelleLabels.indStep)
+          ,
+          ident partial(BelleLabels.useCase)
         )
       )
-    /*
+  })
+
+  /**
+    * Loop convergence wiping all context.
     * {{{
-    *   step:           use:      init:
-    *   I |- [a]I       I |- p    G |- I, D
-    *   ------------------------------------
-    *   G |- [{a}*]p, D
+    *   init:                     step:                      use:
+    *   G |- exists v. J(v), D    v>= 0,J(v) -> <a>J(v-1)    v<0, J(v) |- p
+    *   ------------------------------------------------------------------
+    *   G |- <{a}*>p, D
     * }}}
+    * @param variantArg Which variable is treated as the argument of the variant property
+    * @param variantDef The variant property or convergence property in terms of variantDef
+    * @example The variant J(v) |-> (v = x) has variantArg == v  and variantDef == (v = x)
     */
-//    cut(invariant) <(
-//      cohide2(alast, pos) & generalize(invariant)(1) <(
-//        byUS("ind induction") partial(BelleLabels.indStep)
-//        ,
-//        ident partial(BelleLabels.useCase)
-//        )
-//      ,
-//      ident partial(BelleLabels.initCase)
-//      )
+  def conRule(variantArg:Variable, variantDef:Formula) = "con" byWithInput(variantDef, (pos, sequent) => {
+    require(pos.isTopLevel && pos.isSucc, "conRule only at top-level in succedent, but got " + pos)
+    require(sequent(pos) match { case Diamond(Loop(_), _) => true case _ => false }, "only applicable for <a*>p(||)")
+    require(variantArg == Variable("v"))
+    val pre = Exists(IndexedSeq(variantArg), variantDef)
+    cutR(pre)(pos.checkSucc.top) < (
+      ident partial (BelleLabels.initCase),
+      cohide(pos) & implyR(1)
+      & existsL(-1)
+      & byUS("con convergence") < (
+        assignd(1, 1 :: Nil) partial
+      , Idioms.nil) partial
+    ) partial(BelleLabels.indStep)
   })
 
   /** @see [[TactixLibrary.discreteGhost()]] */
   def discreteGhost(t: Term, ghost: Option[Variable]): DependentPositionWithAppliedInputTactic = "discreteGhost" byWithInputs (
-      //@todo figure out how to serialize None when adding to AxiomInfo
       ghost match { case Some(g) => List(t, g) case _ => List(t) }, (pos: Position, seq: Sequent) => {
     require(ghost match { case Some(g) => g != t case None => true }, "Expected ghost different from t, use stutter instead")
     seq.sub(pos) match {
@@ -319,11 +347,11 @@ private object DLBySubst {
    * @param f The right-hand side term of the assignment chosen as a witness for the existential quantifier.
    * @return The tactic.
    */
-  def assignbExists(f: Term): DependentPositionTactic = "[:=] assign exists" byWithInput (f, (pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+  def assignbExists(f: Term): DependentPositionTactic = "assignbExistsRule" byWithInput (f, (pos: Position, sequent: Sequent) => sequent.sub(pos) match {
     case Some(Exists(vars, p)) =>
       require(vars.size == 1, "Cannot handle existential lists")
       val subst = (s: Option[Subst]) =>
-        s.getOrElse(throw BelleUserGeneratedError("Expected unification in assignbExists")) ++ RenUSubst(USubst("f_()".asTerm ~> f :: Nil))
+        s.getOrElse(throw BelleUnsupportedFailure("Expected unification in assignbExists")) ++ RenUSubst(USubst("f_()".asTerm ~> f :: Nil))
       useAt("[:=] assign exists", PosInExpr(1::Nil), subst)(pos)
   })
 
@@ -342,7 +370,7 @@ private object DLBySubst {
     case Some(Forall(vars, p)) =>
       require(vars.size == 1, "Cannot handle universal lists")
       val subst = (s: Option[Subst]) =>
-        s.getOrElse(throw BelleUserGeneratedError("Expected unification in assignbExists")) ++ RenUSubst(USubst("f_()".asTerm ~> f :: Nil))
+        s.getOrElse(throw BelleUnsupportedFailure("Expected unification in assignbExists")) ++ RenUSubst(USubst("f_()".asTerm ~> f :: Nil))
       useAt("[:=] assign all", PosInExpr(0::Nil), subst)(pos)
   })
 }

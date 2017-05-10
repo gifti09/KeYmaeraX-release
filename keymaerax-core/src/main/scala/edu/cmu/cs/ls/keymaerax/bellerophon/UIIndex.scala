@@ -8,7 +8,7 @@ import java.lang.Number
 
 import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
-import edu.cmu.cs.ls.keymaerax.btactics.{DerivationInfo, ExpressionTraversal}
+import edu.cmu.cs.ls.keymaerax.btactics.{DerivationInfo, ExpressionTraversal, FormulaTools}
 import edu.cmu.cs.ls.keymaerax.core._
 
 import scala.annotation.tailrec
@@ -81,8 +81,8 @@ object UIIndex {
             case _ => alwaysApplicable
           }
         "derive" :: tactics
-      case Box(a, True) if isTop && !isAnte =>
-        "dualFree" :: Nil
+      case Box(a, True) if isTop && !isAnte && FormulaTools.dualFree(a) =>
+        "[]T system" :: Nil
 
       case Box(a, post) =>
         val maybeSplit = post match {
@@ -104,7 +104,7 @@ object UIIndex {
           }, post)
           foundPrime
         }
-        val rules = "abstractionb" :: "generalizeb" :: maybeSplit
+        val rules = maybeSplit ++ ("GV" :: "MR" :: Nil)
         a match {
           case Assign(_: DifferentialSymbol,_) => "[':=] differential assign" :: rules
           case Assign(_: BaseVariable, _) => "assignb" :: rules
@@ -112,19 +112,14 @@ object UIIndex {
           case _: Test => "[?] test" :: rules
           case _: Compose => "[;] compose" :: rules
           case _: Choice => "[++] choice" :: rules
-          case _: Dual => "[d] dual" :: Nil
+          case _: Dual => "[d] dual direct" :: Nil
           case _: Loop => "loop" :: "[*] iterate" :: rules
-          case ODESystem(ode, constraint) if containsPrime => ode match {
-            case _: AtomicODE => "DE differential effect" :: "diffWeaken" :: "diffCut" :: rules
-            case _: DifferentialProduct => "DE differential effect (system)" :: "diffWeaken" :: "diffCut" :: rules
+          case ODESystem(ode, _) if containsPrime => ode match {
+            case _: AtomicODE => "DE differential effect" :: "dW" :: "dC" :: rules
+            case _: DifferentialProduct => "DE differential effect (system)" :: "dW" :: "dC" :: rules
             case _ => rules
           }
-          case ODESystem(ode, constraint) =>
-            val tactics: List[String] = "ODE" :: /*@todo diffSolve once done*/ "autoDiffSolve" :: "diffCut" :: "diffInd" :: "DIRule" ::  Nil
-            if (constraint == True)
-              (tactics :+ "diffGhost" :+ "DA4") ++ rules
-            else
-              (tactics :+ "diffWeaken" :+ "diffGhost" :+ "DA4") ++ rules
+          case ODESystem(_, _) => ("ODE" :: "solve" :: "dC" :: "dI" ::  "dW" :: "dG" :: Nil) ++ rules
           case _ => rules
         }
 
@@ -138,7 +133,8 @@ object UIIndex {
         case _: Test => "<?> test" :: rules
         case _: Compose => "<;> compose" :: rules
         case _: Choice => "<++> choice" :: rules
-        case _: Dual => "<d> dual" :: rules
+        case _: Dual => "<d> dual direct" :: rules
+        case _: Loop => "con" :: "<*> iterate" :: rules
         case _: ODESystem => println("AxiomIndex for <ODE> still missing"); unknown
         case _ => rules
       }
@@ -225,10 +221,9 @@ object UIIndex {
   }
 
   def comfortOf(stepName: String): Option[String] = stepName match {
-    case "diffCut" => Some("diffInvariant")
-    case "DIRule" => Some("autoDIRule")
-    case "diffInd" => Some("autoDiffInd")
-    case "diffSolve" => Some("autoDiffSolve")
+    //case "diffCut" => Some("diffInvariant")
+    //case "diffInd" => Some("autoDiffInd")
+    //case "diffSolve" => Some("autoDiffSolve")
     case _ => None
   }
 

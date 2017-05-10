@@ -9,6 +9,48 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
   $scope.userId = $cookies.get('userId');
   $scope.proofId = $routeParams.proofId;
 
+  $scope.intro.introOptions = {
+    steps: [
+    {
+        element: '#provingautomation',
+        intro: "Automatic proof search. Unfold all operators automatically. Undo proof steps.",
+        position: 'bottom'
+    },
+    {
+        element: '#provingbasictactics',
+        intro: "Basic tactics for propositional reasoning, hybrid programs, differential equations, and arithmetic are applied somewhere in the goal.",
+        position: 'bottom'
+    },
+    {
+        element: '#provingadditionaltools',
+        intro: "Advanced proof tools (inspection, finding counterexamples, synthesizing assumptions).",
+        position: 'bottom'
+    },
+    {
+        element: '#provingtab',
+        intro: "Each unfinished branch of a proof is displayed on its own tab",
+        position: 'bottom'
+    },
+    {
+        element: '#provingsequentview',
+        intro: "The sequent view shows the current open proof goal at the top. Hover over formulas to find out where tactics can be applied. Left-click to apply default proof tactic. Right-click for a list of tactics to choose from. Hover over <code>&#8866;</code> for tactics that work on the entire sequent.",
+        position: 'bottom'
+    },
+    {
+        element: '#provingtactics',
+        intro: "Proofs can be programmed in addition to clicking. Learn tactic programming by observing how the tactic is built while you click in the sequent above. Augment by typing into the text box. Get auto-completion by typing a formula number <code>1.</code> followed by a dot. Either re-run the entire tactic from scratch, or execute the modifications only.",
+        position: 'bottom'
+    }
+    ],
+    showStepNumbers: false,
+    exitOnOverlayClick: true,
+    exitOnEsc: true,
+    nextLabel: 'Next', // could use HTML in labels
+    prevLabel: 'Previous',
+    skipLabel: 'Exit',
+    doneLabel: 'Done'
+  }
+
   $http.get('proofs/user/' + $scope.userId + "/" + $scope.proofId).success(function(data) {
       $scope.proofId = data.id;
       $scope.proofName = data.name;
@@ -16,7 +58,19 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
       $scope.closed = data.closed;
       $scope.stepCount= data.stepCount;
       $scope.date = data.date;
-      sequentProofData.fetchAgenda($scope, $scope.userId, $scope.proofId);
+      if (data.stepCount == 0 && data.tactic !== undefined && data.tactic !== null) {
+        // imported but not yet executed proof
+        spinnerService.show('tacticExecutionSpinner')
+        $http.get('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/initfromtactic')
+          .then(function(response) { $scope.runningTask.start($scope.proofId, '()', response.data.taskId,
+                                     $scope.updateFreshProof, $scope.broadcastProofError, undefined); })
+          .catch(function(err) {
+            spinnerService.hide('tacticExecutionSpinner');
+            $rootScope.$broadcast("proof.message", err.data);
+          });
+      } else {
+        sequentProofData.fetchAgenda($scope, $scope.userId, $scope.proofId);
+      }
   });
   $scope.$emit('routeLoaded', {theview: 'proofs/:proofId'});
 
@@ -43,35 +97,71 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
     }
   });
 
+  $scope.updateFreshProof = function(taskResult) {
+    if (taskResult.type === 'taskresult') {
+      if ($scope.proofId === taskResult.proofId) {
+        if ($scope.runningTask.nodeId === taskResult.parent.id) {
+          sequentProofData.fetchAgenda($scope, $scope.userId, $scope.proofId)
+        } else {
+          showMessage($uibModal, "Unexpected tactic result, parent mismatch: expected " +
+            $scope.runningTask.nodeId + " but got " + taskResult.parent.id);
+        }
+      } else {
+        showMessage($uibModal, "Unexpected tactic result, proof mismatch: expected " +
+          $scope.proofId + " but got " + taskResult.proofId);
+      }
+    } else {
+      showCaughtErrorMessage($uibModal, taskResult, "Unable to fetch tactic result")
+    }
+  }
+
+  $scope.updateMainProof = function(taskResult) {
+    if (taskResult.type === 'taskresult') {
+      if ($scope.proofId === taskResult.proofId) {
+        if ($scope.runningTask.nodeId === taskResult.parent.id) {
+          $rootScope.$broadcast('proof.message', { textStatus: "", errorThrown: "" });
+          sequentProofData.updateAgendaAndTree(taskResult.proofId, taskResult);
+          sequentProofData.tactic.fetch($scope.userId, taskResult.proofId);
+        } else {
+          showMessage($uibModal, "Unexpected tactic result, parent mismatch: expected " +
+            $scope.runningTask.nodeId + " but got " + taskResult.parent.id);
+        }
+      } else {
+        showMessage($uibModal, "Unexpected tactic result, proof mismatch: expected " +
+          $scope.proofId + " but got " + taskResult.proofId);
+      }
+    } else {
+      showCaughtErrorMessage($uibModal, taskResult, "Unable to fetch tactic result")
+    }
+  }
+
+  $scope.broadcastProofError = function(err) {
+    $rootScope.$broadcast('proof.message', {
+      errorThrown: err.data.errorThrown,
+      textStatus: err.data.textStatus,
+      tacticMsg: err.data.tacticMsg,
+      taskStepwiseRequest: $scope.runningTask.taskStepwiseRequest
+    })
+  }
+
   $scope.runningTask = {
+    proofId: undefined,
     nodeId: undefined,
     taskId: undefined,
+    taskStepwiseRequest: undefined,
     future: undefined,
     lastStep: undefined,
-    start: function(nodeId, taskId) {
+    start: function(proofId, nodeId, taskId, onTaskComplete, onTaskError, taskStepwiseRequest) {
+      $scope.runningTask.proofId = proofId;
       $scope.runningTask.nodeId = nodeId;
       $scope.runningTask.taskId = taskId;
+      $scope.runningTask.taskStepwiseRequest = taskStepwiseRequest;
       $scope.runningTask.future = $q.defer();
       $scope.runningTask.future.promise.then(
         /* future resolved */ function(taskId) {
-          $http.get('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + $scope.runningTask.nodeId + '/' + taskId + '/result')
-            .then(function(response) {
-              if (response.data.type === 'taskresult') {
-                $rootScope.$broadcast('proof.message', { textStatus: "", errorThrown: "" });
-                if ($scope.runningTask.nodeId === response.data.parent.id) {
-                  sequentProofData.updateAgendaAndTree($scope.proofId, response.data);
-                  sequentProofData.tactic.fetch($scope.userId, $scope.proofId);
-                } else {
-                  showMessage($uibModal, "Unexpected tactic result, parent mismatch: " + " expected " +
-                    $scope.runningTask.nodeId + " but got " + response.data.parent.id);
-                }
-              } else {
-                showCaughtErrorMessage($uibModal, response.data, "Unable to fetch tactic result")
-              }
-            })
-            .catch(function(err) {
-              $rootScope.$broadcast('proof.message', err.data);
-            })
+          $http.get('proofs/user/' + $scope.userId + '/' + $scope.runningTask.proofId + '/' + $scope.runningTask.nodeId + '/' + taskId + '/result')
+            .then(function(response) { onTaskComplete(response.data); })
+            .catch(function(err) { onTaskError(err); })
             .finally(function() { spinnerService.hide('tacticExecutionSpinner'); });
         },
         /* future rejected */ function(reason) {
@@ -83,7 +173,7 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
       $scope.runningTask.poll(taskId);
     },
     poll: function(taskId) {
-      $http.get('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + $scope.runningTask.nodeId + '/' + taskId + '/status')
+      $http.get('proofs/user/' + $scope.userId + '/' + $scope.runningTask.proofId + '/' + $scope.runningTask.nodeId + '/' + taskId + '/status')
         .then(function(response) {
           if (response.data.lastStep !== undefined) $scope.runningTask.lastStep = response.data.lastStep.ruleName;
           if (response.data.status === 'done') $scope.runningTask.future.resolve(taskId);
@@ -92,7 +182,7 @@ angular.module('keymaerax.controllers').controller('ProofCtrl',
         .catch(function(error) { $scope.runningTask.future.reject(error); });
     },
     stop: function() {
-      $http.get('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + $scope.runningTask.nodeId + '/' + $scope.runningTask.taskId + '/stop')
+      $http.get('proofs/user/' + $scope.userId + '/' + $scope.runningTask.proofId + '/' + $scope.runningTask.nodeId + '/' + $scope.runningTask.taskId + '/stop')
         .then(function(response) { $scope.runningTask.future.reject('stopped'); })
         .catch(function(err) { $scope.runningTask.future.reject(err); });
     }
@@ -147,6 +237,22 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
       sequentProofData.prune($scope.userId, $scope.proofId, topParent);
     };
 
+    $scope.setFormulaMode = function(mode) {
+      sequentProofData.formulas.mode = mode;
+    }
+
+    $scope.getFormulaMode = function() {
+      return sequentProofData.formulas.mode;
+    }
+
+    $scope.stickyEdit = function() {
+      return sequentProofData.formulas.mode == 'edit' && sequentProofData.formulas.stickyEdit;
+    }
+
+    $scope.setStickyEdit = function(stickyEdit) {
+      sequentProofData.formulas.stickyEdit = stickyEdit;
+    }
+
     $scope.exportSubgoal = function() {
         var nodeId = sequentProofData.agenda.selectedId();
 
@@ -163,13 +269,66 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
             })
     }
 
+    $scope.stepwiseTactic = function(stepwiseRequest) {
+      spinnerService.show('magnifyingglassSpinner')
+      $http(stepwiseRequest).then(function(response) {
+        var onStepwiseTaskComplete = function(taskResult) {
+          $http.get('proofs/user/' + $scope.userId + '/' + taskResult.proofId + '/trace').then(function(response) {
+            var modalInstance = $uibModal.open({
+              templateUrl: 'templates/magnifyingglass.html',
+              controller: 'MagnifyingGlassDialogCtrl',
+              scope: $scope,
+              size: 'magnifyingglass',
+              resolve: {
+                proofInfo: function() {
+                  return {
+                    userId: $scope.userId,
+                    proofId: "", //@note irrelevant for dialog
+                    nodeId: "",  //@note irrelevant for dialog
+                    detailsProofId: response.data.detailsProofId
+                  }
+                },
+                tactic: function() { return response.data.tactic; },
+                proofTree: function() { return response.data.proofTree; },
+                openGoals: function() { return response.data.openGoals; }
+              }
+            });
+          })
+          .finally(function() {
+            spinnerService.hide('magnifyingglassSpinner');
+          });
+        }
+
+        var onStepwiseTaskError = function(err) {
+          spinnerService.hide('magnifyingglassSpinner');
+          $uibModal.open({
+            templateUrl: 'templates/modalMessageTemplate.html',
+            controller: 'ModalMessageCtrl',
+            size: 'sm',
+            resolve: {
+              title: function() { return "Immediate error"; },
+              message: function() { return "Tactic did not make progress at all"; }
+            }
+          });
+        }
+
+        $scope.runningTask.start(response.data.proofId, response.data.nodeId, response.data.taskId,
+          onStepwiseTaskComplete, onStepwiseTaskError);
+      })
+      .catch(function(err) {
+        spinnerService.hide('magnifyingglassSpinner');
+        showCaughtTacticErrorMessage($uibModal, err.data.errorThrown, err.data.textStatus, err.data.tacticMsg);
+      });
+    }
+
     $scope.doTactic = function(formulaId, tacticId) {
       var nodeId = sequentProofData.agenda.selectedId();
       var base = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId;
       var uri = formulaId !== undefined ?  base + '/' + formulaId + '/doAt/' + tacticId : base + '/do/' + tacticId;
+      var stepwise = { method: 'GET', url: uri + '?stepwise=true' };
       spinnerService.show('tacticExecutionSpinner')
-      $http.get(uri)
-        .then(function(response) { $scope.runningTask.start(nodeId, response.data.taskId); })
+      $http.get(uri + '?stepwise=false')
+        .then(function(response) { $scope.runningTask.start($scope.proofId, nodeId, response.data.taskId, $scope.updateMainProof, $scope.broadcastProofError, stepwise); })
         .catch(function(err) {
           spinnerService.hide('tacticExecutionSpinner');
           $rootScope.$broadcast("proof.message", err.data);
@@ -181,8 +340,9 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
       spinnerService.show('tacticExecutionSpinner');
       var base = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId;
       var uri = formulaId !== undefined ? base + '/' + formulaId + '/doInputAt/' + tacticId : base + '/doInput/' + tacticId
-      $http.post(uri, input)
-        .then(function(response) { $scope.runningTask.start(nodeId, response.data.taskId); })
+      var stepwise = { method: 'POST', url: uri + '?stepwise=true', data: input};
+      $http.post(uri + '?stepwise=false', input)
+        .then(function(response) { $scope.runningTask.start($scope.proofId, nodeId, response.data.taskId, $scope.updateMainProof, $scope.broadcastProofError, stepwise); })
         .catch(function(err) {
           spinnerService.hide('tacticExecutionSpinner');
           $rootScope.$broadcast("proof.message", err.data);
@@ -192,8 +352,10 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
     $scope.doTwoPositionTactic = function(fml1Id, fml2Id, tacticId) {
       var nodeId = sequentProofData.agenda.selectedId();
       spinnerService.show('tacticExecutionSpinner');
-      $http.get('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/' + fml1Id + '/' + fml2Id + '/doAt/' + tacticId)
-        .then(function(response) { $scope.runningTask.start(nodeId, response.data.taskId); })
+      var uri = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/' + fml1Id + '/' + fml2Id + '/doAt/' + tacticId;
+      var stepwise = { method: 'GET', url: uri + '?stepwise=true' };
+      $http.get(uri + '?stepwise=false')
+        .then(function(response) { $scope.runningTask.start($scope.proofId, nodeId, response.data.taskId, $scope.updateMainProof, $scope.broadcastProofError, stepwise); })
         .catch(function(err) {
           spinnerService.hide('tacticExecutionSpinner');
           $rootScope.$broadcast("proof.message", err.data);
@@ -205,31 +367,30 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
     doSearchImpl = function(tacticId, where, input) {
       var nodeId = sequentProofData.agenda.selectedId();
       spinnerService.show('tacticExecutionSpinner');
-      var uri = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/doSearch/' + where + '/' + tacticId
-      var request = input !== undefined ? $http.post(uri, input) : $http.get(uri)
-      request.then(function(response) { $scope.runningTask.start(nodeId, response.data.taskId); })
+      var uri = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/doSearch/' + where + '/' + tacticId;
+      var stepwise = input !== undefined ? { method: 'POST', url: uri + '?stepwise=true', data: input } : { method: 'GET', url: uri + '?stepwise=true' };
+      var request = input !== undefined ? $http.post(uri + '?stepwise=false', input) : $http.get(uri + '?stepwise=false')
+      request.then(function(response) { $scope.runningTask.start($scope.proofId, nodeId, response.data.taskId, $scope.updateMainProof, $scope.broadcastProofError, stepwise); })
         .catch(function(err) {
           spinnerService.hide('tacticExecutionSpinner');
-          $rootScope.$broadcast('proof.message', err.data);
         });
     }
 
     $scope.onTacticScript = function(tacticText) {
       var nodeId = sequentProofData.agenda.selectedId();
       spinnerService.show('tacticExecutionSpinner');
-      $http.post('proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/doCustomTactic', tacticText)
-        .then(function(response) { $scope.runningTask.start(nodeId, response.data.taskId); })
+      var uri = 'proofs/user/' + $scope.userId + '/' + $scope.proofId + '/' + nodeId + '/doCustomTactic';
+      var stepwise = { method: 'POST', url: uri + '?stepwise=true', data: tacticText};
+      $http.post(uri + '?stepwise=false', tacticText)
+        .then(function(response) { $scope.runningTask.start($scope.proofId, nodeId, response.data.taskId, $scope.updateMainProof, $scope.broadcastProofError, stepwise); })
         .catch(function(err) {
-            if(err.data.errorThrown) {
-                console.error("Error while executing custom tactic: " + err.data.textStatus);
-                spinnerService.hide('tacticExecutionSpinner');
-                //For custom tactics, show the tactic message and also the little yellow status bar.
-                $rootScope.$broadcast('proof.message', err.data);
-                showCaughtTacticErrorMessage($uibModal, err.data.errorThrown, err.data.textStatus, err.data.tacticMsg)
-            }
-            else {
-                console.error("Expected errorThrown field on error object but found something else: " + JSON.stringify(err))
-            }
+          if (err.data.errorThrown) {
+            //@note errors that occur before scheduling (parsing etc.), but not tactic execution errors -> cannot repeat from here
+            spinnerService.hide('tacticExecutionSpinner');
+            $rootScope.$broadcast('proof.message', err.data);
+          } else {
+            console.error("Expected errorThrown field on error object but found something else: " + JSON.stringify(err))
+          }
         });
     }
 
@@ -245,7 +406,8 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
         controller: 'DerivationInfoDialogCtrl',
         size: 'lg',
         resolve: {
-          tactics: function() { return tactics; }
+          tactics: function() { return tactics; },
+          readOnly: function() { return false; }
         }
       });
 
@@ -337,7 +499,7 @@ angular.module('keymaerax.controllers').controller('TaskCtrl',
 
     $scope.saveTaskName = function(newName) {
       var nodeId = sequentProofData.agenda.selectedId();
-      $http.post("proofs/user/" + $scope.userId + "/" + $scope.proofId + "/" + nodeId + "/name/" + newName, {});
+      if (nodeId != undefined) $http.post("proofs/user/" + $scope.userId + "/" + $scope.proofId + "/" + nodeId + "/name/" + newName, {});
     }
   });
 
@@ -347,7 +509,8 @@ angular.module('keymaerax.controllers').controller('ProofFinishedDialogCtrl',
     // empty open proof until fetched from server
     $scope.proof = {
       proofId: '',
-      isProved: false,
+      checking: true,
+      //isProved: true/false is reported from server
       tactic: '',
       provable: ''
     }
@@ -375,6 +538,14 @@ angular.module('keymaerax.controllers').controller('ProofFinishedDialogCtrl',
       $http.get("/proofs/user/" + userId + "/" + proofId + "/lemma").then(function(response) {
         var data = new Blob([response.data.fileContents], { type: 'text/plain;charset=utf-8' });
         FileSaver.saveAs(data, proofName + '.kyp');
+      });
+    }
+
+    //@todo duplicate with proofs.js downloadPartialProof
+    $scope.downloadProofArchive = function() {
+      $http.get("/proofs/user/" + userId + "/" + proofId + "/download").then(function(response) {
+        var data = new Blob([response.data.fileContents], { type: 'text/plain;charset=utf-8' });
+        FileSaver.saveAs(data, proofName + '.kya');
       });
     }
 });

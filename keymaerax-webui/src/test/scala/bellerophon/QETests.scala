@@ -1,8 +1,10 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.BelleError
-import edu.cmu.cs.ls.keymaerax.core.Sequent
+import edu.cmu.cs.ls.keymaerax.bellerophon.BelleThrowable
+import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
+
 import scala.collection.immutable.IndexedSeq
 
 /**
@@ -25,8 +27,65 @@ class QETests extends TacticTestBase {
   }
 
   it should "fail on |-" in withMathematica { qeTool =>
-    a [BelleError] should be thrownBy proveBy(Sequent(IndexedSeq(), IndexedSeq()), ToolTactics.fullQE(qeTool))
+    val result = proveBy(Sequent(IndexedSeq(), IndexedSeq()), ToolTactics.fullQE(qeTool))
+    result.subgoals should have size 1
+    result.subgoals.head shouldBe Sequent(IndexedSeq(), IndexedSeq(False))
   }
+
+  it should "fail on parsed decimal representations" in withMathematica { qeTool =>
+    val result = proveBy("0.33333333333333 = 1/3".asFormula,ToolTactics.fullQE(qeTool))
+    result.isProved shouldBe false
+    result.subgoals should have size 1
+    result.subgoals.head.succ should contain theSameElementsAs "false".asFormula::Nil
+  }
+
+  it should "correct behavior (Z3)" in withZ3 { qeTool =>
+    a [BelleThrowable] should be thrownBy proveBy("0.33333333333333 = 1/3".asFormula,ToolTactics.fullQE(qeTool))
+  }
+
+  it should "fail on internal decimal representations" in withMathematica { qeTool =>
+    val result = proveBy(Equal(Number(0.33333333333333),Divide(Number(1),Number(3))),ToolTactics.fullQE(qeTool))
+    result.isProved shouldBe false
+    result.subgoals should have size 1
+    result.subgoals.head.succ should contain theSameElementsAs "false".asFormula::Nil
+  }
+
+  it should "fail (?) on internal decimal representations (2)" in withMathematica { qeTool =>
+    // This isn't as bad as the above two
+    proveBy(Equal(Number(1.0),Minus(Number(4),Number(3))),ToolTactics.fullQE(qeTool)) shouldBe 'proved
+  }
+
+  it should "fail x()=x" in withMathematica { qeTool =>
+    the [BelleThrowable] thrownBy proveBy("x()=x".asFormula, ToolTactics.fullQE(qeTool) & done) should have message
+      """[Bellerophon Runtime] Expected proved provable, but got NoProofTermProvable(Provable(  ==>  x()=x
+        |  from     ==>  false))""".stripMargin
+  }
+
+  it should "not choke on predicates" in withMathematica { tool =>
+    proveBy("p_() & q_() -> 2<3".asFormula,ToolTactics.fullQE(tool)) shouldBe 'proved
+  }
+
+  it should "close predicates if possible" in withMathematica { tool =>
+    proveBy("p_() & q_() -> p_() | 2<3".asFormula,ToolTactics.fullQE(tool)) shouldBe 'proved
+  }
+
+  it should "not fail when already proved" in withMathematica { tool =>
+    proveBy("x>0 -> x>0".asFormula, prop & ToolTactics.fullQE(tool)) shouldBe 'proved
+  }
+
+  it should "not have soundness bug with decimal representations " in withMathematica { _ =>
+
+    val pr = proveBy("false".asFormula,
+      cut("1-3 * 0.33333333333333 = 0".asFormula) <( QE,
+      cut("3 * 0.33333333333333 = 1 ".asFormula)  <( eqL2R(-1)(2) & QE,
+         QE)))
+
+    pr.isProved shouldBe false
+    pr.subgoals should have size 1
+    pr.subgoals.head.ante shouldBe empty
+    pr.subgoals.head.succ should contain theSameElementsAs "false".asFormula::Nil
+  }
+
 
   "Partial QE" should "not fail on |-" in withMathematica { qeTool =>
     val result = proveBy(Sequent(IndexedSeq(), IndexedSeq()), ToolTactics.partialQE(qeTool))

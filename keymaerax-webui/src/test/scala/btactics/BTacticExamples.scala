@@ -9,9 +9,10 @@ import edu.cmu.cs.ls.keymaerax.bellerophon.PosInExpr
 import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.tags.SummaryTest
-import scala.collection.immutable._
 
+import scala.collection.immutable._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 /**
  * Tactic Examples with different proof styles.
@@ -23,7 +24,7 @@ class BTacticExamples extends TacticTestBase  {
   "Explicit Proof Certificates" should "prove !!p() <-> p()" in {
     import edu.cmu.cs.ls.keymaerax.core._
     // explicit proof certificate construction of |- !!p() <-> p()
-    val proof = (Provable.startProof(
+    val proof = (ProvableSig.startProof(
       Sequent(IndexedSeq(), IndexedSeq("!!p() <-> p()".asFormula)))
       (EquivRight(SuccPos(0)), 0)
       // right branch
@@ -194,7 +195,7 @@ class BTacticExamples extends TacticTestBase  {
     val proof = TactixLibrary.proveBy("x^2<4 -> [{x'=9*x^2-x&x^2<4}](-2<x&x<2)".asFormula,
       CEat(TactixLibrary.proveBy("-2<x&x<2<->x^2<4".asFormula, QE)) (1, 1::0::1::Nil) &
         // |- x^2<4 -> [{x'=9*x^2-x&(-2<x&<2)}](-2<x&x<2) by CE using -2<x&x<2<->x^2<4
-        useAt("DW")(1, 1::Nil) &
+        useAt("DW base")(1, 1::Nil) &
         // |- x^2<4 -> true by DW
         prop
     )

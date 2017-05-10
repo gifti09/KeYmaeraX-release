@@ -50,7 +50,7 @@ class UncheckedM2KConverter extends MathematicaToKeYmaera {
     //@note e.head() by itself is not meaningful -- it combines e.head.head == Derivative and e.head.args == degree
     else if (e.head.args().length == 1 && e.head().args.head.integerQ() && e.head().args.head.asInt() == 1 &&
       e.head.head.symbolQ() && e.head.head == MathematicaSymbols.DERIVATIVE) convertDerivative(e)
-    else if (e.symbolQ() && e.asString().endsWith(CONST_FN_SUFFIX))
+    else if (e.symbolQ() && MathematicaNameConversion.uncheckedUnmaskName(e.asString())._1.endsWith(CONST_FN_SUFFIX))
       MathematicaNameConversion.toKeYmaera(e) match {
         case BaseVariable(name, index, sort) => FuncOf(Function(name.substring(0, name.length - CONST_FN_SUFFIX.length), index, Unit, sort), Nothing)
       }
@@ -144,18 +144,15 @@ object CEXM2KConverter extends UncheckedM2KConverter {
  */
 class MathematicaCEXTool(override val link: MathematicaLink) extends BaseKeYmaeraMathematicaBridge[KExpr](link, CEXK2MConverter, CEXM2KConverter) with CounterExampleTool {
 
-  private val TIMEOUT = 10
-
   def findCounterExample(fml: Formula): Option[Map[NamedSymbol, Expression]] = {
     val input = new MExpr(new MExpr(Expr.SYMBOL,  "FindInstance"),
-      Array(k2m.convert(Not(fml)),
+      Array(k2m.convert(fml match { case Imply(a, b) => And(a, Not(b)) case _ => Not(fml) }),
         new MExpr(
           MathematicaSymbols.LIST,
-          StaticSemantics.symbols(fml).toList.sorted.map(s => k2m.convert(s)).toArray),
+          StaticSemantics.symbols(fml).filter({ case Function(_, _, _, _, interpreted) => !interpreted case _ => true}).toList.sorted.map(s => k2m.convert(s)).toArray),
         new MExpr(Expr.SYMBOL, "Reals")))
-    val inputWithTO = new MExpr(new MExpr(Expr.SYMBOL,  "TimeConstrained"), Array(input, k2m(Number(TIMEOUT))))
 
-    run(inputWithTO) match {
+    run(input) match {
       case (_, cex: Formula) => cex match {
         case False =>
           if (DEBUG) println("No counterexample, Mathematica returned: " + cex.prettyString)

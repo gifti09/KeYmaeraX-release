@@ -1,7 +1,7 @@
 package edu.cmu.cs.ls.keymaerax.tacticsinterface
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
-import edu.cmu.cs.ls.keymaerax.core.Provable
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.hydra.{ProofPOJO, ExecutionStepPOJO, DBAbstraction, ExecutionStepStatus}
 import edu.cmu.cs.ls.keymaerax.hydra.ExecutionStepStatus.ExecutionStepStatus
 
@@ -14,18 +14,17 @@ import edu.cmu.cs.ls.keymaerax.hydra.ExecutionStepStatus.ExecutionStepStatus
   */
 class TraceRecordingListener(db: DBAbstraction,
                              proofId: Int,
-                             executionId: Int,
                              initialSibling: Option[Int],
-                             globalProvable:Provable,
-                             alternativeOrder: Int, branch:Int,
+                             globalProvable:ProvableSig,
+                             branch:Int,
                              recursive: Boolean,
                              ruleName: String) extends IOListener {
   class TraceNode (isFirstNode: Boolean){
     var id: Option[Int] = None
     var parent: TraceNode = null
     var sibling: Option[Int] = None
-    var output: Provable = null
-    var local: Provable = null
+    var output: ProvableSig = null
+    var local: ProvableSig = null
     var executable: BelleExpr = null
     var status: ExecutionStepStatus = null
     var reverseChildren: List[TraceNode] = Nil
@@ -34,9 +33,8 @@ class TraceRecordingListener(db: DBAbstraction,
        we need to set it once it has been generated so other steps can get the appropriate ID.
      */
     var stepId: Option[Int] = None
-    val altOrder = if (isFirstNode) alternativeOrder else 0
     val branchLabel: String = null
-    val branchOrder: Option[Int] = Some(branch)
+    val branchOrder: Int = branch
     val userExe = isFirstNode
 
     var localProvableId: Option[Int] = None
@@ -55,10 +53,12 @@ class TraceRecordingListener(db: DBAbstraction,
     }
 
     def asPOJO: ExecutionStepPOJO = {
-      val parentStep = if (parent == null) None else parent.stepId
-      new ExecutionStepPOJO (stepId, executionId, sibling, parentStep, branchOrder,
-        Option(branchLabel), alternativeOrder,status, getExecutableId, None, None,
-        getLocalProvableId, userExe, ruleName)
+      //val parentStep = if (parent == null) None else parent.stepId
+      ExecutionStepPOJO (stepId, proofId, sibling, branchOrder,
+        status, getExecutableId, None, None,
+        getLocalProvableId, userExe, ruleName,
+        if (local != null) local.subgoals.size else -1,
+        if (local != null) local.subgoals.size else -1)
     }
   }
 
@@ -94,7 +94,7 @@ class TraceRecordingListener(db: DBAbstraction,
     }
   }
 
-  def end(v: BelleValue, expr: BelleExpr, result: Either[BelleValue, BelleError]): Unit = {
+  def end(v: BelleValue, expr: BelleExpr, result: Either[BelleValue, BelleThrowable]): Unit = {
     synchronized {
       depth = depth - 1
       if(isDead) return
@@ -107,22 +107,41 @@ class TraceRecordingListener(db: DBAbstraction,
           case Right(_) => ExecutionStepStatus.Error
         }
       if (node != null && !recursive) return
-      db.updateExecutionStep(current.stepId.get, current.asPOJO)
+//      db.updateExecutionStep(current.stepId.get, current.asPOJO)
+//      if (node == null) {
+//        result match {
+//          // Only reconstruct provables for the top-level because the meaning of "branch" can change inside a tactic
+//          case Left(BelleProvable(p, _)) =>
+//            current.output = globalProvable(p, branch)
+//            current.local = p
+//          case _ =>
+//        }
+//        if (current.output != null) {
+//          db.updateExecutionStep(current.stepId.get, current.asPOJO)
+//          if (current.output.isProved) {
+//            val p = db.getProofInfo(proofId)
+//            val provedProof = new ProofPOJO(p.proofId, p.modelId, p.name, p.description, p.date, p.stepCount,
+//              closed = true, p.provableId, p.temporary)
+//            db.updateProofInfo(provedProof)
+//          }
+//        }
+//      }
       if (node == null) {
         result match {
           // Only reconstruct provables for the top-level because the meaning of "branch" can change inside a tactic
           case Left(BelleProvable(p, _)) =>
-            current.output = globalProvable(p, branch)
+            // no longer want to construct global provables (want to allow halfway done substitutions)
             current.local = p
+            db.updateExecutionStep(current.stepId.get, current.asPOJO)
+            if (db.getPlainOpenSteps(proofId).isEmpty) {
+              //@note proof might be done
+              val p = db.getProofInfo(proofId)
+              val provedProof = new ProofPOJO(p.proofId, p.modelId, p.name, p.description, p.date, p.stepCount,
+                closed = true, p.provableId, p.temporary, p.tactic)
+              db.updateProofInfo(provedProof)
+            }
           case _ =>
-        }
-        if (current.output != null) {
-          db.updateExecutionStep(current.stepId.get, current.asPOJO)
-          if (current.output.isProved) {
-            val p = db.getProofInfo(proofId)
-            val provedProof = new ProofPOJO(p.proofId, p.modelId, p.name, p.description, p.date, p.stepCount, closed = true)
-            db.updateProofInfo(provedProof)
-          }
+            db.updateExecutionStep(current.stepId.get, current.asPOJO)
         }
       }
     }

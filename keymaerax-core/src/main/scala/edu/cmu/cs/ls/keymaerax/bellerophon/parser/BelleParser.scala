@@ -2,8 +2,9 @@ package edu.cmu.cs.ls.keymaerax.bellerophon.parser
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics._
-import edu.cmu.cs.ls.keymaerax.core.{Expression, Formula, Term, Variable}
+import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser._
+import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import BelleLexer.TokenStream
 
 /**
@@ -12,18 +13,37 @@ import BelleLexer.TokenStream
   * @author Nathan Fulton
   */
 object BelleParser extends (String => BelleExpr) {
-  private var invariantGenerator : Option[Generator.Generator[Formula]] = None
+  private var invariantGenerator : Option[Generator.Generator[Expression]] = None
+  private var definitions: List[SubstitutionPair] = Nil
   private var DEBUG = false
+
+  private case class DefScope[K, V](defs: scala.collection.mutable.Map[K, V] = scala.collection.mutable.Map.empty[K, V],
+                                    parent: Option[DefScope[K, V]] = None) {
+    def get(key: K): Option[V] = defs.get(key) match {
+      case Some(e) => Some(e)
+      case None => parent match {
+        case Some(parentScope) => parentScope.get(key)
+        case None => None
+      }
+    }
+  }
 
   override def apply(s: String): BelleExpr = parseWithInvGen(s, None)
 
-  def parseWithInvGen(s: String, g:Option[Generator.Generator[Formula]] = None): BelleExpr =
+  def parseWithInvGen(s: String, g: Option[Generator.Generator[Expression]] = None,
+                      defs: List[SubstitutionPair] = Nil): BelleExpr =
     KeYmaeraXProblemParser.firstNonASCIICharacter(s) match {
-      case Some((loc, char)) => throw ParseException(s"Found a non-ASCII character when parsing tactic: ${char}", loc, "<unknown>", "<unknown>", "", "")
-      case None => {
-        invariantGenerator = g;
-        parseTokenStream(BelleLexer(s))
-      }
+      case Some((loc, char)) => throw ParseException(s"Found a non-ASCII character when parsing tactic: $char", loc, "<unknown>", "<unknown>", "", "")
+      case None =>
+        invariantGenerator = g
+        definitions = defs
+        try {
+          parseTokenStream(BelleLexer(s), DefScope[String, DefTactic](), DefScope[Expression, DefExpression]())
+        } catch {
+          case e: Throwable =>
+            System.err.println("Error parsing\n" + s)
+            throw e
+        }
     }
 
   /** Runs the parser with debug mode turned on. */
@@ -44,8 +64,9 @@ object BelleParser extends (String => BelleExpr) {
     }
   }
 
-  def parseTokenStream(toks: TokenStream): BelleExpr = {
-    val result = parseLoop(ParserState(Bottom, toks))
+  def parseTokenStream(toks: TokenStream, tacticDefs: DefScope[String, DefTactic],
+                       exprDefs: DefScope[Expression, DefExpression]): BelleExpr = {
+    val result = parseLoop(ParserState(Bottom, toks), tacticDefs, exprDefs)
     result.stack match {
       case Bottom :+ BelleAccept(e) => e
       case context :+ (BelleErrorItem(msg,loc,st)) => throw ParseException(msg, loc, "<unknown>", "<unknown>", "", st) //@todo not sure why I need the extra () around ErrorList.
@@ -54,41 +75,65 @@ object BelleParser extends (String => BelleExpr) {
   }
 
   //@tailrec
-  private def parseLoop(st: ParserState) : ParserState = {
+  private def parseLoop(st: ParserState, tacticDefs: DefScope[String, DefTactic],
+                        exprDefs: DefScope[Expression, DefExpression]) : ParserState = {
     if(DEBUG) println(s"Current state: ${st}")
 
     st.stack match {
       case _ :+ (result : FinalBelleItem) => st
-      case _ => parseLoop(parseStep(st))
+      case _ => parseLoop(parseStep(st, tacticDefs, exprDefs), tacticDefs, exprDefs)
     }
   }
 
-  private def parseStep(st: ParserState) : ParserState = {
+  private def parseInnerExpr(tokens: List[BelleToken],
+                             tacticDefs: DefScope[String, DefTactic],
+                             exprDefs: DefScope[Expression, DefExpression]): (BelleExpr, Location, List[BelleToken]) = tokens match {
+    case BelleToken(OPEN_PAREN, oParenLoc) :: tail =>
+      //@note find matching closing parenthesis, parse inner expr, then continue with remainder
+      var openParens = 1
+      val (inner, BelleToken(CLOSE_PAREN, cParenLoc) :: remainder) = tail.span({
+        case BelleToken(OPEN_PAREN, _) => openParens = openParens + 1; openParens > 0
+        case BelleToken(CLOSE_PAREN, _) => openParens = openParens - 1; openParens > 0
+        case _ => openParens > 0
+      })
+      val innerExpr = parseTokenStream(inner,
+        DefScope(scala.collection.mutable.Map.empty, Some(tacticDefs)),
+        DefScope(scala.collection.mutable.Map.empty, Some(exprDefs)))
+      (innerExpr, oParenLoc.spanTo(cParenLoc), remainder)
+  }
+
+  private def parseStep(st: ParserState, tacticDefs: DefScope[String, DefTactic],
+                        exprDefs: DefScope[Expression, DefExpression]) : ParserState = {
     val stack : Stack[BelleItem] = st.stack
 
     stack match {
       //@note This is a hack to support "blah & <(blahs)" in addition to "blah <(blahs)" without copying all of branch cases.
       //@todo Diable support for e<(e) entirely.
-      case r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(SEQ_COMBINATOR, seqCombinatorLoc) :+ BelleToken(BRANCH_COMBINATOR, branchCombinatorLoc) =>
+      case r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, seqCombinatorLoc) :+ BelleToken(BRANCH_COMBINATOR, branchCombinatorLoc) =>
         ParserState(
           r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(BRANCH_COMBINATOR, branchCombinatorLoc),
           st.input
         )
 
       //region Seq combinator
-      case r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(SEQ_COMBINATOR, combatinorLoc) =>
+      case r :+ ParsedBelleExpr(_, _) :+ BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, combatinorLoc) =>
         st.input.headOption match {
-          case Some(BelleToken(OPEN_PAREN, oParenLoc)) => ParserState(stack :+ st.input.head, st.input.tail)
-          case Some(BelleToken(IDENT(name), identLoc)) => ParserState(stack :+ st.input.head, st.input.tail)
-          case Some(BelleToken(BRANCH_COMBINATOR, branchCombinatorLoc)) => ParserState(stack :+ st.input.head, st.input.tail)
-          case Some(BelleToken(OPTIONAL, optCombinatorLoc)) => ParserState(stack :+ st.input.head, st.input.tail)
-          case Some(BelleToken(DONE, doneLoc)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(OPEN_PAREN, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(IDENT(_), _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(BRANCH_COMBINATOR, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(OPTIONAL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(ON_ALL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(DONE, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(TACTIC, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(LET, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(DEF, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(EXPAND, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(_) => throw ParseException("A combinator should be followed by a full tactic expression", st)
           case None => throw ParseException("Tactic script cannot end with a combinator", combatinorLoc)
         }
-      case r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(SEQ_COMBINATOR, combatinorLoc) :+ ParsedBelleExpr(right, rightLoc) =>
+      case r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, _) :+ ParsedBelleExpr(right, rightLoc) =>
         st.input.headOption match {
-          case Some(BelleToken(SEQ_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(KLEENE_STAR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(N_TIMES(_), _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(SATURATE, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
@@ -111,7 +156,7 @@ object BelleParser extends (String => BelleExpr) {
           case Some(BelleToken(KLEENE_STAR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(N_TIMES(_), _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(SATURATE, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
-          case Some(BelleToken(SEQ_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case _ => {
             val parsedExpr = left | right
             parsedExpr.setLocation(combatinorLoc)
@@ -188,32 +233,60 @@ object BelleParser extends (String => BelleExpr) {
       //endregion
 
       //region OnAll combinator
-      case r :+ BelleToken(IDENT(name), loc) if name == ON_ALL.img => st.input match {
-        case BelleToken(OPEN_PAREN, oParenLoc) :: tail =>
-          //@note find matching closing parenthesis, parse inner expr, then continue with remainder
-          var openParens = 1
-          val (inner, BelleToken(CLOSE_PAREN, cParenLoc) :: remainder) = tail.span({
-            case BelleToken(OPEN_PAREN, _) => openParens = openParens + 1; openParens > 0
-            case BelleToken(CLOSE_PAREN, _) => openParens = openParens - 1; openParens > 0
-            case _ => openParens > 0
-          } )
-          val innerExpr = parseTokenStream(inner)
-          ParserState(r :+ ParsedBelleExpr(OnAll(innerExpr), loc.spanTo(cParenLoc)), remainder)
-      }
+      case r :+ BelleToken(ON_ALL, loc) =>
+        val (innerExpr, innerLoc, remainder) = parseInnerExpr(st.input, tacticDefs, exprDefs)
+        ParserState(r :+ ParsedBelleExpr(OnAll(innerExpr), loc.spanTo(innerLoc)), remainder)
       //endregion
 
       //region ? combinator
-      case r :+ BelleToken(OPTIONAL, loc) => st.input match {
-        case BelleToken(OPEN_PAREN, oParenLoc) :: tail =>
-          //@note find matching closing parenthesis, parse inner expr, then continue with remainder
-          var openParens = 1
-          val (inner, BelleToken(CLOSE_PAREN, cParenLoc) :: remainder) = tail.span({
-            case BelleToken(OPEN_PAREN, _) => openParens = openParens + 1; openParens > 0
-            case BelleToken(CLOSE_PAREN, _) => openParens = openParens - 1; openParens > 0
-            case _ => openParens > 0
-          } )
-          val innerExpr = parseTokenStream(inner)
-          ParserState(r :+ ParsedBelleExpr(Idioms.?(innerExpr), loc.spanTo(cParenLoc)), remainder)
+      case r :+ BelleToken(OPTIONAL, loc) =>
+        val (innerExpr, innerLoc, remainder) = parseInnerExpr(st.input, tacticDefs, exprDefs)
+        ParserState(r :+ ParsedBelleExpr(Idioms.?(innerExpr), loc.spanTo(innerLoc.end)), remainder)
+      //endregion
+
+      //region let
+      case r :+ BelleToken(LET, loc) => st.input match {
+        case BelleToken(OPEN_PAREN, _) :: BelleToken(expr: EXPRESSION, _) :: BelleToken(CLOSE_PAREN, _) :: BelleToken(IN, _) :: tail =>
+          val (innerExpr, innerLoc, remainder) = parseInnerExpr(tail, tacticDefs, exprDefs)
+          val (abbrv, value) = expr.undelimitedExprString.asFormula match {
+            case Equal(a, v) => (a, v)
+            case Equiv(a, v) => (a, v)
+          }
+          ParserState(r :+ ParsedBelleExpr(Let(abbrv, value, innerExpr), loc.spanTo(innerLoc.end)), remainder)
+      }
+      //endregion
+
+      //region tactic
+      case r :+ BelleToken(TACTIC, loc) => st.input match {
+        case BelleToken(IDENT(name), _) :: BelleToken(AS, _) :: tail =>
+          if (tacticDefs.defs.contains(name)) throw ParseException(s"Tactic definition: unique name '$name' expected in scope", st)
+          val (innerExpr, innerLoc, remainder) = parseInnerExpr(tail, tacticDefs, exprDefs)
+          tacticDefs.defs(name) = DefTactic(name, innerExpr)
+          ParserState(r :+ ParsedBelleExpr(DefTactic(name, innerExpr), loc.spanTo(innerLoc)), remainder)
+      }
+      //endregion
+
+      //region def
+      case r :+ BelleToken(DEF, loc) => st.input match {
+        case BelleToken(expr: EXPRESSION, exprLoc) :: tail =>
+          val defFml = expr.undelimitedExprString.asFormula
+          val (key, value) = defFml match {
+            case Equal(fn@FuncOf(_, _), t) => (fn, t)
+            case Equiv(p@PredOf(_, _), q) => (p, q)
+          }
+          if (exprDefs.defs.contains(key)) throw ParseException(s"Expression definition: unique '$key' expected in scope", st)
+          exprDefs.defs(key) = DefExpression(defFml)
+          ParserState(r :+ ParsedBelleExpr(DefExpression(defFml), loc.spanTo(exprLoc)), tail)
+      }
+
+      case r :+ BelleToken(EXPAND, loc) => st.input match {
+        case BelleToken(expr: EXPRESSION, exprLoc) :: tail =>
+          val key = expr.undelimitedExprString.asExpr
+          exprDefs.get(key) match {
+            case Some(x) => ParserState(r :+ ParsedBelleExpr(ExpandDef(x), loc.spanTo(exprLoc)), tail)
+            case None => throw ParseException(s"Expression definition not found: '$key'", st)
+          }
+
       }
       //endregion
 
@@ -275,7 +348,7 @@ object BelleParser extends (String => BelleExpr) {
       case r :+ BelleToken(IDENT(name), identLoc) =>
         try {
           if(!isOpenParen(st.input)) {
-            val parsedExpr = constructTactic(name, None, identLoc)
+            val parsedExpr = constructTactic(name, None, identLoc, tacticDefs)
             ParserState(r :+ ParsedBelleExpr(parsedExpr, identLoc), st.input)
           }
           else {
@@ -283,18 +356,18 @@ object BelleParser extends (String => BelleExpr) {
 
             //Do our best at computing the entire range of positions that is encompassed by the tactic application.
             val endLoc = remainder match {
-              case hd :: tl => hd.location
+              case hd :: _ => hd.location
               case _ => st.input.last.location
             }
             val spanLoc = if(endLoc.end.column != -1) identLoc.spanTo(endLoc) else identLoc
 
-            val parsedExpr = constructTactic(name, Some(args), identLoc)
+            val parsedExpr = constructTactic(name, Some(args), identLoc, tacticDefs)
             parsedExpr.setLocation(identLoc)
             ParserState(r :+ ParsedBelleExpr(parsedExpr, spanLoc), remainder)
           }
         }
         catch {
-          case e : ClassCastException => throw ParseException(s"Could not convert tactic ${name} because the arguments passed to it were of incorrect type", e)
+          case e : ClassCastException => throw ParseException(s"Could not convert tactic $name because the arguments passed to it were of incorrect type", e)
         }
       //endregion
 
@@ -316,11 +389,11 @@ object BelleParser extends (String => BelleExpr) {
 
       case Bottom =>
         if(st.input.isEmpty) throw ParseException("Empty inputs are not parsable.", UnknownLocation)//ParserState(stack :+ FinalItem(), Nil) //Disallow empty inputs.
-        else if(isCombinator(st.input.head)) ParserState(stack :+ st.input.head, st.input.tail)
+        else if(isStartingCombinator(st.input.head)) ParserState(stack :+ st.input.head, st.input.tail)
         else if(isIdent(st.input)) ParserState(stack :+ st.input.head, st.input.tail)
         else if(isOpenParen(st.input)) ParserState(stack :+ st.input.head, st.input.tail)
         else if(isProofStateToken(st.input)) ParserState(stack :+ st.input.head, st.input.tail)
-        else throw ParseException("Bellerophon programs should start with identifiers, open parens, or partials.", st.input.head.location)
+        else throw ParseException("Bellerophon programs should start with identifiers, open parens, or optional/doall/partial.", st.input.head.location)
 
       case r :+ ParsedBelleExpr(e, loc) => st.input.headOption match {
         case Some(head) => ParserState(st.stack :+ st.input.head, st.input.tail)
@@ -353,13 +426,12 @@ object BelleParser extends (String => BelleExpr) {
     case _ => false
   }
 
-  private def isCombinator(tok: BelleToken) = tok.terminal match {
-    case SEQ_COMBINATOR => true
-    case EITHER_COMBINATOR => true
-    case BRANCH_COMBINATOR => true
-    case KLEENE_STAR => true
-    case SATURATE => true
+  private def isStartingCombinator(tok: BelleToken) = tok.terminal match {
     case OPTIONAL => true
+    case ON_ALL => true
+    case LET => true
+    case TACTIC => true
+    case DEF => true
     case _ => false
   }
 
@@ -375,85 +447,34 @@ object BelleParser extends (String => BelleExpr) {
   //region Constructors (i.e., functions that construct [[BelleExpr]] and other accepted values from partially parsed inputs.
 
   /** Constructs a tactic using the reflective expression builder. */
-  private def constructTactic(name: String, args : Option[List[TacticArg]], location: Location) : BelleExpr = {
+  private def constructTactic(name: String, args : Option[List[TacticArg]], location: Location, tacticDefs: DefScope[String, DefTactic]) : BelleExpr = {
     // Converts List[Either[Expression, Pos]] to List[Either[Seq[Expression], Pos]] by makikng a bunch of one-tuples.
     val newArgs = args match {
       case None => Nil
-      case Some(argList) => argList.map(_ match {
+      case Some(argList) => argList.map({
         case Left(expression) => Left(Seq(expression))
         case Right(pl) => Right(pl)
       })
     }
 
-    try {
-      ReflectiveExpressionBuilder(name, newArgs, invariantGenerator)
-    } catch {
-      case e: ReflectiveExpressionBuilderExn => throw ParseException(e.getMessage + s" Encountered while parsing $name", location, e)
+    val tacticDef = tacticDefs.get(name)
+    if (tacticDef.isDefined) {
+      if (newArgs.nonEmpty) throw ParseException("Arguments for def tactics not yet supported", location)
+      ApplyDefTactic(tacticDef.get)
+    } else {
+      try {
+        ReflectiveExpressionBuilder(name, newArgs, invariantGenerator, definitions)
+      } catch {
+        case e: ReflectiveExpressionBuilderExn => throw ParseException(e.getMessage + s" Encountered while parsing $name", location, e)
+      }
     }
-  }
-
-  /**
-    * Consolidates all successive expression arguments into a single list.
-    *
-    * Example: 1=1,2=2,'L becomes (1=1,2=2),'L
-    * Example: 1=1, 'L, 2=2 stays the smame.
-    *
-    * Could be used e.g. for diffInd type things to pass a list of formulas to a tactic without actually adding lists of formulas to the grammar.
-    */
-  @deprecated("This method implicitly converts a list of formula arguments to a single argument that is a list of formulas. This is necessary for ArgList tactics; i.e. tactics that take lists of formulas as arguments. These tactics that take lists of formulas as arguments are temporarily deprecated until they can be fully supported. Even then, we probably want explicit syntax for differentiating between a list of formula arguments and a list of formulas as an argument.", "4.2b1")
-  private def consolidatedExpressions(args : Option[List[TacticArg]]) = args match {
-      case None => Nil
-      case Some(argList) => argList
-        .foldLeft[List[Either[Seq[Expression], PositionLocator]]](Nil)((newArgs, arg) => {
-        if(newArgs.length == 0) arg match {
-          case Left(e) => newArgs :+ Left(Seq(e))
-          case Right(pl) => newArgs :+ Right(pl)
-        }
-        else (newArgs.last, arg) match {
-          case (_, Right(pl)) => newArgs :+ Right(pl)
-          case (Right(pl), Left(expression)) => newArgs :+ Left(Seq(expression))
-          case (Left(consolidatedExprs), Left(nextExpr)) => newArgs.dropRight(1) :+ Left(consolidatedExprs :+ nextExpr)
-        }
-      })
-    }
-
-  @deprecated("Replaced with a stack traversal.", "4.2b1")
-  /** @todo Delete this code after testing that the common tactics did not break with new approach. */
-  private def reduceExpressionList(st: ParserState) = {
-    val list = st.stack.toList.reverse.span(_ match {
-      case BelleToken(OPEN_PAREN, _) => false
-      case _ => true
-    })._2
-
-    val remainingStack = st.stack.drop(list.length)
-
-    //Remove the leading ( and trailing ) from the list.
-    assert(list.headOption match {
-      case Some(BelleToken(OPEN_PAREN, _)) => true
-      case _ => false
-    }, "First element of list should be a OPEN_PAREN")
-    assert(list.last match {
-      case BelleToken(CLOSE_PAREN, _) => true
-      case _ => false
-    }, "Last element of list should be a CLOSE_PAREN")
-    val commaSepExprs = list.tail.dropRight(1)
-
-    val onlyExprs = commaSepExprs.filter(x => x match {
-      case BelleToken(COMMA, _) => false
-      case e : ParsedBelleExpr => true
-      case _ => {assert(false, s"Comma-separated expression list should only commas expressions and ParsedBelleExprs, but found ${x}"); ???}
-     }).map(_.asInstanceOf[ParsedBelleExpr])
-
-    val newItem = ParsedBelleExprList(onlyExprs)
-
-    ParserState(remainingStack :+ newItem, st.input)
   }
 
   //endregion
 
   //region Ad-hoc Argument List Parser
 
-  type TacticArg = Either[Expression, PositionLocator]
+  type TacticArg = Either[Any, PositionLocator]
 
   /**
     * An ad-hoc parser for argument lists.
@@ -473,16 +494,25 @@ object BelleParser extends (String => BelleExpr) {
 
       //Parse all the arguments.
       var nonPosArgCount = 0 //Tracks the number of non-positional arguments that have already been processed.
-      val arguments = removeCommas(argList, false).map({
-        case tok@BelleToken(terminal: EXPRESSION, loc) =>
+
+      def arguments(al: List[BelleToken]): List[TacticArg] = al match {
+        case Nil => Nil
+        case (tok@BelleToken(_: EXPRESSION, loc))::tail =>
           assert(DerivationInfo.hasCodeName(codeName), s"DerivationInfo should contain code name $codeName because it is called with expression arguments.")
           assert(nonPosArgCount < DerivationInfo(codeName).inputs.length, s"Too many expr arguments were passed to $codeName (Expected ${DerivationInfo(codeName).inputs.length} but found at least ${nonPosArgCount+1})")
           val theArg = parseArgumentToken(Some(DerivationInfo(codeName).inputs(nonPosArgCount)))(tok, loc)
           nonPosArgCount = nonPosArgCount + 1
-          theArg
-        case tok => parseArgumentToken(None)(tok, UnknownLocation)
-      })
-      (arguments, remainder)
+          theArg +: arguments(tail)
+        case BelleToken(SEARCH_SUCCEDENT, _)::BelleToken(matchKind, _)::BelleToken(expr: EXPRESSION, loc)::tail =>
+          Right(Find.FindR(0, Some(expr.expression), exact=matchKind==EXACT_MATCH)) +: arguments(tail)
+        case BelleToken(SEARCH_ANTECEDENT, _)::BelleToken(matchKind, _)::BelleToken(expr: EXPRESSION, loc)::tail =>
+          Right(Find.FindL(0, Some(expr.expression), exact=matchKind==EXACT_MATCH)) +: arguments(tail)
+        case BelleToken(SEARCH_EVERYWHERE, _)::BelleToken(matchKind, _)::BelleToken(expr: EXPRESSION, loc)::tail =>
+          Right(new Find(0, Some(expr.expression), AntePosition(1), exact = matchKind==EXACT_MATCH)) +: arguments(tail)
+        case tok::tail => parseArgumentToken(None)(tok, UnknownLocation) +: arguments(tail)
+      }
+
+      (arguments(removeCommas(argList, commaExpected=false)), remainder)
     }
   }
 
@@ -523,23 +553,30 @@ object BelleParser extends (String => BelleExpr) {
         //Use the parsed result if it matches the expected type. Otherwise re-parse using a grammar-specific parser.
         assert(expectedType.nonEmpty, "When parsing an EXPRESSION argument an expectedType should be specified.")
         expectedType.get match {
-          case ty:FormulaArg if tok.expression.isInstanceOf[Formula] => Left(tok.expression)
-          case ty:FormulaArg => try {
+          case _:StringArg => Left(tok.undelimitedExprString)
+          case _:FormulaArg if tok.expression.isInstanceOf[Formula] => Left(tok.expression)
+          case _:FormulaArg => try {
             Left(tok.undelimitedExprString.asFormula)
           } catch {
             case exn: ParseException => throw ParseException(s"Could not parse ${tok.exprString} as a Formula, but a formula was expected. Error: $exn", loc, exn)
           }
-          case ty:TermArg if tok.expression.isInstanceOf[Term] => Left(tok.expression)
-          case ty:TermArg => try {
+          case _:TermArg if tok.expression.isInstanceOf[Term] => Left(tok.expression)
+          case _:TermArg => try {
             Left(tok.undelimitedExprString.asTerm)
           } catch {
-            case exn: ParseException => throw ParseException(s"Could not parse ${tok.exprString} as a Variable, but a term was expected. Error: $exn", loc, exn)
+            case exn: ParseException => throw ParseException(s"Could not parse ${tok.exprString} as a Term, but a term was expected. Error: $exn", loc, exn)
           }
-          case ty:VariableArg if tok.expression.isInstanceOf[Variable] => Left(tok.expression)
-          case ty:VariableArg => try {
+          case _:VariableArg if tok.expression.isInstanceOf[Variable] => Left(tok.expression)
+          case _:VariableArg => try {
             Left(tok.undelimitedExprString.asVariable)
           } catch {
-            case exn: ParseException => throw ParseException(s"Could not parse ${tok.exprString} as a Variable, but a Variable was expected. Error: $exn", loc, exn)
+            case exn: ParseException => throw ParseException(s"Could not parse ${tok.exprString} as a Variable, but a variable was expected. Error: $exn", loc, exn)
+          }
+          case _:ExpressionArg if tok.expression.isInstanceOf[Expression] => Left(tok.expression)
+          case _:ExpressionArg => try {
+            Left(tok.undelimitedExprString.asExpr)
+          } catch {
+            case exn: ParseException => throw ParseException(s"Could not parse ${tok.exprString} as an Expression, but an expression was expected. Error: $exn", loc, exn)
           }
         }
       }

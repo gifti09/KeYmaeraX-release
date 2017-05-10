@@ -1,6 +1,6 @@
 package edu.cmu.cs.ls.keymaerax.bellerophon
 
-import edu.cmu.cs.ls.keymaerax.core.{AnyArg, Formula, Provable, UnitPredicational}
+import edu.cmu.cs.ls.keymaerax.core.{AnyArg, Formula, UnitPredicational}
 import edu.cmu.cs.ls.keymaerax.tags.SummaryTest
 import edu.cmu.cs.ls.keymaerax.tools.KeYmaera
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers, Suite}
@@ -239,7 +239,7 @@ class UnifyAxiomInstantiationTest extends SystemTestBase with BeforeAndAfterAll 
   // random schematic instantiations
 
   private val schematicAxioms = "<> diamond" :: "[++] choice" :: "[;] compose" :: "[*] iterate" ::
-    "DW" :: "DC differential cut" :: "DE differential effect (system)" :: "DI differential invariance" ::
+    "DW base" :: "DC differential cut" :: "DE differential effect (system)" :: "DI differential invariance" ::
     "DX differential skip" ::
     //", commute" :: //@todo would need to avoid repeated ODEs
     "-' derive neg" :: "+' derive sum" :: "-' derive minus" :: "*' derive product" :: "/' derive quotient" ::

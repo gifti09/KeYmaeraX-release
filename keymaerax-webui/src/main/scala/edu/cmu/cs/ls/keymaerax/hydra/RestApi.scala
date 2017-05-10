@@ -12,6 +12,11 @@ import akka.event.slf4j.SLF4JLogging
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import akka.actor.Actor
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
+import edu.cmu.cs.ls.keymaerax.core
+import edu.cmu.cs.ls.keymaerax.core.{Expression, Formula}
+import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXArchiveParser, KeYmaeraXExtendedLemmaParser}
+import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
 import spray.http.CacheDirectives.{`max-age`, `no-cache`}
 import spray.http.HttpHeaders.`Cache-Control`
 import spray.routing._
@@ -19,7 +24,7 @@ import spray.http._
 import spray.json._
 import spray.routing
 import spray.util.LoggingContext
-import spray.http.StatusCodes.{Unauthorized, Forbidden}
+import spray.http.StatusCodes.{Forbidden, Unauthorized}
 
 import scala.language.postfixOps
 
@@ -131,15 +136,15 @@ trait RestApi extends HttpService with SLF4JLogging {
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Users
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  val users = pathPrefix("user" / Segment / Segment) { (username, password) => {
+  val users = pathPrefix("user" / Segment / Segment / "mode" / Segment) { (username, password, mode) => {
     implicit val sessionUser = None
     pathEnd {
       get {
-        val request = new LoginRequest(database,username,password)
+        val request = new LoginRequest(database,username, password)
         completeRequest(request, EmptyToken())
       } ~
       post {
-        val request = new CreateUserRequest(database, username, password)
+        val request = new CreateUserRequest(database, username, password, mode)
         completeRequest(request, EmptyToken())
       }
     }
@@ -153,6 +158,18 @@ trait RestApi extends HttpService with SLF4JLogging {
   val cookie_echo = pathPrefix("cookie_echo" / Segment) { cookieName => cookie(cookieName) { cookieValue => {
     complete(cookieName + ": " + cookieValue.content)
   }}}
+
+  val userTheme: SessionToken=>Route = (t: SessionToken) => path("users" / Segment / "theme") { userId => pathEnd {
+    get {
+      val request = new GetUserThemeRequest(database, userId)
+      completeRequest(request, t)
+    } ~
+      post {
+        entity(as[String]) { theme => {
+          val request = new SetUserThemeRequest(database, userId, theme)
+          completeRequest(request, t)
+        }}}
+  }}
 
   // GET /models/user returns a list of all models belonging to this user. The cookie must be set.
   val modelList = (t : SessionToken) => pathPrefix("models" / "users" / Segment) {userId => { pathEnd { get {
@@ -174,6 +191,25 @@ trait RestApi extends HttpService with SLF4JLogging {
     get {
       val request = new GetModelRequest(database, userId, modelNameOrId)
       completeRequest(request, t)
+    }
+  }}}}}
+
+  val updateUserModel: SessionToken=>Route = (t: SessionToken) => userPrefix { userId => pathPrefix("model" / Segment / "update") { modelId => pathEnd {
+    post {
+      entity(as[String]) { modelJson =>
+        val modelData = modelJson.parseJson.asJsObject.fields.map({case (k,v) => k -> v.asInstanceOf[JsString].value})
+        completeRequest(new UpdateModelRequest(database, userId, modelId, modelData("name"),
+          modelData("title"), modelData("description")), t)
+      }
+    }
+  }}}
+
+  val userModelFromFormula = (t : SessionToken) => userPrefix {userId => {pathPrefix("modelFromFormula" / Segment) {modelName => {pathEnd {
+    post {
+      entity(as[String]) {formula => {
+        val request = new CreateModelFromFormulaRequest(database, userId, modelName, formula)
+        completeRequest(request, t)
+      }}
     }
   }}}}}
 
@@ -200,7 +236,7 @@ trait RestApi extends HttpService with SLF4JLogging {
     }
   }}}
 
-  val modelplex = (t : SessionToken) => userPrefix {userId => pathPrefix("model" / Segment / "modelplex" / "generate" / Segment / Segment) { (modelId, monitorKind, conditionKind) => pathEnd {
+  val modelplex = (t : SessionToken) => userPrefix {userId => pathPrefix("model" / Segment / "modelplex" / "generate" / Segment / Segment / Segment) { (modelId, monitorKind, monitorShape, conditionKind) => pathEnd {
     get {
       parameters('vars.as[String] ?) { vars => {
         val theVars: List[String] = vars match {
@@ -209,7 +245,7 @@ trait RestApi extends HttpService with SLF4JLogging {
           }
           case None => List.empty
         }
-        val r = new ModelPlexRequest(database, userId, modelId, monitorKind, conditionKind, theVars)
+        val r = new ModelPlexRequest(database, userId, modelId, monitorKind, monitorShape, conditionKind, theVars)
         completeRequest(r, t)
     }}}
   }}}
@@ -221,6 +257,18 @@ trait RestApi extends HttpService with SLF4JLogging {
     }
   }}}
 
+  val testSynthesis = (t : SessionToken) => userPrefix {userId => pathPrefix("model" / Segment / "testcase" / "generate" / Segment / Segment / Segment ) { (modelId, monitorKind, amount, timeout) => pathEnd {
+    get {
+      parameters('kinds.as[String] ?) { kinds => {
+        val theKinds: Map[String,Boolean] = kinds match {
+          case Some(v) => v.parseJson.asJsObject.fields.map({case (k, JsBoolean(v)) => k -> v})
+        }
+      val to = timeout match { case "0" => None case s => Some(Integer.parseInt(s)) }
+      val r = new TestSynthesisRequest(database, userId, modelId, monitorKind, theKinds, Integer.parseInt(amount), to)
+      completeRequest(r, t)
+    }}}
+  }}}
+
   //Because apparently FTP > modern web.
   val userModel2 = (t : SessionToken) => userPrefix {userId => {pathPrefix("modeltextupload" / Segment) {modelNameOrId =>
   {pathEnd {
@@ -229,6 +277,15 @@ trait RestApi extends HttpService with SLF4JLogging {
         val request = new CreateModelRequest(database, userId, modelNameOrId, contents)
         completeRequest(request, t)
       }}}}}}}}
+
+  //@note somehow wouldn't match without trailing /
+  val uploadArchive = (t : SessionToken) => path("user" / Segment / "archiveupload" /) { userId => pathEnd {
+    post {
+      entity(as[String]) { contents => {
+        val request = new UploadArchiveRequest(database, userId, contents)
+        completeRequest(request, t)
+      }}}
+  }}
 
   val modelTactic = (t : SessionToken) => path("user" / Segment / "model" / Segment / "tactic") { (userId, modelId) => pathEnd {
     get {
@@ -253,21 +310,47 @@ trait RestApi extends HttpService with SLF4JLogging {
     post {
       entity(as[String]) { contents => {
         val tactics = contents.parseJson.asJsObject
-        val request = new TacticDiffRequest(database, proofId, tactics.fields("old").asInstanceOf[JsString].value, tactics.fields("new").asInstanceOf[JsString].value)
+        val request = new TacticDiffRequest(database, tactics.fields("old").asInstanceOf[JsString].value, tactics.fields("new").asInstanceOf[JsString].value)
         completeRequest(request, t)
       }}}
   }}}
 
   val extractLemma = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / "lemma") { (userId, proofId) => { pathEnd {
     get {
-      val request = new ExtractLemmaRequest(database, proofId)
+      val request = new ExtractLemmaRequest(database, userId, proofId)
       completeRequest(request, t)
     }
   }}}
 
   val downloadProblemSolution = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / "download") { (userId, proofId) => { pathEnd {
     get {
-      val request = new ExtractProblemSolutionRequest(database, proofId)
+      val request = new ExtractProblemSolutionRequest(database, userId, proofId)
+      completeRequest(request, t)
+    }
+  }}}
+
+  val downloadModelProofs = (t : SessionToken) => path("models" / "user" / Segment / "model" / Segment / "downloadProofs") { (userId, modelId) => { pathEnd {
+    get {
+      val request = new ExtractModelSolutionsRequest(database, userId, Integer.parseInt(modelId) :: Nil,
+        withProofs = true, exportEmptyProof = true)
+      completeRequest(request, t)
+    }
+  }}}
+
+  val downloadAllProofs = (t : SessionToken) => path("proofs" / "user" / Segment / "downloadAllProofs") { userId => { pathEnd {
+    get {
+      //@note potential performance bottleneck: loads all models just to get ids
+      val allModels = database.getModelList(userId).map(_.modelId)
+      val request = new ExtractModelSolutionsRequest(database, userId, allModels, withProofs = true, exportEmptyProof = false)
+      completeRequest(request, t)
+    }
+  }}}
+
+  val downloadAllModels = (t : SessionToken) => path("models" / "user" / Segment / "downloadAllModels" / Segment) { (userId, proofs) => { pathEnd {
+    get {
+      val allModels = database.getModelList(userId).map(_.modelId)
+      val request = new ExtractModelSolutionsRequest(database, userId, allModels,
+        withProofs = proofs == "withProofs", exportEmptyProof = true)
       completeRequest(request, t)
     }
   }}}
@@ -293,10 +376,10 @@ trait RestApi extends HttpService with SLF4JLogging {
     }
   }}}
 
-  val proveFromTactic = (t: SessionToken) => path("models" / "users" / Segment / "model" / Segment / "proveFromTactic") { (userId, modelId) => { pathEnd {
+  val createModelTacticProof = (t: SessionToken) => path("models" / "users" / Segment / "model" / Segment / "createTacticProof") { (userId, modelId) => { pathEnd {
     post {
       entity(as[String]) { x => {
-        val request = new ProveFromTacticRequest(database, userId, modelId)
+        val request = new CreateModelTacticProofRequest(database, userId, modelId)
         completeRequest(request, t)
       }}
     }
@@ -319,6 +402,13 @@ trait RestApi extends HttpService with SLF4JLogging {
   val openProof = (t : SessionToken) => path("proofs" / "user" / Segment / Segment) { (userId, proofId) => { pathEnd {
     get {
       val request = new OpenProofRequest(database, userId, proofId)
+      completeRequest(request, t)
+    }
+  }}}
+
+  val initProofFromTactic = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / "initfromtactic") { (userId, proofId) => { pathEnd {
+    get {
+      val request = new InitializeProofFromTacticRequest(database, userId, proofId)
       completeRequest(request, t)
     }
   }}}
@@ -354,6 +444,20 @@ trait RestApi extends HttpService with SLF4JLogging {
   val proofTasksBranchRoot = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "branchroot") { (userId, proofId, nodeId) => { pathEnd {
     get {
       val request = new GetBranchRootRequest(database, userId, proofId, nodeId)
+      completeRequest(request, t)
+    }
+  }}}
+
+  val proofTaskExpand: SessionToken => Route = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "expand") { (userId, proofId, nodeId) => { pathEnd {
+    get {
+      val request = new ProofTaskExpandRequest(database, userId, proofId, nodeId)
+      completeRequest(request, t)
+    }
+  }}}
+
+  val stepwiseTrace: SessionToken => Route = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / "trace") { (userId, proofId) => { pathEnd {
+    get {
+      val request = new StepwiseTraceRequest(database, userId, proofId)
       completeRequest(request, t)
     }
   }}}
@@ -401,11 +505,11 @@ trait RestApi extends HttpService with SLF4JLogging {
     completeRequest(request, t)
   }}}
 
-  val doAt = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / "doAt" / Segment) { (userId, proofId, nodeId, formulaId, tacticId) => { pathEnd {
-    get {
-      val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, Some(Fixed(parseFormulaId(formulaId))))
+  val doAt: SessionToken=>Route = (t: SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / "doAt" / Segment) { (userId, proofId, nodeId, formulaId, tacticId) => { pathEnd {
+    get { parameters('stepwise.as[Boolean]) { stepwise =>
+      val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, Some(Fixed(parseFormulaId(formulaId))), None, Nil, consultAxiomInfo=true, stepwise=stepwise)
       completeRequest(request, t)
-    }}
+    }}}
   }}
 
   val getStep = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / "whatStep") { (userId, proofId, nodeId, formulaId) => { pathEnd {
@@ -415,94 +519,119 @@ trait RestApi extends HttpService with SLF4JLogging {
     }}
   }}
 
-  val doInputAt = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / "doInputAt" / Segment) { (userId, proofId, nodeId, formulaId, tacticId) => { pathEnd {
+  val formulaPrettyString: SessionToken=>Route = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / "prettyString") { (userId, proofId, nodeId, formulaId) => { pathEnd {
+    get {
+      val request = new GetFormulaPrettyStringRequest(database, userId, proofId, nodeId, parseFormulaId(formulaId))
+      completeRequest(request, t)
+    }}
+  }}
+
+  val checkInput: SessionToken=>Route = (t: SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "checkInput" / Segment) { (userId, proofId, nodeId, tacticId) => { pathEnd {
+    get {
+      parameters('param, 'type, 'value) { (pName, pType, pValue) =>
+        completeRequest(new CheckTacticInputRequest(database, userId, proofId, nodeId, tacticId, pName, pType, pValue), t)
+      }
+    }
+  }}}
+
+  val doInputAt: SessionToken=>Route = (t: SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / "doInputAt" / Segment) { (userId, proofId, nodeId, formulaId, tacticId) => { pathEnd {
     post {
-      entity(as[String]) { params => {
+      parameters('stepwise.as[Boolean]) { stepwise => entity(as[String]) { params => {
         val info = DerivationInfo(tacticId)
         val expectedInputs = info.inputs
         // Input has format [{"type":"formula","param":"j(x)","value":"v >= 0"}]
-        val paramArray = JsonParser(params).asInstanceOf[JsArray]
-        val inputs =
-          paramArray.elements.map({case elem =>
-            val obj = elem.asJsObject()
-            val paramName = obj.getFields("param").head.asInstanceOf[JsString].value
-            val paramValue = obj.getFields("value").head.asInstanceOf[JsString].value
-            val paramInfo = expectedInputs.find{case spec => spec.name == paramName}
-            BelleTermInput(paramValue, paramInfo)
-          })
-        val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, Some(Fixed(parseFormulaId(formulaId))), None, inputs.toList)
-        completeRequest(request, t)
+        val paramArray = JsonParser(params).asInstanceOf[JsArray].elements.map(_.asJsObject())
+        val illFormedParams = paramArray.filter({obj =>
+          val paramName = obj.getFields("param").head.asInstanceOf[JsString].value
+          val paramInfo = expectedInputs.find(_.name == paramName)
+          paramInfo.isEmpty || obj.getFields("value").isEmpty
+        })
+        if (illFormedParams.isEmpty) {
+          val inputs =
+            paramArray.map({ obj =>
+              val paramName = obj.getFields("param").head.asInstanceOf[JsString].value
+              val paramValue = obj.getFields("value").head.asInstanceOf[JsString].value
+              val paramInfo = expectedInputs.find(_.name == paramName)
+              BelleTermInput(paramValue, paramInfo)
+            })
+          val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId,
+            Some(Fixed(parseFormulaId(formulaId))), None, inputs.toList, consultAxiomInfo=true, stepwise=stepwise)
+          completeRequest(request, t)
+        } else {
+          val missing = illFormedParams.map(_.getFields("param").head.asInstanceOf[JsString].value).mkString(", ")
+          completeRequest(new FailedRequest(userId, "Ill-formed tactic arguments, missing parameters " + missing), t)
+        }
       }
-    }}
+    }}}
   }}}
 
-  val doTwoPosAt = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / Segment / "doAt" / Segment) { (userId, proofId, nodeId, fml1Id, fml2Id, tacticId) => { pathEnd {
-    get {
+  val doTwoPosAt: SessionToken=>Route = (t: SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / Segment / Segment / "doAt" / Segment) { (userId, proofId, nodeId, fml1Id, fml2Id, tacticId) => { pathEnd {
+    get { parameters('stepwise.as[Boolean]) { stepwise =>
       val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId,
-        Some(Fixed(parseFormulaId(fml1Id))), Some(Fixed(parseFormulaId(fml2Id))))
+        Some(Fixed(parseFormulaId(fml1Id))), Some(Fixed(parseFormulaId(fml2Id))), Nil, consultAxiomInfo=true, stepwise=stepwise)
       completeRequest(request, t)
-    }}
+    }}}
   }}
 
-  val doTactic = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "do" / Segment) { (userId, proofId, nodeId, tacticId) => { pathEnd {
-    get {
-      val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, None)
+  val doTactic: SessionToken=>Route = (t: SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "do" / Segment) { (userId, proofId, nodeId, tacticId) => { pathEnd {
+    get { parameters('stepwise.as[Boolean]) { stepwise =>
+      val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, None, None, Nil, consultAxiomInfo=true, stepwise=stepwise)
       completeRequest(request, t)
-    }}
+    }}}
   }}
 
-  val doInputTactic = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "doInput" / Segment) { (userId, proofId, nodeId, tacticId) => { pathEnd {
-    post {
+  val doInputTactic: SessionToken=>Route = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "doInput" / Segment) { (userId, proofId, nodeId, tacticId) => { pathEnd {
+    post { parameters('stepwise.as[Boolean]) { stepwise =>
       entity(as[String]) { params => {
         val info = DerivationInfo(tacticId)
         val expectedInputs = info.inputs
         // Input has format [{"type":"formula","param":"j(x)","value":"v >= 0"}]
         val paramArray = JsonParser(params).asInstanceOf[JsArray]
         val inputs =
-          paramArray.elements.map({case elem =>
+          paramArray.elements.map({ elem =>
             val obj = elem.asJsObject()
             val paramName = obj.getFields("param").head.asInstanceOf[JsString].value
             val paramValue = obj.getFields("value").head.asInstanceOf[JsString].value
-            val paramInfo = expectedInputs.find{case spec => spec.name == paramName}
+            val paramInfo = expectedInputs.find(_.name == paramName)
             BelleTermInput(paramValue, paramInfo)
           })
-        val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, None, None, inputs.toList)
+        val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tacticId, None, None, inputs.toList, consultAxiomInfo=true, stepwise=stepwise)
         completeRequest(request, t)
       }
-      }}
+      }}}
   }}}
 
-  val doCustomTactic = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "doCustomTactic") { (userId, proofId, nodeId) => { pathEnd {
-    post {
+  val doCustomTactic: SessionToken=>Route = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "doCustomTactic") { (userId, proofId, nodeId) => { pathEnd {
+    post { parameters('stepwise.as[Boolean]) { stepwise =>
       entity(as[String]) { tactic => {
-        val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tactic, None, consultAxiomInfo=false)
+        val request = new RunBelleTermRequest(database, userId, proofId, nodeId, tactic, None, consultAxiomInfo=false, stepwise=stepwise)
         completeRequest(request, t)
       }}
-    }}
+    }}}
   }}
 
-  val doSearch = (t : SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "doSearch" / Segment / Segment) { (userId, proofId, goalId, where, tacticId) => { pathEnd {
-    get {
+  val doSearch: SessionToken=>Route = (t: SessionToken) => path("proofs" / "user" / Segment / Segment / Segment / "doSearch" / Segment / Segment) { (userId, proofId, goalId, where, tacticId) => { pathEnd {
+    get { parameters('stepwise.as[Boolean]) { stepwise =>
       val pos = where match {
         case "R" => Find.FindR(0, None)
         case "L" => Find.FindL(0, None)
         case loc => throw new IllegalArgumentException("Unknown position locator " + loc)
       }
-      val request = new RunBelleTermRequest(database, userId, proofId, goalId, tacticId, Some(pos))
+      val request = new RunBelleTermRequest(database, userId, proofId, goalId, tacticId, Some(pos), None, Nil, consultAxiomInfo=true, stepwise=stepwise)
       completeRequest(request, t)
-    } ~
-    post {
+    }} ~
+    post { parameters('stepwise.as[Boolean]) { stepwise =>
       entity(as[String]) { params => {
         val info = DerivationInfo(tacticId)
         val expectedInputs = info.inputs
         // Input has format [{"type":"formula","param":"j(x)","value":"v >= 0"}]
         val paramArray = JsonParser(params).asInstanceOf[JsArray]
         val inputs =
-          paramArray.elements.map({case elem =>
+          paramArray.elements.map({elem =>
             val obj = elem.asJsObject()
             val paramName = obj.getFields("param").head.asInstanceOf[JsString].value
             val paramValue = obj.getFields("value").head.asInstanceOf[JsString].value
-            val paramInfo = expectedInputs.find{case spec => spec.name == paramName}
+            val paramInfo = expectedInputs.find(_.name == paramName)
             BelleTermInput(paramValue, paramInfo)
           })
         val pos = where match {
@@ -510,10 +639,10 @@ trait RestApi extends HttpService with SLF4JLogging {
           case "L" => Find.FindL(0, None)
           case loc => throw new IllegalArgumentException("Unknown position locator " + loc)
         }
-        val request = new RunBelleTermRequest(database, userId, proofId, goalId, tacticId, Some(pos), None, inputs.toList)
+        val request = new RunBelleTermRequest(database, userId, proofId, goalId, tacticId, Some(pos), None, inputs.toList, consultAxiomInfo=true, stepwise=stepwise)
         completeRequest(request, t)
       }
-      }}
+      }}}
     }
   }}
 
@@ -688,11 +817,19 @@ trait RestApi extends HttpService with SLF4JLogging {
     }
   }
 
-  val examples = path("examplesList" /) {
+  val systemInfo = path("config" / "systeminfo") {
     pathEnd {
       get {
-        val request = new ListExamplesRequest(database)
-        completeRequest(request, EmptyToken())
+        completeRequest(new SystemInfoRequest(database), EmptyToken())
+      }
+    }
+  }
+
+  val examples = (t : SessionToken) => path("examples" / "user" / Segment / "all") { userId =>
+    pathEnd {
+      get {
+        val request = new ListExamplesRequest(database, userId)
+        completeRequest(request, t)
       }
     }
   }
@@ -723,6 +860,35 @@ trait RestApi extends HttpService with SLF4JLogging {
       else {
         complete("{}")
       }
+    }
+  }}
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Proof validation requests
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  /** Validates the proof of a lemma. */
+  val validateProof = path("validate") { pathEnd {
+    post {
+      entity(as[String]) { archiveFileContents => {
+        val entries = KeYmaeraXArchiveParser.parse(archiveFileContents)
+
+        if(entries.length != 1)
+          complete(completeResponse(new ErrorResponse(s"Expected exactly one model in the archive but found ${entries.length}") :: Nil))
+        else if(entries.head._4.length != 1)
+          complete(completeResponse(new ErrorResponse(s"Expected exactly one proof in the archive but found ${entries.head._4.length} proofs. Make sure you export from the Proofs page, not the Models page.") :: Nil))
+        else {
+          val model = entries.head._3.asInstanceOf[Formula]
+          val tactic = entries.head._4.head._2
+          complete(standardCompletion(new ValidateProofRequest(database, model, tactic), EmptyToken()))
+        }
+      }}
+    }
+  }}
+
+  val checkProofValidation = path("validate" / Segment) { (taskId) => {
+    get {
+      complete(standardCompletion(new CheckValidationRequest(database, taskId), EmptyToken()))
     }
   }}
 
@@ -763,10 +929,9 @@ trait RestApi extends HttpService with SLF4JLogging {
   // Route precedence
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  val publicRoutes =
+  val publicRoutes: List[routing.Route] =
     denied ::
     staticRoute        ::
-    denied ::
     homePage           ::
 //    license            ::
     isLocal            ::
@@ -779,26 +944,32 @@ trait RestApi extends HttpService with SLF4JLogging {
     mathematicaConfig  ::
     toolStatus         ::
     tool               ::
+    systemInfo         ::
     mathConfSuggestion ::
     devAction          ::
-    examples           ::
+    checkProofValidation ::
+    validateProof ::
     Nil
 
   /** Requests that need a session token parameter.
     *
     * @see [[sessionRoutes]] is built by wrapping all of these sessions in a cookieOptional("session") {...} that extrtacts the cookie name. */
   private val partialSessionRoutes : List[SessionToken => routing.Route] =
+    downloadAllModels     :: //@note before userModel2 to match correctly
     modelList             ::
     modelTactic           ::
     userModel             ::
     userModel2            ::
     deleteModel           ::
     createProof           ::
-    proveFromTactic       ::
+    createModelTacticProof::
+    initProofFromTactic   ::
     importExampleRepo     ::
     deleteProof           ::
     proofListForModel     ::
     proofList             ::
+    downloadAllProofs     :: //@note before openProof to match correctly
+    downloadModelProofs   ::
     openProof             ::
     getAgendaItem         ::
     setAgendaItemName     ::
@@ -809,17 +980,20 @@ trait RestApi extends HttpService with SLF4JLogging {
     proofTasksParent      ::
     proofTasksPathAll     ::
     proofTasksBranchRoot  ::
+    proofTaskExpand       ::
     axiomList             ::
     twoPosList            ::
     derivationInfo        ::
     doAt                  ::
     doTwoPosAt            ::
     doInputAt             ::
+    checkInput            ::
     doTactic              ::
     doInputTactic         ::
     doCustomTactic        ::
     doSearch              ::
     getStep               ::
+    formulaPrettyString   ::
     taskStatus            ::
     taskResult            ::
     stopTask              ::
@@ -836,6 +1010,13 @@ trait RestApi extends HttpService with SLF4JLogging {
     modelplexMandatoryVars::
     exportSequent         ::
     exportFormula         ::
+    testSynthesis         ::
+    uploadArchive         ::
+    userModelFromFormula  ::
+    examples              ::
+    stepwiseTrace         ::
+    updateUserModel       ::
+    userTheme             ::
     logoff                ::
     // DO NOT ADD ANYTHING AFTER LOGOFF!
     Nil
@@ -857,29 +1038,37 @@ trait RestApi extends HttpService with SLF4JLogging {
   * @todo do we want to enforce timeouts as well?
   */
 object SessionManager {
+  type Session = scala.collection.mutable.Map[String, Any]
+
   private var sessionMap : Map[String, (String, Date)] = Map() //Session tokens -> usernames
+  private var sessions: Map[String, Session] = Map()
 
   def token(key: String): SessionToken = sessionMap.get(key) match {
-    case Some((username, timeout)) => {
-      if(new Date().before(timeout)) {
+    case Some((username, timeout)) =>
+      if (new Date().before(timeout)) {
         UsedToken(key, username)
-      }
-      else {
-        remove(key);
+      } else {
+        remove(key)
         NewlyExpiredToken(key)
       }
-    }
     case None => EmptyToken()
   }
 
   def add(username: String): String = {
     val sessionToken = generateToken() //@todo generate a proper key.
-    sessionMap = sessionMap + (sessionToken -> (username, timeoutDate))
+    sessionMap += sessionToken -> (username, timeoutDate)
+    sessions += sessionToken -> scala.collection.mutable.Map()
     sessionToken
   }
 
+  def session(token: SessionToken): Session = token match {
+    case UsedToken(t, _) => sessions(t)
+    case _ => scala.collection.mutable.Map()
+  }
+
   def remove(key: String): Unit = {
-    sessionMap = sessionMap.filter(p => p._1 != key)
+    sessionMap -= key
+    sessions -= key
   }
 
   private def timeoutDate : Date = {
@@ -889,11 +1078,11 @@ object SessionManager {
   }
 
   private def generateToken(): String = {
-    val random: SecureRandom = new SecureRandom();
+    val random: SecureRandom = new SecureRandom()
     val bytes = Array[Byte](20)
-    random.nextBytes(bytes);
-    val candidate = bytes.toString();
-    if(sessionMap.contains(candidate)) generateToken()
+    random.nextBytes(bytes)
+    val candidate = bytes.toString
+    if (sessionMap.contains(candidate)) generateToken()
     else candidate
   }
 }

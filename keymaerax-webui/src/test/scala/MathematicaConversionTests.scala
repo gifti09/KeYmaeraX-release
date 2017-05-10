@@ -31,23 +31,23 @@ class MathematicaConversionTests extends FlatSpec with Matchers with BeforeAndAf
   def num(n : Integer) = Number(new BigDecimal(n.toString))
   def snum(n : String) = Number(new BigDecimal(n))
 
-  override def beforeEach() = {
+  override def beforeEach(): Unit = {
     PrettyPrinter.setPrinter(edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter)
     link = new JLinkMathematicaLink()
     link.init(mathematicaConfig("linkName"), None) //@todo jlink
     ml = new BaseKeYmaeraMathematicaBridge[KExpr](link, KeYmaeraToMathematica, MathematicaToKeYmaera) {}
   }
 
-  override def afterEach() = {
+  override def afterEach(): Unit = {
     link.shutdown()
     link = null
     ml = null
   }
 
   private object round {
-    def trip(e: KExpr, k2m: K2MConverter[KExpr] = KeYmaeraToMathematica) = roundTrip(e, k2m) should be (e)
+    def trip(e: KExpr, k2m: K2MConverter[KExpr] = KeYmaeraToMathematica): Unit = roundTrip(e, k2m) should be (e)
 
-    def roundTrip(e: KExpr, k2m: K2MConverter[KExpr]) = {
+    def roundTrip(e: KExpr, k2m: K2MConverter[KExpr]): KExpr = {
       val math = k2m(e)
       ml.run(math)._2
     }
@@ -58,7 +58,6 @@ class MathematicaConversionTests extends FlatSpec with Matchers with BeforeAndAf
   }
 
    "Mathematica -> KeYmaera" should "convert simple quantifiers" in {
-    val f = True //TODO handle true and false!
     ml.runUnchecked("ForAll[{kyx`x}, kyx`x==kyx`x]")._2 should be (True)
     ml.runUnchecked("Exists[{kyx`x}, kyx`x==0]")._2 should be (Exists(Seq(x), Equal(x,zero)))
     ml.runUnchecked("ForAll[{kyx`x}, kyx`x==0]")._2 should be (Forall(Seq(x), Equal(x, zero)))
@@ -169,10 +168,6 @@ class MathematicaConversionTests extends FlatSpec with Matchers with BeforeAndAf
     ml.runUnchecked("kyx`x^2 + 2kyx`x + 4")._2 shouldBe "4 + 2*x + x^2".asTerm
   }
 
-  it should "refuse to convert parameterless Apply()" in {
-    a [MatchError] should be thrownBy KeYmaeraToMathematica(FuncOf(Function("x", None, Unit, Real), Nothing))
-  }
-
   it should "convert inequalities" in {
     ml.runUnchecked("kyx`x < kyx`y == kyx`z < 0")._2 shouldBe "x<y & y=z & z<0".asFormula
   }
@@ -211,6 +206,8 @@ class MathematicaConversionTests extends FlatSpec with Matchers with BeforeAndAf
 
   it should "associate correctly" in {
     round trip "\\forall x ((x<=y & y<=z) & z<0)".asFormula
+    KeYmaeraToMathematica("5--2".asTerm) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "Subtract"),
+      Array(new MExpr(5), new MExpr(-2)))
   }
 
   it should "convert Apply()" in {
@@ -235,9 +232,14 @@ class MathematicaConversionTests extends FlatSpec with Matchers with BeforeAndAf
     KeYmaeraToMathematica(in) should be (expected)
   }
 
-  it should "refuse to convert parameterless Apply()" in {
+  it should "convert parameterless Apply()" in {
     val in = FuncOf(Function("y", None, Unit, Real), Nothing)
-    a [MatchError] should be thrownBy KeYmaeraToMathematica(in)
+    KeYmaeraToMathematica(in) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "kyx`y"), Array[MExpr]())
+  }
+
+  it should "convert variables to symbols" in {
+    val in = Variable("x")
+    KeYmaeraToMathematica(in) shouldBe new MExpr(Expr.SYMBOL, "kyx`x")
   }
 
   it should "convert multi-argument Apply to nested lists" in {
@@ -274,5 +276,25 @@ class MathematicaConversionTests extends FlatSpec with Matchers with BeforeAndAf
     KeYmaeraToMathematica("Max(x,y)".asTerm) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "kyx`Max"), Array[MExpr](new MExpr(Expr.SYMBOL, "kyx`x"), new MExpr(Expr.SYMBOL, "kyx`y")))
     KeYmaeraToMathematica("max(x,y)".asTerm) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "Max"), Array[MExpr](new MExpr(Expr.SYMBOL, "kyx`x"), new MExpr(Expr.SYMBOL, "kyx`y")))
     a [CoreException] should be thrownBy KeYmaeraToMathematica("max(x,y,z)".asTerm)
+  }
+
+  it should "convert decimal to rational" in {
+    KeYmaeraToMathematica("0.1".asTerm) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "Rational"), Array(new MExpr(1), new MExpr(10)))
+    MathematicaToKeYmaera(KeYmaeraToMathematica("0.1".asTerm) ) shouldBe "1/10".asTerm
+    KeYmaeraToMathematica("1.5".asTerm) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "Rational"), Array(new MExpr(15), new MExpr(10)))
+    MathematicaToKeYmaera(KeYmaeraToMathematica("1.5".asTerm) ) shouldBe "15/10".asTerm
+    KeYmaeraToMathematica("3.033".asTerm) shouldBe new MExpr(new MExpr(Expr.SYMBOL, "Rational"), Array(new MExpr(3033), new MExpr(1000)))
+    MathematicaToKeYmaera(KeYmaeraToMathematica("3.033".asTerm) ) shouldBe "3033/1000".asTerm
+  }
+
+  it should "refuse to convert non-long numbers" in {
+    KeYmaeraToMathematica(Number(Long.MaxValue)) shouldBe new MExpr(Long.MaxValue)
+    KeYmaeraToMathematica(Number(Long.MinValue)) shouldBe new MExpr(Long.MinValue)
+    the [ConversionException] thrownBy KeYmaeraToMathematica(Number(Number(Long.MaxValue).value + 1)) should have message
+      "Number is neither long nor encodable as rational of longs: " + (Number(Long.MaxValue).value + 1).toString
+    the [ConversionException] thrownBy KeYmaeraToMathematica(Number(Number(Long.MinValue).value - 1)) should have message
+      "Number is neither long nor encodable as rational of longs: " + (Number(Long.MinValue).value - 1).toString
+    the [ConversionException] thrownBy KeYmaeraToMathematica(Number(Double.MaxValue)) should have message
+      "Number is neither long nor encodable as rational of longs: 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
   }
 }

@@ -7,31 +7,26 @@
   */
 package edu.cmu.cs.ls.keymaerax.hydra
 
-import java.io.{File, FileOutputStream}
+import java.io.FileOutputStream
 import java.nio.channels.Channels
-import java.security.SecureRandom
-import java.sql.{Blob, SQLException}
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.PBEKeySpec
-import javax.xml.bind.DatatypeConverter
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, BelleProvable, SequentialInterpreter}
-import _root_.edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary
-import _root_.edu.cmu.cs.ls.keymaerax.core._
-import _root_.edu.cmu.cs.ls.keymaerax.hydra.ExecutionStepStatus.ExecutionStepStatus
+import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary
+import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.lemma._
-import _root_.edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXExtendedLemmaParser, KeYmaeraXParser, KeYmaeraXProblemParser, ProofEvidence}
-import _root_.edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
-import edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms.LemmaID
-import edu.cmu.cs.ls.keymaerax.core.{Formula, Provable, Sequent, SuccPos}
+import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXDeclarationsParser, KeYmaeraXParser, KeYmaeraXProblemParser}
+import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
+import edu.cmu.cs.ls.keymaerax.core.{Formula, Sequent}
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.collection.immutable.Nil
+import scala.slick.driver.SQLiteDriver
+import scala.util.Try
 
 //import Tables.TacticonproofRow
 import scala.slick.jdbc.StaticQuery.interpolation
 import scala.slick.driver.SQLiteDriver.simple._
-import scala.slick.lifted.{ProvenShape, ForeignKeyQuery}
 
 /**
  * Created by nfulton on 4/10/15.
@@ -40,9 +35,9 @@ object SQLite {
 
   import Tables._
 
-  val ProdDB: SQLiteDB = new SQLiteDB(DBAbstractionObj.dblocation)
+  lazy val ProdDB: SQLiteDB = new SQLiteDB(DBAbstractionObj.dblocation)
   /** Use this for all unit tests that work with the database, so tests don't infect the production database */
-  val TestDB: SQLiteDB = new SQLiteDB(DBAbstractionObj.testLocation)
+  lazy val TestDB: SQLiteDB = new SQLiteDB(DBAbstractionObj.testLocation)
 
   /** Stores lemmas in the Lemma table of the given database. */
   class UncachedSQLiteLemmaDB(db: SQLiteDB) extends LemmaDBBase {
@@ -50,7 +45,7 @@ object SQLite {
       db.getLemmas(ids.map(_.toInt))
     }
 
-    def writeLemma(id: LemmaID, lemma:String) = {
+    def writeLemma(id: LemmaID, lemma:String): Unit = {
       if(db.getLemma(id.toInt).nonEmpty)
         db.updateLemma(id.toInt, lemma)
       else {
@@ -76,9 +71,9 @@ object SQLite {
   def SQLiteLemmaDB (db: SQLiteDB) = new CachedLemmaDB(new UncachedSQLiteLemmaDB(db))
 
   class SQLiteDB(val dblocation: String) extends DBAbstraction {
-    val sqldb = Database.forURL("jdbc:sqlite:" + dblocation, driver = "org.sqlite.JDBC")
-    val uncachedLemmaDB = new UncachedSQLiteLemmaDB(this)
-    val lemmaDB = SQLiteLemmaDB(this)
+    val sqldb: SQLiteDriver.backend.DatabaseDef = Database.forURL("jdbc:sqlite:" + dblocation, driver = "org.sqlite.JDBC")
+    private val uncachedLemmaDB = new UncachedSQLiteLemmaDB(this)
+    private val lemmaDB = SQLiteLemmaDB(this)
     private var currentSession:Session = null
     /* Statistics on the number of SQL operations performed in this session, useful for profiling. */
     private var nUpdates = 0
@@ -90,6 +85,8 @@ object SQLite {
         currentSession = sqldb.createSession()
         /* Enable write-ahead logging for SQLite - significantly improves write performance */
         sqlu"PRAGMA journal_mode = WAL".execute(currentSession)
+        /* Enable foreign key support (off by default) */
+        sqlu"PRAGMA foreign_keys = ON".execute(currentSession)
         /* Note: Setting synchronous = NORMAL introduces some risk of database corruption during power loss. According
          * to official documentation, that risk is less than the risk of the hard drive failing completely, but we
          * should at least be aware that the risk exists. Initial testing showed this to be about 8 times faster, so
@@ -136,23 +133,30 @@ object SQLite {
       }
     }
 
+    private lazy val lemmaQuery = Compiled((lemmaId: Column[Int]) =>
+      Lemmas.filter(_._Id === lemmaId).map(_.lemma.getOrElse("")))
+
     /** Allow retrieving lemmas in bulk to reduce the number of database queries */
     private[SQLite] def getLemmas(lemmaIds: List[Int]): Option[List[String]] = {
-      //@todo Code Review: This code should be revised to either select in SQL land from lemmaIds, or read all and filter, or read individual ones in a single transaction
       synchronizedTransaction({
-        val lemmaMap = Lemmas.map{row => {
-          val id = row._Id.getOrElse(throw new IllegalStateException("Did not expect lemma with null Id."))
-          //Note: we allow the lemma text to be empty because of the Create / check we got ID / actually write lemma protocol assumed by CachedLemmaDB.
-          //@todo Code Review: for lemmas that are in lemmaIds, assert not None, for all other lemmas, filter them out instead of converting to empty string
-          val lemmaText = row.lemma.getOrElse("")
-          (id, lemmaText)
-        }}.list.toMap
-        try {
-          //@todo Code Review: check that lemmaIds really should not have "" names now
-          Some(lemmaIds.map(lemmaMap(_)))
-        } catch {
-          case _:Exception => None
-        }
+        if (lemmaIds.size > 1) {
+          //@todo Code Review: This code should be revised to either select in SQL land from lemmaIds, or read all and filter, or read individual ones in a single transaction
+          val lemmaMap = Lemmas.map{row => {
+            val id = row._Id.getOrElse(throw new IllegalStateException("Did not expect lemma with null Id."))
+            //Note: we allow the lemma text to be empty because of the Create / check we got ID / actually write lemma protocol assumed by CachedLemmaDB.
+            //@todo Code Review: for lemmas that are in lemmaIds, assert not None, for all other lemmas, filter them out instead of converting to empty string
+            val lemmaText = row.lemma.getOrElse("")
+            (id, lemmaText)
+          }}.list.toMap
+          try {
+            //@todo Code Review: check that lemmaIds really should not have "" names now
+            Some(lemmaIds.map(lemmaMap(_)))
+          } catch {
+            case _:Exception => None
+          }
+        } else if (lemmaIds.size == 1) {
+          Some(lemmaQuery(lemmaIds.head).list)
+        } else Some(Nil)
       })
     }
 
@@ -180,7 +184,7 @@ object SQLite {
     override def getAllConfigurations: Set[ConfigurationPOJO] =
       synchronizedTransaction({
         nSelects = nSelects + 1
-        Config.list.filter(_.configname.isDefined).map(_.configname.get).map(getConfiguration(_)).toSet
+        Config.list.filter(_.configname.isDefined).map(_.configname.get).map(getConfiguration).toSet
       })
 
     private def blankOk(x: Option[String]): String = x match {
@@ -191,9 +195,10 @@ object SQLite {
     override def getModelList(userId: String): List[ModelPOJO] = {
       synchronizedTransaction({
         nSelects = nSelects + 1
-        Models.filter(_.userid === userId).list.map(element => new ModelPOJO(element._Id.get, element.userid.get, element.name.get,
-          blankOk(element.date), blankOk(element.filecontents),
-          blankOk(element.description), blankOk(element.publink), blankOk(element.title), element.tactic, getNumProofs(element._Id.get)))
+        Models.filter(_.userid === userId).list.map(element => new ModelPOJO(element._Id.get, element.userid.get,
+          element.name.get, blankOk(element.date), blankOk(element.filecontents),
+          blankOk(element.description), blankOk(element.publink), blankOk(element.title), element.tactic,
+          getNumProofs(element._Id.get), element.istemporary.getOrElse(0) == 1))
       })
     }
 
@@ -208,23 +213,34 @@ object SQLite {
         default
       }
     }
-    override def createUser(username: String, password: String): Unit = {
+    override def createUser(username: String, password: String, mode: String): Unit = {
       /* Store passwords as a salted hash. Allow configuring number of iterations
        * since we may conceivably want to change it after deployment for performance reasons */
       val iterations = configWithDefault("security", "passwordHashIterations", 10000)
       val saltLength = configWithDefault("security", "passwordSaltLength", 512)
       val (hash, salt) = Password.generateKey(password, iterations, saltLength)
       synchronizedTransaction({
-        Users.map(u => (u.email.get, u.hash.get, u.salt.get, u.iterations.get))
-          .insert((username, hash, salt, iterations))
+        Users.map(u => (u.email.get, u.hash.get, u.salt.get, u.iterations.get, u.level.get))
+          .insert((username, hash, salt, iterations, Integer.parseInt(mode)))
         nInserts = nInserts + 1
       })}
+
+    override def getUser(username: String): UserPOJO = synchronizedTransaction({
+      nSelects = nSelects + 1
+      val users =
+        Users.filter(_.email === username)
+          .list
+          .map(m => new UserPOJO(m.email.get, m.level.get))
+      if (users.length < 1) throw new Exception("getUser type should be an Option")
+      else if (users.length == 1) users.head
+      else throw new Exception("Primary keys aren't unique in models table.")
+    })
 
     /**
       * Poorly named -- either update the config, or else insert an existing key.
       * But in Mongo it was just update, because of the nested documents thing.
       *
-      * @param config
+      * @param config The new configuration.
       */
     override def updateConfiguration(config: ConfigurationPOJO): Unit =
       synchronizedTransaction({
@@ -253,15 +269,20 @@ object SQLite {
       proofClosedQuery(proofId).run
     })
 
+    private val stepCountQuery = Compiled((proofId: Column[Int]) =>
+      Executionsteps.filter(row =>
+        row.proofid === proofId &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)).map(_._Id).countDistinct)
+
     //Proofs and Proof Nodes
     override def getProofInfo(proofId: Int): ProofPOJO =
       synchronizedTransaction({
-        val stepCount = nSteps(proofId)
+        val stepCount = stepCountQuery(proofId).run
         nSelects = nSelects + 1
         val list = Proofs.filter(_._Id === proofId)
           .list
-          .map(p => new ProofPOJO(p._Id.get, p.modelid.get, blankOk(p.name), blankOk(p.description),
-            blankOk(p.date), stepCount, p.closed.getOrElse(0) == 1))
+          .map(p => new ProofPOJO(p._Id.get, p.modelid, blankOk(p.name), blankOk(p.description),
+            blankOk(p.date), stepCount, p.closed.getOrElse(0) == 1, p.lemmaid, p.istemporary.getOrElse(0) == 1, p.tactic))
         if (list.length > 1) throw new Exception("Duplicate proof " + proofId)
         else if (list.isEmpty) throw new Exception("Proof not found: " + proofId)
         else list.head
@@ -286,10 +307,21 @@ object SQLite {
         })
       })
 
+    private val userOwnsProofQuery = Compiled((userId: Column[String], proofId: Column[Int]) => {
+      (for {
+        p <- Proofs.filter(_._Id === proofId)
+        m <- Models.filter(_.userid === userId) if m._Id === p.modelid
+      } yield p._Id).exists
+    })
+
+    override def userOwnsProof(userId: String, proofId: String): Boolean = synchronizedTransaction({
+      userOwnsProofQuery(userId, proofId.toInt).run
+    })
+
     override def checkPassword(username: String, password: String): Boolean =
       synchronizedTransaction({
         nSelects = nSelects + 1
-        Users.filter(_.email === username).list.exists({case row =>
+        Users.filter(_.email === username).list.exists({row =>
           val hash = Password.hash(password.toCharArray, row.salt.get.getBytes("UTF-8"), row.iterations.get)
           Password.hashEquals(hash, row.hash.get)
         })
@@ -303,8 +335,10 @@ object SQLite {
       })
 
     private def proofPojoToRow(p: ProofPOJO): ProofsRow =
-      new ProofsRow(_Id = Some(p.proofId), modelid = Some(p.modelId), name = Some(p.name)
-        , description = Some(p.description), date =Some(p.date), closed = Some(if (p.closed) 1 else 0))
+      ProofsRow(_Id = Some(p.proofId), modelid = p.modelId, name = Some(p.name),
+        description = Some(p.description), date =Some(p.date), closed = Some(if (p.closed) 1 else 0),
+        lemmaid = p.provableId, istemporary = Some(if (p.temporary) 1 else 0), tactic = p.tactic
+      )
 
     private def sqliteBoolToBoolean(x: Int) = if (x == 0) false else if (x == 1) true else throw new Exception()
 
@@ -313,25 +347,37 @@ object SQLite {
       synchronizedTransaction({
         nSelects = nSelects + 1
         Proofs.filter(_.modelid === modelId).list.map(p => {
-          val stepCount = nSteps(p._Id.get)
+          val stepCount = stepCountQuery(p._Id.get).run //@todo avoid ripple loading
           val closed: Boolean = sqliteBoolToBoolean(p.closed.getOrElse(0))
-          new ProofPOJO(p._Id.get, p.modelid.get, blankOk(p.name), blankOk(p.description), blankOk(p.date), stepCount, closed)
+          val temporary: Boolean = sqliteBoolToBoolean(p.istemporary.getOrElse(0))
+          new ProofPOJO(p._Id.get, p.modelid, blankOk(p.name), blankOk(p.description), blankOk(p.date), stepCount,
+            closed, p.lemmaid, temporary, p.tactic)
         })
       })
 
-    def deleteExecution(executionId: Int) = synchronizedTransaction({
-      val deletedExecutionSteps = Executionsteps.filter(_.executionid === executionId).delete == 1
-      val deletedExecution = Tacticexecutions.filter(_._Id === executionId).delete == 1
-      deletedExecutionSteps && deletedExecution
+    def deleteExecution(proofId: Int): Boolean = synchronizedTransaction({
+      val deletedExecutionSteps = Executionsteps.filter(_.proofid === proofId).delete == 1
+      //@note deleting all steps, no need to update subgoal count
+      deletedExecutionSteps
     })
 
-    override def deleteProof(proofId: Int) =
-      synchronizedTransaction({
-        Tacticexecutions.filter(x => x.proofid === proofId).foreach(f => deleteExecution(f._Id.get))
-        Proofs.filter(x => x._Id === proofId).delete == 1
-      })
+    override def deleteProof(proofId: Int): Boolean = synchronizedTransaction({
+      deleteExecution(proofId)
+      Proofs.filter(x => x._Id === proofId).delete == 1
+    })
 
     //Models
+    override def getUniqueModelName(userId: String, modelName: String): String = {
+      val models = Models.filter(_.userid === userId).filter(_.name.startsWith(modelName)).map(_.name).list
+      if (models.isEmpty) modelName
+      else {
+        val max = (0 :: models.filter(_.isDefined).map(s =>
+          Try(s.get.substring(modelName.length).trim().stripPrefix("(").stripSuffix(")").toInt).toOption).
+          filter(_.isDefined).map(_.get)).max
+        s"$modelName (${max+1})"
+      }
+    }
+
     override def createModel(userId: String, name: String, fileContents: String, date: String,
                              description: Option[String] = None, publink: Option[String] = None,
                              title: Option[String] = None, tactic: Option[String] = None): Option[Int] =
@@ -346,6 +392,12 @@ object SQLite {
         else None
       })
 
+    override def updateModel(modelId: Int, name: String, title: Option[String], description: Option[String]): Unit = synchronizedTransaction({
+      Models.filter(_._Id === modelId).map(m => (m.name, m.title, m.description)).update(Some(name), title, description)
+      nUpdates = nUpdates + 1
+
+    })
+
     override def addModelTactic(modelId: String, fileContents: String): Option[Int] =
       synchronizedTransaction({
         nSelects = nSelects + 1
@@ -356,16 +408,37 @@ object SQLite {
         else None
       })
 
-    override def createProofForModel(modelId: Int, name: String, description: String, date: String): Int =
+    override def createProofForModel(modelId: Int, name: String, description: String, date: String, tactic: Option[String]): Int =
       synchronizedTransaction({
         nInserts = nInserts + 2
+        val model = getModel(modelId)
+        val (decls, problem) = KeYmaeraXProblemParser.parseProblem(model.keyFile)
+        val substs = decls.filter(_._2._3.isDefined).map((KeYmaeraXDeclarationsParser.declAsSubstitutionPair _).tupled).toList
+        val provable = ProvableSig.startProof(USubst(substs)(problem))
+        val provableId = createProvable(provable)
         val proofId =
-          (Proofs.map(p => ( p.modelid.get, p.name.get, p.description.get, p.date.get, p.closed.get))
+          (Proofs.map(p => ( p.modelid.get, p.name.get, p.description.get, p.date.get, p.closed.get, p.lemmaid.get,
+                             p.istemporary.get, p.tactic))
             returning Proofs.map(_._Id.get))
-            .insert(modelId, name, description, date, 0)
-        Tacticexecutions.map(te => te.proofid.get).insert(proofId)
+            .insert(modelId, name, description, date, 0, provableId, 0, tactic)
+
         proofId
       })
+
+    override def createProof(provable: ProvableSig): Int = synchronizedTransaction({
+      nInserts = nInserts + 3
+      val provableId = createProvable(provable)
+      val proofId =
+        (Proofs.map(p => ( p.closed.get, p.lemmaid.get, p.istemporary.get))
+          returning Proofs.map(_._Id.get))
+          .insert(0, provableId, 1)
+
+//      val executableId = addBelleExpr(TactixLibrary.nil)
+//      addExecutionStep(ExecutionStepPOJO(None, proofId, None, None, Some(0), None, 0,
+//        ExecutionStepStatus.Finished, executableId, None, None, Some(provableId), userExecuted=false, "start"))
+
+      proofId
+    })
 
     override def getModel(modelId: Int): ModelPOJO =
       synchronizedTransaction({
@@ -375,7 +448,7 @@ object SQLite {
             .list
             .map(m => new ModelPOJO(
               m._Id.get, m.userid.get, blankOk(m.name), blankOk(m.date), m.filecontents.get, blankOk(m.description),
-              blankOk(m.publink), blankOk(m.title), m.tactic, getNumProofs(m._Id.get)
+              blankOk(m.publink), blankOk(m.title), m.tactic, getNumProofs(m._Id.get), m.istemporary.getOrElse(0) == 1
             ))
         if (models.length < 1) throw new Exception("getModel type should be an Option")
         else if (models.length == 1) models.head
@@ -388,11 +461,6 @@ object SQLite {
         Proofs.filter(_.modelid === modelId).list.map(prf => deleteProof(prf._Id.get))
         true
       })
-
-    private def optToString[T](o: Option[T]) = o match {
-      case Some(x) => Some(x.toString)
-      case None => None
-    }
 
     override def getConfiguration(configName: String): ConfigurationPOJO =
       synchronizedTransaction({
@@ -418,17 +486,6 @@ object SQLite {
       dbFile.close()
     }
 
-    /** Creates a new execution and returns the new ID in tacticExecutions */
-    override def createExecution(proofId: Int): Int =
-      synchronizedTransaction({
-        val executionId =
-          (Tacticexecutions.map(te => te.proofid.get)
-            returning Tacticexecutions.map(_._Id.get))
-            .insert(proofId)
-        nInserts = nInserts + 1
-        executionId
-      })
-
     /** Deletes a provable and all associated sequents / formulas */
     override def deleteProvable(provableId: Int): Boolean = ???
 
@@ -438,72 +495,68 @@ object SQLite {
       * @note Implementations should enforce additional invarants -- never insert when branches or alt orderings overlap.
       */
     override def addExecutionStep(step: ExecutionStepPOJO): Int = {
-      val (branchOrder:Int, branchLabel) = (step.branchOrder, step.branchLabel) match {
-        case (None, None) => (null, null)
-        case (Some(order), None) => (order, null)
-        case (None, Some(label)) => (null, label)
-        case (Some(order), Some(label)) =>
-          throw new Exception("execution steps cannot have both a branchOrder and a branchLabel")
-      }
       synchronizedTransaction({
         val status = ExecutionStepStatus.toString(step.status)
         val steps =
-          Executionsteps.map(dbstep => (dbstep.executionid.get, dbstep.previousstep, dbstep.parentstep,
-            dbstep.branchorder.get, dbstep.branchlabel.get, dbstep.alternativeorder.get, dbstep.status.get, dbstep.executableid.get,
+          Executionsteps.map(dbstep => (dbstep.proofid.get, dbstep.previousstep,
+            dbstep.branchorder, dbstep.status.get, dbstep.executableid.get,
             dbstep.inputprovableid, dbstep.resultprovableid, dbstep.localprovableid, dbstep.userexecuted.get, dbstep.childrenrecorded.get,
             dbstep.rulename.get)
           ) returning Executionsteps.map(_._Id.get)
         val stepId = steps
-            .insert((step.executionId, step.previousStep, step.parentStep, branchOrder, branchLabel,
-              step.alternativeOrder, status, step.executableId, step.inputProvableId, step.resultProvableId,
+            .insert((step.executionId, step.previousStep, step.branchOrder,
+              status, step.executableId, step.inputProvableId, step.resultProvableId,
               step.localProvableId, step.userExecuted.toString, false.toString, step.ruleName))
+
+        updateOpenSubgoalsCount(step.executionId, step.previousStep)
+
         nInserts = nInserts + 1
         stepId
       })
     }
 
-    override def addAlternative(alternativeTo: Int, inputProvable: Provable, trace:ExecutionTrace):Unit = {
-      def get(stepId: Int) = {
-        Executionsteps.filter(_._Id === stepId).list match {
-          case Nil => throw new Exception("Execution step not found")
-          case step :: _ => step
-        }
-      }
-      val oldStep = get(alternativeTo)
-      def addSteps(prev: Option[Int], globalProvable:Provable, steps:List[ExecutionStep]): Unit = {
-        if (steps.nonEmpty) {
-          val thisStep = steps.head
-          val thisPOJO = get(thisStep.stepId)
-          val localProvable = getProvable(thisPOJO.localprovableid.get).provable
-          val outputProvable = globalProvable(localProvable, thisStep.branch)
-          val newStep = new ExecutionStepPOJO(None, oldStep.executionid.get, prev, None, Some(thisStep.branch),
-            None, oldStep.alternativeorder.get + 1, ExecutionStepStatus.fromString(thisPOJO.status.get), thisPOJO.executableid.get,
-            None, None, thisPOJO.localprovableid, thisPOJO.userexecuted.get.toBoolean, thisPOJO.rulename.get)
-          val newId = addExecutionStep(newStep)
-          addSteps(Some(newId), outputProvable, steps.tail)
-        }
-      }
-      if(trace.steps.isEmpty) {
-        // Insert a null tactic with a higher alternative order
-        val nilExecutable = addBelleExpr(TactixLibrary.nil)
-        val localConclusion = inputProvable.subgoals(0)
-        // Generate a no-op local provable whose conclusion matches with the current state of the proof.
-        val localProvable = Provable.startProof(localConclusion)
-        val newLocalProvableID = createProvable(localProvable)
-        val step = new ExecutionStepPOJO(None, oldStep.executionid.get, oldStep.previousstep, None, Some(0), None,
-          oldStep.alternativeorder.get + 1, ExecutionStepStatus.Finished, nilExecutable, oldStep.inputprovableid,
-          oldStep.inputprovableid, Some(newLocalProvableID), false, "nil")
-        addExecutionStep(step)
-      } else {
-        addSteps(oldStep.previousstep, inputProvable, trace.steps)
-      }
+    override def addAlternative(alternativeTo: Int, inputProvable: ProvableSig, trace:ExecutionTrace):Unit = {
+//      def get(stepId: Int) = {
+//        Executionsteps.filter(_._Id === stepId).list match {
+//          case Nil => throw new Exception("Execution step not found")
+//          case step :: _ => step
+//        }
+//      }
+//      val oldStep = get(alternativeTo)
+//      def addSteps(prev: Option[Int], globalProvable:ProvableSig, steps:List[ExecutionStep]): Unit = {
+//        if (steps.nonEmpty) {
+//          val thisStep = steps.head
+//          val thisPOJO = get(thisStep.stepId)
+//          val localProvable = getProvable(thisPOJO.localprovableid.get).provable
+//          val outputProvable = globalProvable(localProvable, thisStep.branch)
+//          val newStep = ExecutionStepPOJO(None, oldStep.executionid.get, prev, None, Some(thisStep.branch),
+//            None, oldStep.alternativeorder.get + 1, ExecutionStepStatus.fromString(thisPOJO.status.get), thisPOJO.executableid.get,
+//            None, None, thisPOJO.localprovableid, thisPOJO.userexecuted.get.toBoolean, thisPOJO.rulename.get, localProvable.subgoals.size)
+//          val newId = addExecutionStep(newStep)
+//          addSteps(Some(newId), outputProvable, steps.tail)
+//        }
+//      }
+//      if(trace.steps.isEmpty) {
+//        // Insert a null tactic with a higher alternative order
+//        val nilExecutable = addBelleExpr(TactixLibrary.nil)
+//        val localConclusion = inputProvable.subgoals(0)
+//        // Generate a no-op local provable whose conclusion matches with the current state of the proof.
+//        val localProvable = ProvableSig.startProof(localConclusion)
+//        val newLocalProvableID = createProvable(localProvable)
+//        val step = ExecutionStepPOJO(None, oldStep.executionid.get, oldStep.previousstep, None, Some(0), None,
+//          oldStep.alternativeorder.get + 1, ExecutionStepStatus.Finished, nilExecutable, oldStep.inputprovableid,
+//          oldStep.inputprovableid, Some(newLocalProvableID), userExecuted=false, "nil", localProvable.subgoals.size)
+//        addExecutionStep(step)
+//      } else {
+//        addSteps(oldStep.previousstep, inputProvable, trace.steps)
+//      }
     }
 
     /** Adds a Bellerophon expression as an executable and returns the new executableId */
     override def addBelleExpr(expr: BelleExpr): Int =
       synchronizedTransaction({
         val executableId =
-          (Executables.map({case exe => (exe.belleexpr) })
+          (Executables.map(_.belleexpr)
             returning Executables.map(_._Id.get))
           .insert(Some(BellePrettyPrinter(expr)))
         nInserts = nInserts + 1
@@ -511,9 +564,9 @@ object SQLite {
       })
 
     /** Stores a Provable in the database and returns its ID */
-    override def createProvable(p: Provable): Int = {
+    override def createProvable(p: ProvableSig): Int = {
       synchronizedTransaction({
-        val lemma = Lemma(p, Lemma.requiredEvidence(p, List(new ToolEvidence(List("input" -> p.prettyString, "output" -> "true")))))
+        val lemma = Lemma(p, Lemma.requiredEvidence(p, List(ToolEvidence(List("input" -> p.prettyString, "output" -> "true")))))
         lemmaDB.add(lemma).toInt
       })
     }
@@ -547,68 +600,44 @@ object SQLite {
     def loadProvables(lemmaIds: List[Int]): List[ProvablePOJO] = {
       lemmaDB.get(lemmaIds.map(_.toString)) match {
         case None => throw new Exception (" No lemma for one of these IDs: " + lemmaIds)
-        case Some(lemmas) => lemmas.zipWithIndex.map{case (lemma, id) => new ProvablePOJO(id, lemma.fact)}
+        case Some(lemmas) => lemmas.zipWithIndex.map{case (lemma, id) => ProvablePOJO(id, lemma.fact)}
       }
     }
 
-    /** Rerun all execution steps to generate a provable for the current state of the proof
-      * Assumes the execution starts with a trivial provable (one subgoal, which is the same
-      * as the conclusion)
-      *
-      * This is only for testing purposes. If you need the last provable of an execution,trace,
-      * you should use getExecutionTrace(id).lastProvable
-      * */
-    private def regenerate(proofId: Int): Provable = {
-      val trace = getExecutionTrace(proofId)
-      val inputProvable = Provable.startProof(trace.conclusion)
-      val initialProvable = Provable.startProof(inputProvable.conclusion)
-      def run(p: Provable, t:BelleExpr): Provable =
-        SequentialInterpreter(Nil)(t,BelleProvable(p)) match {
-          case BelleProvable(pr, _) => pr
-        }
-      def loadTactic(id: Int): BelleExpr = BelleParser(getExecutable(id).belleExpr)
-      trace.steps.foldLeft(initialProvable)({case (provable, currStep) =>
-          run(provable, loadTactic(currStep.executableId))
-        })
-      initialProvable
+
+
+    private def tupleId(id: ProofTreeNodeId): (Option[Int], Option[Int]) = id match {
+      case DbStepPathNodeId(step, branch) => (step, branch)
     }
 
-    private def nSteps(proofId: Int): Int = {
-      getTacticExecution(proofId) match {
-        case Some(execution) => proofSteps(execution).size
-        case None => 0
-      }
-    }
+    override def addAgendaItem(proofId: Int, initialProofNode: ProofTreeNodeId, displayName:String): Int = synchronizedTransaction({
+      val (stepId, subgoalId) = tupleId(initialProofNode)
+      (Agendaitems.map(item => (item.proofid.get, item.stepid, item.subgoalid, item.displayname.get))
+        returning Agendaitems.map(_._Id.get))
+        .insert(proofId, stepId, subgoalId, displayName)
+    })
 
-    override def addAgendaItem(proofId: Int, initialProofNode: Int, displayName:String): Int = {
-      synchronizedTransaction({
-        (Agendaitems.map({case item => (item.proofid.get, item.initialproofnode.get, item.displayname.get)})
-          returning Agendaitems.map(_._Id.get))
-          .insert(proofId, initialProofNode, displayName)
-      })
-    }
-
-    override def updateAgendaItem(item:AgendaItemPOJO) = {
-      synchronizedTransaction({
-        Agendaitems.filter(_._Id === item.itemId)
-          .map({case dbitem => (dbitem.proofid.get, dbitem.initialproofnode.get, dbitem.displayname.get)})
-          .update((item.proofId, item.initialProofNode, item.displayName))
-      })
-    }
+    override def updateAgendaItem(item:AgendaItemPOJO): Unit = synchronizedTransaction({
+      val (stepId, subgoalId) = tupleId(item.initialProofNode)
+      Agendaitems.filter(_._Id === item.itemId)
+        .map(dbitem => (dbitem.proofid.get, dbitem.stepid, dbitem.subgoalid, dbitem.displayname.get))
+        .update((item.proofId, stepId, subgoalId, item.displayName))
+    })
 
     override def agendaItemsForProof(proofId: Int): List[AgendaItemPOJO] = {
       synchronizedTransaction({
         Agendaitems.filter(_.proofid === proofId)
         .list
-        .map({case item => AgendaItemPOJO(item._Id.get, item.proofid.get, item.initialproofnode.get, item.displayname.get)})
+        .map(item => AgendaItemPOJO(item._Id.get, item.proofid.get, DbStepPathNodeId(item.stepid, item.subgoalid), item.displayname.get))
       })
     }
 
-    override def getAgendaItem(proofId: Int, initialProofNode: Int): Option[AgendaItemPOJO] = {
+    override def getAgendaItem(proofId: Int, initialProofNode: ProofTreeNodeId): Option[AgendaItemPOJO] = {
+      val (stepId, subgoalId) = tupleId(initialProofNode)
       synchronizedTransaction({
-        Agendaitems.filter{row => row.proofid === proofId && row.initialproofnode === initialProofNode}
+        Agendaitems.filter{row => row.proofid === proofId && row.stepid === stepId && row.subgoalid === subgoalId}
           .list
-          .map({case item => AgendaItemPOJO(item._Id.get, item.proofid.get, item.initialproofnode.get, item.displayname.get)})
+          .map(item => AgendaItemPOJO(item._Id.get, item.proofid.get, DbStepPathNodeId(item.stepid, item.subgoalid), item.displayname.get))
           .headOption
       })
     }
@@ -618,106 +647,335 @@ object SQLite {
       synchronizedTransaction({
         nSelects = nSelects + 1
         nUpdates = nUpdates + 1
+        // update step
         Executionsteps.filter(_._Id === executionStepId)
-        .map({case dbstep => (dbstep.executionid.get, dbstep.previousstep, dbstep.parentstep,
-          dbstep.branchorder, dbstep.branchlabel, dbstep.alternativeorder.get, dbstep.status.get, dbstep.executableid.get,
+        .map(dbstep => (dbstep.proofid.get, dbstep.previousstep,
+          dbstep.branchorder, dbstep.status.get, dbstep.executableid.get,
           dbstep.inputprovableid, dbstep.resultprovableid, dbstep.localprovableid, dbstep.userexecuted.get, dbstep.childrenrecorded.get,
-          dbstep.rulename.get)
-        })
-        .update((step.executionId, step.previousStep, step.parentStep, step.branchOrder, step.branchLabel,
-          step.alternativeOrder, ExecutionStepStatus.toString(step.status), step.executableId, step.inputProvableId, step.resultProvableId,
-          step.localProvableId, step.userExecuted.toString, false.toString, step.ruleName))
+          dbstep.rulename.get, dbstep.numsubgoals, dbstep.numopensubgoals)
+        ).update((step.executionId, step.previousStep, step.branchOrder,
+          ExecutionStepStatus.toString(step.status), step.executableId, step.inputProvableId, step.resultProvableId,
+          step.localProvableId, step.userExecuted.toString, false.toString, step.ruleName, step.numSubgoals, step.numOpenSubgoals))
+
+        // update parent's open subgoals
+        updateOpenSubgoalsCount(step.executionId, step.previousStep)
       })
+    }
+
+    private val stepQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+      Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId).map(_.numsubgoals))
+
+    private val succStepCountQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+      Executionsteps.filter(row =>
+        row.proofid === proofId &&
+        row.previousstep === stepId &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)).map(_._Id).countDistinct)
+
+    /** Recompute the open subgoals count of a step. */
+    private def updateOpenSubgoalsCount(proofId: Int, stepId: Option[Int]): Unit = {
+      stepId match {
+        case None => // nothing to do
+        case Some(sId) =>
+          val succStepsCount = succStepCountQuery(proofId, sId).run
+          val totalSubgoals = stepQuery(proofId, sId).list.head
+          //@note select+update is faster than increment/decrement numSubGoals column
+          Executionsteps.filter(_._Id === sId).map(_.numopensubgoals).update(totalSubgoals - succStepsCount)
+      }
+    }
+
+    private val stepParentQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+      Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId).map(_.previousstep))
+
+    /** Deletes execution steps. */
+    override def deleteExecutionStep(proofId: Int, stepId: Int): Unit = {
+      //val succStepsQuery = Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId)
+      val parent = stepParentQuery(proofId, stepId).list.head
+      Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId).delete
+      updateOpenSubgoalsCount(proofId, parent)
     }
 
     def printStats(): Unit = {
       println("Updates: " + nUpdates + " Inserts: " + nInserts + " Selects: " + nSelects)
     }
 
-    val executionStepsQuery = Compiled((executionId: Column[Int]) =>
-      Executionsteps.filter(row => row.executionid === executionId &&
-        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)).sortBy(_.alternativeorder.desc))
+    val executionStepsQuery = Compiled((proofId: Column[Int]) =>
+      Executionsteps.filter(row => row.proofid === proofId &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)).
+        sortBy(e => (e.previousstep.asc, e.branchorder.desc)))
 
     def proofSteps(executionId: Int): List[ExecutionStepPOJO] = {
       synchronizedTransaction({
         /* The Executionsteps table may contain many alternate histories for the same execution. In order to reconstruct
          * the current state of the world, we must pick the most recent alternative at every opportunity.*/
         var steps = executionStepsQuery(executionId).run
-        var prevId: Option[Int] = None
+        val prevIds: scala.collection.mutable.Stack[Option[Int]] = new scala.collection.mutable.Stack()
+        prevIds.push(None)
         var revResult: List[ExecutionStepPOJO] = Nil
-        while(steps != Nil) {
-          val (headSteps, tailSteps) = steps.partition({step => step.previousstep == prevId})
-          if (headSteps == Nil)
-            return revResult.reverse
-          val head = headSteps.head
-          revResult =
-            ExecutionStepPOJO(head._Id, head.executionid.get, head.previousstep, head.parentstep,
-              head.branchorder, head.branchlabel, head.alternativeorder.get, ExecutionStepStatus.fromString(head.status.get),
-              head.executableid.get, head.inputprovableid, head.resultprovableid, head.localprovableid, head.userexecuted.get.toBoolean,
-              head.rulename.get)::revResult
-          prevId = head._Id
-          steps = tailSteps
+        while (prevIds.nonEmpty) {
+          val prevId = prevIds.top
+          val (headSteps, tailSteps) = steps.partition(_.previousstep == prevId)
+          if (headSteps.nonEmpty) {
+            val head = headSteps.head
+            revResult =
+              ExecutionStepPOJO(head._Id, head.proofid.get, head.previousstep,
+                head.branchorder, ExecutionStepStatus.fromString(head.status.get),
+                head.executableid.get, head.inputprovableid, head.resultprovableid, head.localprovableid, head.userexecuted.get.toBoolean,
+                head.rulename.get, head.numsubgoals, head.numopensubgoals) :: revResult
+            if (headSteps.tail.isEmpty) prevIds.pop
+            prevIds.push(head._Id)
+            steps = headSteps.tail ++ tailSteps
+          } else {
+            prevIds.pop
+            steps = tailSteps
+          }
         }
         revResult.reverse
       })
     }
 
+    private val executionStepsUnorderedQuery = (proofId: Int, stepIds: Set[Int]) =>
+      Executionsteps.filter(row =>
+        row.proofid === proofId &&
+        (row._Id inSet stepIds) &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished))
+
+    private def proofStepsUnorderd(proofId: Int, stepIds: Set[Int]): List[ExecutionStepPOJO] = {
+      executionStepsUnorderedQuery(proofId, stepIds).list.map(step =>
+        ExecutionStepPOJO(step._Id, step.proofid.get, step.previousstep,
+          step.branchorder, ExecutionStepStatus.fromString(step.status.get),
+          step.executableid.get, step.inputprovableid, step.resultprovableid, step.localprovableid, step.userexecuted.get.toBoolean,
+          step.rulename.get, step.numsubgoals, step.numopensubgoals)
+      )
+    }
+
     private def getProofConclusion(proofId: Int): Sequent = {
-      val modelId = getProofInfo(proofId).modelId
-      val model = getModel(modelId)
-      KeYmaeraXProblemParser(model.keyFile) match {
-        case fml:Formula => Sequent(collection.immutable.IndexedSeq(), collection.immutable.IndexedSeq(fml))
-        case _ => throw new Exception("Failed to parse model for proof " + proofId + " model " + modelId)
+      val proofInfo = getProofInfo(proofId)
+      proofInfo.modelId match {
+        case Some(modelId) =>
+          val model = getModel(modelId)
+          KeYmaeraXProblemParser.parseAsProblemOrFormula(model.keyFile) match {
+            case fml: Formula =>
+              val sequent = Sequent(collection.immutable.IndexedSeq(), collection.immutable.IndexedSeq(fml))
+              proofInfo.provableId match {
+                case Some(pid) =>
+                  val conclusion = getProvable(pid).provable.conclusion
+                  assert(conclusion == sequent,
+                    s"Model formula and associated provable's conclusion must match\nFormula:  $fml\nProvable: ${conclusion.succ.head}")
+                  sequent
+                case None => sequent
+              }
+            case _ => throw new Exception("Failed to parse model for proof " + proofId + " model " + modelId)
+          }
+        case None => proofInfo.provableId match {
+          case Some(pid) => getProvable(pid).provable.conclusion
+          case None => throw new Exception("Require either model or provable, but got neither")
+        }
       }
     }
 
-    private def getTacticExecution(proofId: Int): Option[Int] =
-      synchronizedTransaction({
-          val executionIds =
-            Tacticexecutions.filter(_.proofid === proofId)
-              .list
-              .map({ case row => row._Id.get })
-          if (executionIds.length < 1) None
-          else if (executionIds.length == 1) Some(executionIds.head)
-          else throw new Exception("Primary keys aren't unique in executions table.")
-        })
-
-    private def zipTrace(executionSteps: List[ExecutionStepPOJO], executables: List[ExecutablePOJO], inputProvable:Provable, localProvables: List[Provable]): List[ExecutionStep] = {
-      (executionSteps, executables, localProvables) match {
-        case (step::steps, exe:: exes, localProvable::moreProvables) =>
-          val output = inputProvable(localProvable, step.branchOrder.get)
-          ExecutionStep(step.stepId.get, step.executionId, inputProvable, Some(localProvable), step.branchOrder.get, step.alternativeOrder, step.ruleName, step.executableId, step.userExecuted)  ::
-            zipTrace(steps, exes, output, moreProvables)
-        case (Nil, Nil, Nil) => Nil
+    /** Zips execution steps with auxiliary information (executable tactics, provables). */
+    private def zipTrace(executionSteps: List[ExecutionStepPOJO],
+                         provables: Option[(ProvableSig, Map[Option[Int], ProvableSig])]): List[ExecutionStep] = {
+      executionSteps match {
+        case step::steps =>
+          val localProvable: () => ProvableSig = provables match {
+            case None => () => getProvable(step.localProvableId.get).provable
+            case Some((rootProvable, localProvables)) =>
+              val localProvable = localProvables(step.stepId)
+              val inputProvable = step.previousStep match {
+                case prevId@Some(_) => localProvables(prevId)
+                case None => rootProvable
+              }
+              assert(inputProvable.subgoals(step.branchOrder) == localProvable.conclusion,
+                "Conclusion of subderivation " + localProvable.conclusion +
+                  " should match open goal " + inputProvable.subgoals(step.branchOrder) +
+                  " (subgoal " + step.branchOrder + ")")
+              () => localProvable
+          }
+          val successorIds = steps.filter(_.previousStep == step.stepId).map(_.stepId.get)
+          ExecutionStep(step.stepId.get, step.previousStep, step.executionId, localProvable,
+            step.branchOrder, step.numSubgoals, step.numOpenSubgoals, successorIds, step.ruleName, step.executableId,
+            step.userExecuted)  ::
+            zipTrace(steps, provables)
+        case Nil => Nil
         case _ => throw new ProverException("Bug in zipTrace")
       }
     }
 
     override def getExecutionSteps(executionId: Int): List[ExecutionStepPOJO] = proofSteps(executionId)
 
-    override def getExecutionTrace(proofId: Int): ExecutionTrace = {
+    private val firstExecutionStepQuery = Compiled((proofId: Column[Int]) =>
+      Executionsteps.filter(
+        row => row.proofid === proofId &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished) &&
+        row.previousstep.isEmpty
+      ))
+
+    override def getFirstExecutionStep(proofId: Int): Option[ExecutionStepPOJO] =
+      firstExecutionStepQuery(proofId).list.headOption.map(step =>
+        ExecutionStepPOJO(step._Id, step.proofid.get, step.previousstep,
+          step.branchorder, ExecutionStepStatus.fromString(step.status.get),
+          step.executableid.get, step.inputprovableid, step.resultprovableid, step.localprovableid,
+          step.userexecuted.get.toBoolean, step.rulename.get, step.numsubgoals, step.numopensubgoals)
+      )
+
+    //@todo need better index to not degrade performance
+//    private def openBranchingStepsSql(proofId: Int) =
+//      sql"""SELECT exA._id
+//            FROM executionSteps exA
+//            LEFT OUTER JOIN executionSteps exB ON exA._id=exB.previousStep
+//            GROUP BY exA._id
+//            HAVING exA.proofId=$proofId AND COUNT(exB._id)<exA.numSubGoals""".as[Int]
+//
+//    private def closedBranchesSql(openSteps: List[Int]) =
+//      sql"""SELECT previousStep,group_concat(branchOrder) FROM executionSteps WHERE previousStep IN (#${openSteps.mkString(",")}) GROUP BY previousStep""".as[(Int,String)]
+//
+//    override def getPlainOpenSteps(proofId: Int): List[(ExecutionStepPOJO,List[Int])] = synchronizedTransaction({
+//      //trace.filter(parent => trace.count(s => parent.stepId == s.previousStep) < parent.numSubgoals)
+//      def parseClosedBranches(closed: Option[String]): List[Int] = closed match {
+//        case None => Nil
+//        case Some(s) => s.split(",").map(_.toInt).toList
+//      }
+//
+//      val openSteps = openBranchingStepsSql(proofId).list
+//      val closedBranches = closedBranchesSql(openSteps).list.toMap
+//      openSteps.map(s => getPlainExecutionStep(proofId, s).get ->
+//        parseClosedBranches(closedBranches.get(s)))
+//    })
+
+
+    private val openStepsQuery = Compiled((proofId: Column[Int]) =>
+      Executionsteps.filter(row =>
+        row.proofid === proofId &&
+        row.numopensubgoals > 0 &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)))
+
+    // performance degrades a little with increasing database volume
+    private def closedBranchesSql(proofId: Int, openSteps: Set[Int]) =
+      sql"""SELECT previousStep,group_concat(branchOrder) FROM executionSteps WHERE proofId=$proofId AND status='Finished' AND previousStep IN (#${openSteps.mkString(",")}) GROUP BY previousStep""".as[(Int,String)]
+
+    // slightly slower than query above
+//    private def closedBranchesSlick(proofId: Int, openSteps: Set[Int]) =
+//      Executionsteps.filter(row =>
+//        row.proofid === proofId &&
+//        (row.previousstep inSet openSteps) &&
+//        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)
+//      ).map(step => step.previousstep -> step.branchorder)
+
+    override def getPlainOpenSteps(proofId: Int): List[(ExecutionStepPOJO,List[Int])] = synchronizedTransaction({
+      val openSteps = openStepsQuery(proofId).list.map(step =>
+        ExecutionStepPOJO(step._Id, step.proofid.get, step.previousstep,
+          step.branchorder, ExecutionStepStatus.fromString(step.status.get),
+          step.executableid.get, step.inputprovableid, step.resultprovableid, step.localprovableid,
+          step.userexecuted.get.toBoolean, step.rulename.get, step.numsubgoals, step.numopensubgoals))
+      val closedBranches = closedBranchesSql(proofId, openSteps.flatMap(_.stepId).toSet).list.toMap
+
+      def parseClosedBranches(closed: Option[String]): List[Int] = closed match {
+        case None => Nil
+        case Some(s) => s.split(",").map(_.toInt).toList
+      }
+
+      openSteps.map(s => (s, parseClosedBranches(closedBranches.get(s.stepId.get))))
+    })
+
+    val executionStepQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+      Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)))
+
+    override def getPlainExecutionStep(proofId: Int, stepId: Int): Option[ExecutionStepPOJO] = {
+      executionStepQuery(proofId, stepId).run.headOption match {
+        case None => None
+        case Some(step) => Some(ExecutionStepPOJO(step._Id, step.proofid.get, step.previousstep,
+          step.branchorder, ExecutionStepStatus.fromString(step.status.get),
+          step.executableid.get, step.inputprovableid, step.resultprovableid, step.localprovableid,
+          step.userexecuted.get.toBoolean, step.rulename.get, step.numsubgoals, step.numopensubgoals))
+      }
+    }
+
+    val stepSuccessorsQuery = Compiled((proofId: Column[Int], prevStepId: Column[Int], branchOrder: Column[Int]) =>
+      Executionsteps.filter(row =>
+        row.proofid === proofId &&
+        row.previousstep === prevStepId &&
+        row.branchorder === branchOrder &&
+        row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)))
+
+    override def getPlainStepSuccessors(proofId: Int, prevStepId: Int, branchOrder: Int): List[ExecutionStepPOJO] = {
+      stepSuccessorsQuery(proofId, prevStepId, branchOrder).run.map(step =>
+        ExecutionStepPOJO(step._Id, step.proofid.get, step.previousstep,
+          step.branchorder, ExecutionStepStatus.fromString(step.status.get),
+          step.executableid.get, step.inputprovableid, step.resultprovableid, step.localprovableid,
+          step.userexecuted.get.toBoolean, step.rulename.get, step.numsubgoals, step.numopensubgoals)).toList
+    }
+
+    override def getExecutionStep(proofId: Int, stepId: Int): Option[ExecutionStep] = getPlainExecutionStep(proofId, stepId) match {
+      case None => None
+      case Some(step) =>
+        val localProvable = getProvable(step.localProvableId.get).provable
+        val inputProvable = step.previousStep match {
+          case None => ProvableSig.startProof(getProofConclusion(proofId))
+          case Some(prevId) =>
+            getProvable(getPlainExecutionStep(proofId, prevId).get.localProvableId.get).provable
+        }
+        //@todo extend getPlainExecutionStep to query for successor IDs right away
+        val successorIds = getExecutionSteps(proofId).filter(_.previousStep == step.stepId).map(_.stepId.get)
+        Some(ExecutionStep(step.stepId.get, step.previousStep, step.executionId, () => localProvable,
+          step.branchOrder, step.numSubgoals, step.numOpenSubgoals, successorIds, step.ruleName, step.executableId,
+          step.userExecuted))
+    }
+
+//    //@todo select last step of most recent history
+//    override def getPlainLastExecutionStep(proofId: Int): Option[ExecutionStepPOJO] = getExecutionSteps(proofId).lastOption
+//
+//    override def getLastExecutionStep(proofId: Int): Option[ExecutionStep] = {
+//      val steps = getExecutionSteps(proofId)
+//      steps.lastOption match {
+//        case None => None
+//        case Some(step) =>
+//          val localProvable = getProvable(step.localProvableId.get).provable
+//          val inputProvable = step.previousStep match {
+//            case None => ProvableSig.startProof(getProofConclusion(proofId))
+//            case Some(prevId) => getProvable(steps.find(_.stepId == Some(prevId)).get.localProvableId.get).provable
+//          }
+//          Some(ExecutionStep(step.stepId.get, step.executionId, inputProvable, Some(localProvable), step.branchOrder.get,
+//            step.alternativeOrder, step.ruleName, step.executableId, step.userExecuted))
+//      }
+//    }
+
+    override def getStepProvable(proofId: Int, stepId: Option[Int], subgoal: Option[Int]): Option[ProvableSig] =
+      (stepId, subgoal) match {
+        case (None, None) => getProofInfo(proofId).provableId match {
+          case None => None
+          case Some(pId) => Some(getProvable(pId).provable)
+        }
+        case (Some(stId), None) => getPlainExecutionStep(proofId, stId) match {
+          case Some(step) => step.localProvableId match {case None => None case Some(lpId) => Some(getProvable(lpId).provable)}
+          case None => throw new IllegalArgumentException("Unknown step ID " + stId)
+        }
+        case (stId, Some(sgIdx)) => getStepProvable(proofId, stId, None) match {
+          case None => None
+          case Some(p) => Some(p.sub(sgIdx))
+        }
+      }
+
+    override def getExecutionTrace(proofId: Int, withProvables: Boolean=true): ExecutionTrace = {
       /* This method has proven itself to be a resource hog, so this implementation attempts to minimize the number of
          DB calls. */
-      getTacticExecution(proofId) match {
-        case Some(executionId) =>
-          val steps = proofSteps(executionId)
-          if (steps.isEmpty) {
-            val conclusion = getProofConclusion(proofId)
-            ExecutionTrace(proofId.toString, executionId.toString, conclusion, Nil)
-          } else {
-            val provableIds = steps.map { case step => step.localProvableId.get }
-            val executableIds = steps.map { case step => step.executableId }
-            val provables = loadProvables(provableIds).map(_.provable)
-            val conclusion = provables.head.conclusion
-            val initProvable = Provable.startProof(conclusion)
-            val executables = getExecutables(executableIds)
-            val traceSteps = zipTrace(steps, executables, initProvable, provables)
-            ExecutionTrace(proofId.toString, executionId.toString, conclusion, traceSteps)
-          }
-        case None =>
-          val conclusion = getProofConclusion(proofId)
-          //@todo is execution ID really unused so far?
-          ExecutionTrace(proofId.toString, null, conclusion, Nil)
+      val stepsCount = stepCountQuery(proofId).run
+      if (stepsCount <= 0) {
+        ExecutionTrace(proofId.toString, proofId.toString, Nil)
+      } else {
+        //@todo sqlite has a maximum of 999 variables in a query (could be changed, but any number might be too small)
+        // -> may need to query steps and provables joined, but how to benefit from cached lemma DB then?
+        val steps = proofSteps(proofId)
+        val provables = if (withProvables) {
+          val provableIds = steps.map(_.localProvableId.get)
+          val provables = steps.map(_.stepId).zip(loadProvables(provableIds).map(_.provable)).toMap
+          val conclusion = provables(steps.head.stepId).conclusion
+          val initProvable = ProvableSig.startProof(conclusion)
+          Some((initProvable, provables))
+        } else None
+        val traceSteps = zipTrace(steps, provables)
+        ExecutionTrace(proofId.toString, proofId.toString, traceSteps)
       }
     }
 
@@ -727,7 +985,7 @@ object SQLite {
       KeYmaeraXParser.setAnnotationListener{case (program, formula) =>
         invariants = invariants.+((program, formula))
       }
-      KeYmaeraXProblemParser(model.keyFile)
+      KeYmaeraXProblemParser.parseAsProblemOrFormula(model.keyFile)
       invariants
     }
 

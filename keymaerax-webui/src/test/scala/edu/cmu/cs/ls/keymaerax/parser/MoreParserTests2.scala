@@ -140,6 +140,69 @@ class MoreParserTests2 extends FlatSpec with Matchers with BeforeAndAfterEach {
     parser("[{{x'=v,v'=a&x<5}}*]x=0") shouldBe Box(Loop(ODESystem(DifferentialProduct(AtomicODE(DifferentialSymbol(x), Variable("v")), AtomicODE(DifferentialSymbol(Variable("v")), Variable("a"))), Less(x,Number(5)))), Equal(x, Number(0)))
   }
 
+  it should "refuse ; in ODE-{}" in {
+    the [ParseException] thrownBy parser("[{x'=v;v'=2}]x=0") should have message
+      """1:7 Unexpected ; in system of ODEs
+        |Found:    ; (SEMI$) at 1:7
+        |Expected: ,""".stripMargin
+  }
+
+  it should "refuse ++ in ODE-{}" in {
+    the [ParseException] thrownBy parser("[{x'=v++v'=2}]x=0") should have message
+      """1:7 Unexpected ++ in system of ODEs
+        |Found:    ++ (CHOICE$) at 1:7 to 1:8
+        |Expected: ,""".stripMargin
+  }
+
+  it should "refuse ODE 1 without {} in modalities" in {
+    the [ParseException] thrownBy parser("[x'=v;]x=0") should have message
+      """1:7 ODE without {}
+        |Found:    ] (RBOX$) at 1:7
+        |Expected: } (RBRACE$)""".stripMargin
+  }
+
+  it should "refuse ODE 2 without {} in modalities" in {
+    the [ParseException] thrownBy parser("[x'=v & x>0;]x=0") should have message
+      """1:13 ODE without {}
+        |Found:    ] (RBOX$) at 1:13
+        |Expected: } (RBRACE$)""".stripMargin
+  }
+
+  it should "refuse ODE systems 1 without {} in modalities" in {
+    the [ParseException] thrownBy parser("[x'=v,v'=3;]x=0") should have message
+      """1:12 ODE without {}
+        |Found:    ] (RBOX$) at 1:12
+        |Expected: } (RBRACE$)""".stripMargin
+  }
+
+  it should "refuse ODE systems 2 without {} in modalities" in {
+    the [ParseException] thrownBy parser("[x'=v,v'=3 & x>0;]x=0") should have message
+      """1:18 ODE without {}
+        |Found:    ] (RBOX$) at 1:18
+        |Expected: } (RBRACE$)""".stripMargin
+  }
+
+  it should "parse standalone differential symbols" in {
+    parser("x'") shouldBe DifferentialSymbol(Variable("x"))
+  }
+
+  it should "parse standalone differentials" in {
+    parser("(x')'") shouldBe Differential(DifferentialSymbol(Variable("x")))
+  }
+
+  it should "parse terms with differential symbols" in {
+    parser("x'=0") shouldBe Equal(DifferentialSymbol(Variable("x")), Number(0))
+  }
+
+  it should "parse terms with differentials" in {
+    parser("(x')'=0") shouldBe Equal(Differential(DifferentialSymbol(Variable("x"))), Number(0))
+  }
+
+  it should "parse postconditions with differential symbols" in {
+    parser("<{x'=3}>x'>0") shouldBe Diamond(ODESystem(AtomicODE(DifferentialSymbol(Variable("x")), Number(3)), True),
+      Greater(DifferentialSymbol(Variable("x")), Number(0)))
+  }
+
   it should "parse +- in x+-y+1>=5" in {
     parser("x+-y+1>=5") shouldBe GreaterEqual(Plus(Plus(x,Neg(y)),Number(1)), Number(5))
   }

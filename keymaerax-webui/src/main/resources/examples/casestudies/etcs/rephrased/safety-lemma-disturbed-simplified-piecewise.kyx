@@ -1,0 +1,51 @@
+/**
+ * Safety lemma for European Train Control System
+ * @provable
+ * @see "Andre Platzer and Jan-David Quesel. European Train Control System: A case study in formal verification. In Karin Breitman and Ana Cavalcanti, editors, 11th International Conference on Formal Engineering Methods, ICFEM, Rio de Janeiro, Brasil, Proceedings, volume 5885 of LNCS, pages 246-265. Springer, 2009."
+ */
+Functions.
+  R b.
+  R A.
+  R ep.
+  R l.
+  R u.
+End.
+
+ProgramVariables.
+	R vdes.
+	R SB.
+	R mo.
+	R t.
+	R a.
+	R ad. /* bounded acceleration disturbance -l <= ad <= u < b */
+	R v.
+	R z.
+	R m.
+	R d.
+	R do.
+	R em. /* emergency braking: 0=off, 1=on */
+End.
+
+Problem.
+em = 0 & v^2 - d^2 <= 2*(b-u)*(m-z) & d >=0 & b > 0 & A >= 0 & ep >= 0 & b > u & u >= 0 & l >= 0
+  ->
+  [{
+       {
+           do := d; mo := m; m :=*; d :=*; vdes :=*; ?d >= 0 & do^2 - d^2 <= 2*(b-u)*(m-mo) & vdes >= 0;
+        ++ em := 1;
+       }
+    ++ {
+         {    ?v <= vdes; a:=*; ?a >=-b & a <= A;
+           ++ ?v >= vdes; a:=*; ?a <0 & a >= -b;
+         };
+         SB := (v^2 - d^2)/(2*(b-u)) + ((A+u)/(b-u)+1)*((A+u)*ep^2/2+ep*v);
+         {   ?  m - z <= SB | em = 1; a:= -b;
+          ++ ?!(m - z <= SB | em = 1);
+         }
+         t:=0;
+         ad := *; ?-l <= ad & ad <= u;
+         {z'=v, v'=a+ad, t'=1 & v >= 0 & t <= ep}
+       }
+   }*@invariant(v^2 - d^2 <= 2*(b-u)*(m-z) & d >= 0)
+  ](z >= m -> v <= d)
+End.

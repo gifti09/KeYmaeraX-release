@@ -1,13 +1,14 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics.error
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
-import edu.cmu.cs.ls.keymaerax.tools.KeYmaera
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+
 import scala.collection.immutable.IndexedSeq
-import org.scalatest.{Matchers, FlatSpec}
 
 import scala.language.postfixOps
 
@@ -17,15 +18,13 @@ import scala.language.postfixOps
  * theInterpreter when other interpreters are implemented.
  * @author Nathan Fulton
  */
-class SequentialInterpreterTests extends FlatSpec with Matchers {
-  val initializingK = KeYmaera.init(Map.empty)
-  val theInterpreter = SequentialInterpreter()
+class SequentialInterpreterTests extends TacticTestBase {
 
   "AndR" should "prove |- 1=1 ^ 2=2" in {
     val tactic = andR(1)
     val v = {
       val f = "1=1 & 2=2".asFormula
-      BelleProvable(Provable.startProof(f))
+      BelleProvable(ProvableSig.startProof(f))
     }
     val result = theInterpreter.apply(tactic, v)
 
@@ -42,7 +41,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     val tactic = implyR(1) & close
     val v = {
       val f = "1=2 -> 1=2".asFormula
-      BelleProvable(Provable.startProof(f))
+      BelleProvable(ProvableSig.startProof(f))
     }
     val result = theInterpreter.apply(tactic, v)
 
@@ -54,7 +53,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     val tactic = andR(1) | (implyR(1) & close)
     val v = {
       val f = "1=2 -> 1=2".asFormula
-      BelleProvable(Provable.startProof(f))
+      BelleProvable(ProvableSig.startProof(f))
     }
     val result = theInterpreter.apply(tactic, v)
 
@@ -66,7 +65,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     val tactic = (implyR(1) & close) | andR(1)
     val v = {
       val f = "1=2 -> 1=2".asFormula
-      BelleProvable(Provable.startProof(f))
+      BelleProvable(ProvableSig.startProof(f))
     }
     val result = theInterpreter.apply(tactic, v)
 
@@ -89,7 +88,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
   it should "fail when neither tactic manages to close the goal and also neither is partial" in {
     val tactic = implyR(1) & DebuggingTactics.done | (skip & skip) & DebuggingTactics.done
     val f = "1=2 -> 1=2".asFormula
-    a[BelleError] should be thrownBy theInterpreter(tactic, BelleProvable(Provable.startProof(f))
+    a[BelleThrowable] should be thrownBy theInterpreter(tactic, BelleProvable(ProvableSig.startProof(f))
     )
   }
 
@@ -103,6 +102,30 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     val f = "(1=1->1=1) & (2=2->2=2)".asFormula
     val expr = andR(SuccPos(0)) & OnAll (andR(SuccPos(0)) | (implyR(SuccPos(0)) & close))
     shouldClose(expr, f)
+  }
+
+  it should "support 'Rlike' unification matching" in {
+    val result = proveBy("(a=0&b=1 -> c=2) | (d=3 -> e=4) | (f=5&g=6 -> h=7)".asFormula,
+      (orR('R)*) & (onAll(implyR('Rlike, "p_()&q_()->r_()".asFormula))*)
+    )
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain only ("a=0&b=1".asFormula, "f=5&g=6".asFormula)
+    result.subgoals.head.succ should contain only ("c=2".asFormula, "d=3->e=4".asFormula, "h=7".asFormula)
+  }
+
+  it should "support 'Llike' unification matching" in {
+    val result = proveBy("(a=0&b=1 -> c=2) & (d=3 -> e=4) & (f=5&g=6 -> h=7) -> i=8".asFormula,
+      implyR('R) & (andL('L)*) & (onAll(implyL('Llike, "p_()&q_()->r_()".asFormula))*)
+    )
+    result.subgoals should have size 4
+    result.subgoals(0).ante should contain only "d=3->e=4".asFormula
+    result.subgoals(0).succ should contain only ("a=0&b=1".asFormula, "f=5&g=6".asFormula, "i=8".asFormula)
+    result.subgoals(1).ante should contain only ("d=3->e=4".asFormula, "c=2".asFormula)
+    result.subgoals(1).succ should contain only ("f=5&g=6".asFormula, "i=8".asFormula)
+    result.subgoals(2).ante should contain only ("d=3->e=4".asFormula, "h=7".asFormula)
+    result.subgoals(2).succ should contain only ("a=0&b=1".asFormula, "i=8".asFormula)
+    result.subgoals(3).ante should contain only ("d=3->e=4".asFormula, "c=2".asFormula, "h=7".asFormula)
+    result.subgoals(3).succ should contain only "i=8".asFormula
   }
 
   "* combinator" should "prove |- (1=1->1=1) & (2=2->2=2)" in {
@@ -140,26 +163,42 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     result.subgoals.head.succ should contain only "x=2".asFormula
   }
 
+  it should "saturate 'Rlike' unification matching" in {
+    val result = proveBy("(a=0&b=1 -> c=2) | (d=3 -> e=4) | (f=5&g=6 -> h=7)".asFormula,
+      (orR('R)*) & (implyR('Rlike, "p_()&q_()->r_()".asFormula)*)
+      )
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain only ("a=0&b=1".asFormula, "f=5&g=6".asFormula)
+    result.subgoals.head.succ should contain only ("c=2".asFormula, "d=3->e=4".asFormula, "h=7".asFormula)
+  }
+
+  it should "trace in the database" in withDatabase { db => withMathematica { _ =>
+    val fml = "[x:=3;](x>0 & x>1 & x>2)".asFormula
+    val modelContent = s"Variables. R x. End.\n Problem. ${fml.prettyString} End."
+    db.createProof(modelContent, "saturateTest")
+    db.proveBy(modelContent, ((boxAnd('R) & andR('R))*) & master()) shouldBe 'proved
+  }}
+
   "+ combinator" should "saturate with at least 1 repetition" in {
     val result = proveBy(Sequent(IndexedSeq("x=2&y=3&(z=4|z=5)".asFormula), IndexedSeq("x=2".asFormula)),
-      (andL('Llast)+))
+      andL('Llast) & (andL('Llast)*))
     result.subgoals should have size 1
     result.subgoals.head.ante should contain only ("x=2".asFormula, "y=3".asFormula, "z=4 | z=5".asFormula)
     result.subgoals.head.succ should contain only "x=2".asFormula
   }
 
   it should "fail when not at least 1 repetition is possible" in {
-    a [BelleError] should be thrownBy proveBy(Sequent(IndexedSeq("z=4|z=5".asFormula), IndexedSeq("x=2".asFormula)),
-      (andL('Llast)+))
+    a [BelleThrowable] should be thrownBy proveBy(Sequent(IndexedSeq("z=4|z=5".asFormula), IndexedSeq("x=2".asFormula)),
+      andL('Llast) & (andL('Llast)*))
   }
 
   it should "saturate with at least 1 repetition and try right branch in combination with either combinator" in {
     proveBy(Sequent(IndexedSeq("x=2&y=3&(z=4|z=5)".asFormula), IndexedSeq("x=2".asFormula)),
-      (((andL('Llast)+) partial) | close)*) shouldBe 'proved
+      (((andL('Llast) & (andL('Llast)*)) partial) | close)*) shouldBe 'proved
   }
 
   "must idiom" should "fail when no change occurs" in {
-    a [BelleError] should be thrownBy proveBy("x=2".asFormula, Idioms.must(skip))
+    a [BelleThrowable] should be thrownBy proveBy("x=2".asFormula, Idioms.must(skip))
   }
 
   it should "do nothing when change occurred" in {
@@ -176,7 +215,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     )
     val v = {
       val f = "(1=1->1=1) & (2=2->2=2)".asFormula
-      BelleProvable(Provable.startProof(f))
+      BelleProvable(ProvableSig.startProof(f))
     }
     val result = theInterpreter.apply(tactic, v)
 
@@ -192,7 +231,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
       )
     val v = {
       val f = "(1=1->1=1) & (2=2->2=2)".asFormula
-      BelleProvable(Provable.startProof(f))
+      BelleProvable(ProvableSig.startProof(f))
     }
     val result = theInterpreter.apply(tactic, v)
 
@@ -219,8 +258,8 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
       implyR(SuccPos(0)) & close & DebuggingTactics.done
       )
     val f = "(2=2 & 3=3) & (1=1->1=1)".asFormula
-    a[BelleError] shouldBe thrownBy(
-      theInterpreter.apply(tactic, BelleProvable(Provable.startProof(f)))
+    a[BelleThrowable] shouldBe thrownBy(
+      theInterpreter.apply(tactic, BelleProvable(ProvableSig.startProof(f)))
     )
   }
 
@@ -235,6 +274,95 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
       f,
       Seq(toSequent("2=2"), toSequent("3=3"))
     )
+  }
+
+  it should "prove |- (1=1->1=1) & (!2=2  | 2=2) with labels out of order" in {
+    val tactic = andR(1) & Idioms.<(label("foo"), label("bar")) & Idioms.<(
+      (BelleTopLevelLabel("bar"), orR(1) & notR(1) & close),
+      (BelleTopLevelLabel("foo"), implyR(1) & close)
+    )
+    val v = {
+      val f = "(1=1->1=1) & (!2=2 | 2=2)".asFormula
+      BelleProvable(ProvableSig.startProof(f))
+    }
+    val result = theInterpreter.apply(tactic, v)
+
+    result.isInstanceOf[BelleProvable] shouldBe true
+    result.asInstanceOf[BelleProvable].p shouldBe 'proved
+  }
+
+  it should "work with loop labels" in {
+    val tactic = implyR(1) & loop("x>1".asFormula)(1)
+    val v = BelleProvable(ProvableSig.startProof("x>2 -> [{x:=x+1;}*]x>0".asFormula))
+    val result = theInterpreter.apply(tactic, v)
+
+    result.isInstanceOf[BelleProvable] shouldBe true
+    val presult = result.asInstanceOf[BelleProvable]
+    presult.p.subgoals should have size 3
+    presult.label shouldBe Some(BelleLabels.initCase :: BelleLabels.useCase :: BelleLabels.indStep :: Nil)
+  }
+
+  it should "not screw up empty labels" in {
+    proveBy(
+      "((P_() <-> F_()) & (F_() -> (Q_() <-> G_()))) ->(P_() & Q_() <-> F_() & G_())".asFormula, prop) shouldBe 'proved
+  }
+
+  it should "finish working branches before failing" in {
+    var finishedBranches = Seq.empty[Int]
+    def logDone(branch: Int) = new DependentTactic("ANON") {
+      override def computeExpr(provable: ProvableSig): BelleExpr = {
+        finishedBranches = finishedBranches :+ branch
+        skip
+      }
+    }
+
+    a [BelleThrowable] should be thrownBy proveBy("x>0 -> x>5 & x>0 & [?x>1;]x>1".asFormula, implyR(1) & andR(1) <(
+      DebuggingTactics.printIndexed("Branch 1") & closeId & /* not reached */ logDone(1),
+      andR(1) <(
+        DebuggingTactics.printIndexed("Branch 2") & closeId & logDone(2)
+        ,
+        DebuggingTactics.printIndexed("Branch 3") & testb(1) & prop & logDone(3)
+      )
+    ))
+
+    finishedBranches should contain theSameElementsAs Seq(2, 3)
+  }
+
+  it should "finish working branches before failing with combined error message" in {
+    var finishedBranches = Seq.empty[Int]
+    def logDone(branch: Int) = new DependentTactic("ANON") {
+      override def computeExpr(provable: ProvableSig): BelleExpr = {
+        finishedBranches = finishedBranches :+ branch
+        skip
+      }
+    }
+
+    the [BelleThrowable] thrownBy proveBy("x>0 -> x>5 & x>2 & [?x>1;]x>1".asFormula, implyR(1) & andR(1) <(
+      DebuggingTactics.printIndexed("Branch 1") & closeId & /* not reached */ logDone(1),
+      andR(1) <(
+        DebuggingTactics.printIndexed("Branch 2") & closeId & /* not reached */ logDone(2)
+        ,
+        DebuggingTactics.printIndexed("Branch 3") & testb(1) & prop & logDone(3)
+      )
+    )) should have message
+      """[Bellerophon Runtime] Left Message: [Bellerophon Runtime] Unable to create dependent tactic: requirement failed: Expects same formula in antecedent and succedent. Found:
+        |   -1:  x>0	Greater
+        |==> 1:  x>5	Greater
+        |Right Message: [Bellerophon Runtime] Unable to create dependent tactic: requirement failed: Expects same formula in antecedent and succedent. Found:
+        |   -1:  x>0	Greater
+        |==> 1:  x>2	Greater)""".stripMargin
+
+    finishedBranches should contain theSameElementsAs Seq(3)
+  }
+
+  "Let" should "fail (but not horribly) when inner proof cannot be started" in {
+    val fml = "[{f'=g}][{g'=5}]f>=0".asFormula
+    the [BelleThrowable] thrownBy proveBy(fml, BelleParser("let ({`f()=f`}) in (nil)")) should have message
+      "[Bellerophon Runtime] Unable to start inner proof in let: edu.cmu.cs.ls.keymaerax.core.FuncOf cannot be cast to edu.cmu.cs.ls.keymaerax.core.Variable"
+    val result = proveBy(fml, BelleParser("let ({`f()=f`}) in (nil) | nil"))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only fml
   }
 
   "Unification" should "work on 1=1->1=1" in {
@@ -290,6 +418,104 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
     shouldClose(t, "(1=1->1=1) & (2=2->2=2)".asFormula)
   }
 
+  //@todo would need DerivationInfo entry
+  //@note: DifferentialTests."ODE" should "prove FM tutorial 4" acts as a smoke test for this
+  "ChooseSome" should "record in the database" ignore withDatabase { db => withMathematica { _ =>
+    val fml = "x>0 -> [{x:=3;}*]x>0".asFormula
+    val modelContent = s"Variables. R x. End.\n Problem. ${fml.prettyString} End."
+    db.createProof(modelContent, "chooseSomeTest")
+
+    import TacticFactory._
+
+    val tactic = "chooseSomeTest" by ((pos: Position, seq: Sequent) => { ChooseSome(
+        () => ("x>0".asFormula::Nil).iterator,
+        (inv: Formula) => loop(inv)(pos)
+      ) & Idioms.<(close, close, master())
+    })
+
+    db.proveBy(modelContent, tactic(1)) shouldBe 'proved
+  }}
+
+  "Def tactic" should "define a tactic and apply it later" in {
+    val fml = "x>0 -> [x:=2;++x:=x+1;]x>0".asFormula
+    val tDef = DefTactic("myAssign", assignb('R))
+    val tactic = tDef & implyR(1) & choiceb(1) & andR(1) & OnAll(ApplyDefTactic(tDef))
+    val result = proveBy(fml, tactic)
+    result.subgoals should have size 2
+    result.subgoals.head.ante should contain only "x>0".asFormula
+    result.subgoals.head.succ should contain only "2>0".asFormula
+    result.subgoals.last.ante should contain only "x>0".asFormula
+    result.subgoals.last.succ should contain only "x+1>0".asFormula
+  }
+
+  "Def expression" should "define a function and expand it later" ignore {
+    val fml = "x>0 -> [{x:=x+1;}*]x>0".asFormula
+    val invDef = DefExpression("inv(x)=x".asFormula)
+    val tactic = invDef & implyR(1) & loop("inv(x)>0".asFormula)(1)
+    val result = proveBy(fml, tactic)
+    result.subgoals should have size 3
+    result.subgoals(0).ante should contain only "x>0".asFormula
+    result.subgoals(0).succ should contain only "inv(x)>0".asFormula
+    result.subgoals(1).ante should contain only "inv(x)>0".asFormula
+    result.subgoals(1).succ should contain only "x>0".asFormula
+    result.subgoals(2).ante should contain only "inv(x)>0".asFormula
+    result.subgoals(2).succ should contain only "[x:=x+1;]inv(x)>0".asFormula
+    val expanded = proveBy(result, ExpandDef(invDef))
+    expanded.subgoals should have size 3
+    expanded.subgoals(0).ante should contain only "x>0".asFormula
+    expanded.subgoals(0).succ should contain only "x>0".asFormula
+    expanded.subgoals(1).ante should contain only "x>0".asFormula
+    expanded.subgoals(1).succ should contain only "x>0".asFormula
+    expanded.subgoals(2).ante should contain only "x>0".asFormula
+    expanded.subgoals(2).succ should contain only "[x:=x+1;]x>0".asFormula
+  }
+
+  it should "expand right-away" in {
+    val fml = "x>0 -> f(x)>0".asFormula
+    val invDef = DefExpression("f(x)=x".asFormula)
+    val result = proveBy(Sequent(IndexedSeq(), IndexedSeq(fml)), invDef)
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "x>0 -> x>0".asFormula
+  }
+
+  it should "combine with let to postpone expanding" in {
+    import TacticFactory._
+    val fml = "x>0 -> f(x)>0".asFormula
+    val invDef = DefExpression("f(x)=x+1".asFormula)
+    val result = proveBy(Sequent(IndexedSeq(), IndexedSeq(fml)), invDef & Let("f(x)".asTerm, "x+1".asTerm,
+      "ANON" by ((s: Sequent) => {
+        s.ante shouldBe empty
+        s.succ should contain only "x>0 -> f(x)>0".asFormula
+        nil
+      })))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "x>0 -> x+1>0".asFormula
+  }
+
+  it should "define a predicate and expand it later" ignore {
+    val fml = "x>0 -> [{x:=x+1;}*]x>0".asFormula
+    val invDef = DefExpression("inv(x) <-> x>0".asFormula)
+    val tactic = invDef & implyR(1) & loop("inv(x)".asFormula)(1)
+    val result = proveBy(fml, tactic)
+    result.subgoals should have size 3
+    result.subgoals(0).ante should contain only "x>0".asFormula
+    result.subgoals(0).succ should contain only "inv(x)".asFormula
+    result.subgoals(1).ante should contain only "inv(x)".asFormula
+    result.subgoals(1).succ should contain only "x>0".asFormula
+    result.subgoals(2).ante should contain only "inv(x)".asFormula
+    result.subgoals(2).succ should contain only "[x:=x+1;]inv(x)".asFormula
+    val expanded = proveBy(result, ExpandDef(invDef))
+    expanded.subgoals should have size 3
+    expanded.subgoals(0).ante should contain only "x>0".asFormula
+    expanded.subgoals(0).succ should contain only "x>0".asFormula
+    expanded.subgoals(1).ante should contain only "x>0".asFormula
+    expanded.subgoals(1).succ should contain only "x>0".asFormula
+    expanded.subgoals(2).ante should contain only "x>0".asFormula
+    expanded.subgoals(2).succ should contain only "[x:=x+1;]x>0".asFormula
+  }
+
 //  "Scheduled tactics" should "work" in {
 //    val legacyTactic = tactics.TacticLibrary.arithmeticT
 //    val t = Legacy.initializedScheduledTactic(DefaultConfiguration.defaultMathematicaConfig, legacyTactic)
@@ -313,9 +539,9 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
 //  }
 
   /*"A failing tactic"*/
-  ignore should "print nice errors and provide a stack trace" in {
+  it should "print nice errors and provide a stack trace" ignore {
     val itFails = new BuiltInTactic("fails") {
-      override def result(provable: Provable) = throw new ProverException("Fails...")
+      override def result(provable: ProvableSig) = throw new ProverException("Fails...")
     }
 
     val conj = Idioms.nil & (itFails | itFails)
@@ -332,7 +558,7 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
         & Idioms.nil
         & split
         & Idioms.nil
-        & Idioms.nil, BelleProvable(Provable.startProof("1=1 & 2=2".asFormula)))
+        & Idioms.nil, BelleProvable(ProvableSig.startProof("1=1 & 2=2".asFormula)))
     }
     thrown.printStackTrace()
     thrown.getMessage should include ("Fails...")
@@ -350,14 +576,14 @@ class SequentialInterpreterTests extends FlatSpec with Matchers {
   private def shouldClose(expr: BelleExpr, f: Formula): Unit = shouldClose(expr, Sequent(IndexedSeq(), IndexedSeq(f)))
 
   private def shouldClose(expr: BelleExpr, sequent: Sequent): Unit = {
-    val v = BelleProvable(Provable.startProof(sequent))
+    val v = BelleProvable(ProvableSig.startProof(sequent))
     val result = theInterpreter.apply(expr, v)
     result shouldBe a[BelleProvable]
     result.asInstanceOf[BelleProvable].p shouldBe 'proved
   }
 
   private def shouldResultIn(expr: BelleExpr, f: Formula, expectedResult : Seq[Sequent]) = {
-    val v = BelleProvable(Provable.startProof(f))
+    val v = BelleProvable(ProvableSig.startProof(f))
     val result = theInterpreter.apply(expr, v)
     result shouldBe a[BelleProvable]
     result.asInstanceOf[BelleProvable].p.subgoals shouldBe expectedResult

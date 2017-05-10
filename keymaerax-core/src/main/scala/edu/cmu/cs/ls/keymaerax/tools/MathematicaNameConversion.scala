@@ -36,6 +36,7 @@ private object MathematicaNameConversion {
   def toMathematica(ns: NamedSymbol): MExpr = {
     val name: String = ns match {
       case Function(_, _, _, _, true) => throw new ConversionException("Name conversion of interpreted function symbols not allowed: " + ns.name)
+      case DifferentialSymbol(_) => throw new ConversionException("Name conversion of differential symbols not allowed: " + ns.toString)
       case _ => maskName(ns)
     }
     new MExpr(com.wolfram.jlink.Expr.SYMBOL, name)
@@ -43,7 +44,7 @@ private object MathematicaNameConversion {
 
   /**
     * Converts a Mathematica name into its corresponding KeYmaera X named symbol (Variable or Function). Distinguishes
-    * between variables and functions by the number of arguments (0 args -> Variable, at least 1 arg -> Function). In
+    * between variables and functions (Symbol -> Variable, Expr with arguments -> Function). In
     * each case, decomposes the Mathematica name based upon the possible forms of the name:
     * {{{
     * PREFIX + base + SEP + index ---> name + index
@@ -54,7 +55,7 @@ private object MathematicaNameConversion {
     * @note Refuses to convert interpreted function symbols (i.e., any name not prefixed with kyx`)
     */
   def toKeYmaera(e: MExpr): NamedSymbol = {
-    if (e.args.isEmpty) {
+    if (e.symbolQ()) {
       val (name, index) = unmaskName(e.asString())
       Variable(name, index, Real)
     } else {
@@ -101,6 +102,7 @@ private object MathematicaNameConversion {
     //@solution (name conflicts): symmetric name conversion in unmaskName, contract in KeYmaeraToMathematica and MathematicaToKeYmaera
     ns match {
       case Function(_, _, _, _, true) => throw new ConversionException("Name conversion of interpreted function symbols not allowed: " + ns.name)
+      case DifferentialSymbol(_) => throw new ConversionException("Name conversion of differential symbols not allowed: " + ns.toString)
       case _ =>
         val identifier = ns.name.replace("_", UNDERSCORE)
         PREFIX + (ns.index match {
@@ -119,7 +121,7 @@ private object MathematicaNameConversion {
      "\n Remasked to " + uncheckedMaskName(Variable(uncheckedUnmaskName(maskedName)._1, uncheckedUnmaskName(maskedName)._2, Real)))
 
   /** Unmasking without contracts. */
-  private def uncheckedUnmaskName(maskedName: String): (String, Option[Int]) = {
+  private[tools] def uncheckedUnmaskName(maskedName: String): (String, Option[Int]) = {
     def regexOf(s: String) = s.replace("$", "\\$")
 
     val uscoreMaskedName = maskedName.replaceAll(regexOf(UNDERSCORE), "_")

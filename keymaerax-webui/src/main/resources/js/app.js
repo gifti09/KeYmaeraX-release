@@ -6,6 +6,9 @@
   'ngAnimate',
   'ngTextcomplete',
   'angularSpinners',
+  'angular-intro',
+  'chart.js',
+  'hljs',
   'ui.bootstrap',
   'ui.bootstrap.tabs',
   'ui.bootstrap.tooltip',
@@ -51,7 +54,13 @@ keymaeraProofApp.config(['$routeProvider',
       }).
       when('/models', {
         templateUrl: 'partials/model-list.html',
-        controller: 'ModelListCtrl'
+        controller: 'ModelListCtrl',
+        resolve: { firstTime: function() { return false; } }
+      }).
+      when('/modelsFirstTime', {
+        templateUrl: 'partials/model-list.html',
+        controller: 'ModelListCtrl',
+        resolve: { firstTime: function() { return true; } }
       }).
       when('/tutorials', {
         templateUrl: 'partials/tutorials.html'
@@ -84,6 +93,10 @@ keymaeraProofApp.config(['$routeProvider',
         templateUrl: 'partials/proofawesome.html',
         controller: 'ProofCtrl'
       }).
+      when('/createModelFromFormula', {
+        templateUrl: 'partials/formula_to_model_textbox.html',
+        controller: 'FormulaUploadCtrl'
+      }).
       when('/dev', {
         templateUrl: 'partials/dev.html',
         controller: 'DevCtrl'
@@ -96,15 +109,19 @@ keymaeraProofApp.config(['$routeProvider',
                 templateUrl: 'partials/license_page.html',
                 controller: 'ServerInfoCtrl'
       }).
+      when('/import', {
+                templateUrl: 'partials/import.html',
+                controller: 'ModelUploadCtrl'
+      }).
       otherwise({
         redirectTo: '/dashboard'
       });
   }]);
 
 // triggers for tooltip and popover
-keymaeraProofApp.config(['$uibTooltipProvider', function($tooltipProvider) {
-  $tooltipProvider.setTriggers({
-    'contextmenu': 'blur'
+keymaeraProofApp.config(['$uibTooltipProvider', function($uibTooltipProvider) {
+  $uibTooltipProvider.setTriggers({
+    'rightClick': 'blur'
   });
 }]);
 
@@ -113,3 +130,10 @@ keymaeraProofApp.config(['$httpProvider', function($httpProvider) {
   $httpProvider.interceptors.push('ResponseErrorHandler');
   $httpProvider.interceptors.push('authInjector');
 }])
+
+keymaeraProofApp.config(function (hljsServiceProvider) {
+  hljsServiceProvider.setOptions({
+    // replace tab with 2 spaces
+    tabReplace: '  '
+  });
+});

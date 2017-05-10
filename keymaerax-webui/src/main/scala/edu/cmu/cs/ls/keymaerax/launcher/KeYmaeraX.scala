@@ -12,6 +12,9 @@ import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser._
 import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
 import edu.cmu.cs.ls.keymaerax.codegen.CGenerator
+import edu.cmu.cs.ls.keymaerax.btactics.IsabelleSyntax._
+import edu.cmu.cs.ls.keymaerax.hydra.{DBAbstraction, DBAbstractionObj}
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.collection.immutable
 import scala.compat.Platform
@@ -23,31 +26,38 @@ import scala.util.Random
  * @author Stefan Mitsch
  * @author Andre Platzer
  * @author Ran Ji
+ * @author Brandon Bohrer
  */
 object KeYmaeraX {
 
   private type OptionMap = Map[Symbol, Any]
 
   /** Usage -help information.
+    *
     * @note Formatted to 80 characters width. */
-  val usage = "KeYmaera X Prover" + " " + VERSION +
+  val usage: String = "KeYmaera X Prover" + " " + VERSION +
     """
       |
       |Usage: java -Xss20M -jar keymaerax.jar
       |  -prove filename.kyx -tactic filename.kyt [-out filename.kyp] |
-      |  -modelplex filename.kyx [-monitorKind ctrl|model] [-out filename.kym] |
+      |  -check filename.kya |
+      |  -modelplex filename.kyx [-monitorKind ctrl|model] [-out filename.kym]
+      |             [-isar] |
       |  -codegen filename.kyx [-vars var1,var2,..,varn] [-out file.c] |
       |  -ui [web server options] |
       |  -parse filename.kyx |
-      |  -bparse filename.kyt
+      |  -bparse filename.kyt |
+      |  -repl filename.kyx [filename.kyt] [scaladefs]
       |
       |Actions:
       |  -prove     run KeYmaera X prover on given problem file with given tactic
+      |  -check     run KeYmaera X prover on an archive of problems with tactics
       |  -modelplex synthesize monitor from given file by proof with ModelPlex tactic
       |  -codegen   generate executable code from given file
       |  -ui        start web user interface with optional arguments
       |  -parse     return error code !=0 if the input problem file does not parse
       |  -bparse    return error code !=0 if bellerophon tactic file does not parse
+      |  -repl      prove interactively from command line
       |
       |Additional options:
       |  -tool mathematica|z3 choose which tool to use for arithmetic
@@ -95,19 +105,44 @@ object KeYmaeraX {
         codegen(options)
       else if (!options.get('mode).contains("ui") ) {
         try {
-          initializeProver(if (options.contains('tool)) options else options ++ Map('tool -> "z3"))
+          initializeProver(
+            if (options.contains('tool)) options
+            else options ++ configFromDB(DBAbstractionObj.defaultDatabase, "z3"))
 
           //@todo allow multiple passes by filter architecture: -prove bla.key -tactic bla.scal -modelplex -codegen
           options.get('mode) match {
             case Some("prove") => prove(options)
+            case Some("check") => check(options)
             case Some("modelplex") => modelplex(options)
             case Some("codegen") => codegen(options)
+            case Some("repl") => repl(options)
             case Some("ui") => assert(false, "already handled above since no prover needed"); ???
           }
         } finally {
           shutdownProver()
         }
       }
+    }
+  }
+
+  private def configFromDB(db: DBAbstraction, defaultTool: String): OptionMap = {
+    db.getConfiguration("tool").config.getOrElse("qe", defaultTool).toLowerCase() match {
+      case "mathematica" => Map('tool -> "mathematica") ++ mathematicaConfigFromDB(db)
+      case "z3" => Map('tool -> "z3")
+      case t => throw new Exception("Unknown tool '" + t + "'")
+    }
+  }
+
+  private def mathematicaConfigFromDB(db: DBAbstraction): OptionMap = {
+    val mathConfig = db.getConfiguration("mathematica").config
+    mathConfig.get("linkName") match {
+      case Some(l) => mathConfig.get("jlinkLibDir") match {
+        case Some(libDir) => Map('mathkernel -> l, 'jlink -> libDir)
+        case None => Map('mathkernel -> l)
+      }
+      case None =>
+        val default = DefaultConfiguration.defaultMathematicaConfig
+        Map('mathkernel -> default("linkName"), 'jlink -> default("jlinkLibDir"))
     }
   }
 
@@ -131,12 +166,23 @@ object KeYmaeraX {
       case "-prove" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "prove", 'in -> value), tail)
         else optionErrorReporter("-prove")
+      case "-check" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "check", 'in -> value), tail)
+        else optionErrorReporter("-check")
       case "-modelplex" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "modelplex", 'in -> value), tail)
         else optionErrorReporter("-modelPlex")
+      case "-isar" :: tail => nextOption(map ++ Map('isar -> true), tail)
       case "-codegen" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "codegen", 'in -> value), tail)
         else optionErrorReporter("-codegen")
+      case "-repl" :: model :: tactic_and_scala_and_tail =>
+        val posArgs = tactic_and_scala_and_tail.takeWhile(x => !x.startsWith("-"))
+        val restArgs = tactic_and_scala_and_tail.dropWhile(x => !x.startsWith("-"))
+        val newMap = List('tactic, 'scaladefs).zip(posArgs).foldLeft(map){case (acc,(k,v)) => acc ++ Map(k -> v)}
+        if (model.nonEmpty  && !model.toString.startsWith("-"))
+          nextOption(newMap ++ Map('mode -> "repl", 'model -> model), restArgs)
+        else optionErrorReporter("-repl")
       case "-ui" :: tail => launchUI(tail.toArray); map ++ Map('mode -> "ui")
       // action options
       case "-out" :: value :: tail =>
@@ -212,6 +258,7 @@ object KeYmaeraX {
     val noValueMessage = "[Error] No value specified for " + option + " option. "
     option match {
       case "-prove" => println(noValueMessage + "Please use: -prove FILENAME.[key/kyx]\n\n" + usage); exit(1)
+      case "-check" => println(noValueMessage + "Please use: -check FILENAME.kya\n\n" + usage); exit(1)
       case "-modelPlex" => println(noValueMessage + "Please use: -modelPlex FILENAME.[key/kyx]\n\n" + usage); exit(1)
       case "-codegen" => println(noValueMessage + "Please use: -codegen FILENAME.kym\n\n" + usage); exit(1)
       case "-out" => println(noValueMessage + "Please use: -out FILENAME.proof | FILENAME.kym | FILENAME.c | FILENAME.g\n\n" + usage); exit(1)
@@ -224,7 +271,7 @@ object KeYmaeraX {
     }
   }
 
-  def initializeProver(options: OptionMap) = {
+  private def initializeProver(options: OptionMap) = {
     options('tool) match {
       case "mathematica" => initMathematica(options)
       case "z3" => initZ3(options)
@@ -291,7 +338,7 @@ object KeYmaeraX {
     ToolProvider.setProvider(new MathematicaToolProvider(mathematicaConfig))
   }
 
-  def shutdownProver() = {
+  private def shutdownProver() = {
     ToolProvider.shutdown()
     TactixLibrary.invGenerator = FixedGenerator(Nil)
   }
@@ -312,9 +359,9 @@ object KeYmaeraX {
    *
    * @param options The prover options.
    */
-  def prove(options: OptionMap) = {
+  def prove(options: OptionMap): Unit = {
     require(options.contains('in), usage)
-    val (tactic: BelleExpr, tacticSource: String) = options.get('tactic) match {
+    val (tactic: BelleExpr, _) = options.get('tactic) match {
       case Some(t) =>
         val fileName = t.toString
         val source = scala.io.Source.fromFile(fileName).mkString
@@ -338,7 +385,6 @@ object KeYmaeraX {
       "\n[Error] Wrong file name " + inputFileName + " used for -prove! KeYmaera X only proves .key or .kyx files. Please use: -prove FILENAME.[key/kyx]")
     val input = scala.io.Source.fromFile(inputFileName).mkString
     val inputModel = KeYmaeraXProblemParser(input)
-    val inputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(inputModel))
     var outputFileName = inputFileName.dropRight(4) + ".kyp"
     if(options.contains('out)) {
       outputFileName = options('out).toString
@@ -346,6 +392,13 @@ object KeYmaeraX {
         "\n[Error] Wrong file name " + outputFileName + " used for -out! KeYmaera X only produces proof evidence as .kyp file. Please use: -out FILENAME.kyp")
     }
 
+    prove(inputModel, tactic, outputFileName, options, storeWitness=true)
+  }
+
+  private def prove(input: Formula, tactic: BelleExpr, outputFileName: String, options: OptionMap, storeWitness: Boolean): Unit = {
+    val inputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(input))
+
+    //@note open print writer to create empty file (i.e., delete previous evidence if this proof fails).
     val pw = new PrintWriter(outputFileName)
 
     val proofStart: Long = Platform.currentTime
@@ -365,29 +418,35 @@ object KeYmaeraX {
       //@note printing original input rather than a pretty-print of proved ensures that @invariant annotations are preserved for reproves.
       val evidence = ToolEvidence(List(
         "tool" -> "KeYmaera X",
-        "model" -> input,
-        "tactic" -> tacticSource,
+        "model" -> input.prettyString,
+        "tactic" -> tactic.prettyString,
         "proof" -> "" //@todo serialize proof
       )) :: Nil
 
       //@note pretty-printing the result of parse ensures that the lemma states what's actually been proved.
-      assert(KeYmaeraXParser(KeYmaeraXPrettyPrinter(inputModel)) == inputModel, "parse of print is identity")
+      assert(KeYmaeraXParser(KeYmaeraXPrettyPrinter(input)) == input, "parse of print is identity")
       //@note check that proved conclusion is what we actually wanted to prove
       assert(witness.conclusion == inputSequent && witness.proved == inputSequent,
         "proved conclusion deviates from input")
 
-      assert(inputFileName.lastIndexOf(File.separatorChar) < inputFileName.length, "Input file name is not an absolute path")
+      assert(outputFileName.lastIndexOf(File.separatorChar) < outputFileName.length, "Input file name is not an absolute path")
       val lemma = Lemma(witness, evidence,
-        Some(inputFileName.substring(inputFileName.lastIndexOf(File.separatorChar)+1)))
+        Some(outputFileName.substring(outputFileName.lastIndexOf(File.separatorChar)+1)))
 
       //@see[[edu.cmu.cs.ls.keymaerax.core.Lemma]]
       assert(lemma.fact.conclusion.ante.isEmpty && lemma.fact.conclusion.succ.size == 1, "Illegal lemma form")
       assert(KeYmaeraXExtendedLemmaParser(lemma.toString) == (lemma.name, lemma.fact.conclusion::Nil, lemma.evidence),
         "reparse of printed lemma is not original lemma")
 
-      pw.write(stampHead(options))
-      pw.write("/* @evidence: parse of print of result of a proof */\n\n")
-      pw.write(lemma.toString)
+      println("==================================")
+      println("Tactic finished the proof")
+      println("==================================")
+
+      if (storeWitness) {
+        pw.write(stampHead(options))
+        pw.write("/* @evidence: parse of print of result of a proof */\n\n")
+        pw.write(lemma.toString)
+      }
       pw.close()
     } else {
       assert(!witness.isProved)
@@ -409,6 +468,28 @@ object KeYmaeraX {
   }
 
   /**
+    * Check given archive file to produce lemmas.
+    * {{{KeYmaeraXLemmaPrinter(Prover(tactic)(KeYmaeraXProblemParser(input)))}}}
+    *
+    * @param options The prover options.
+    */
+  def check(options: OptionMap): Unit = {
+    require(options.contains('in), usage)
+    val inputFileName = options('in).toString
+    assert(inputFileName.endsWith(".kya"),
+      "\n[Error] Wrong file name " + inputFileName + " used for -check! KeYmaera X only checks .kya files. Please use: -check FILENAME.kya")
+    val input = scala.io.Source.fromFile(inputFileName).mkString
+    val archiveContent = KeYmaeraXArchiveParser.parse(input)
+
+    archiveContent.foreach({case (modelName, modelString, model: Formula, tactics) =>
+      tactics.foreach({case (tacticName, tactic) =>
+        val witnessFileName = (modelName + "_" + tacticName).replaceAll("\\s", "") + ".kyp"
+        prove(model, tactic, witnessFileName, options, storeWitness=false)
+      })
+    })
+  }
+
+  /**
    * ModelPlex monitor synthesis for the given input files
    * {{{KeYmaeraXPrettyPrinter(ModelPlex(vars)(KeYmaeraXProblemParser(input))}}}
    *
@@ -424,6 +505,7 @@ object KeYmaeraX {
     val input = scala.io.Source.fromFile(inputFileNameDotKey).mkString
     val inputModel = KeYmaeraXProblemParser(input)
     val verifyOption = options.getOrElse('verify, false).asInstanceOf[Boolean]
+    val isarOption = options.getOrElse('isar,false).asInstanceOf[Boolean]
     val inputFileName = inputFileNameDotKey.dropRight(4)
     var outputFileName = inputFileName
     if(options.contains('out)) {
@@ -453,9 +535,35 @@ object KeYmaeraX {
     pw.write("/**\n * @param variables are for the state before the controller run\n * @param post() function symbols are for the state after the controller run\n * @param other function symbols are constant\n */\n\n")
     pw.write(output)
     pw.close()
+
+    if(isarOption) {
+
+      val pw2 = new PrintWriter(outputFileName + ".isar")
+      val (prog,proof) = isarSyntax(outputFml)
+      pw2.write("/************************************\n * Pretty printer syntax for Isabelle/HOL import \n ************************************/\n\n")
+      pw2.write(prettyProg(prog))
+      pw2.close()
+
+    }
   }
 
-
+  def repl(options: OptionMap) = {
+    require(options.contains('model), usage)
+    val modelFileNameDotKyx = options('model).toString
+    val tacticFileNameDotKyt = options.get('tactic).map(_.toString)
+    val scaladefsFilename = options.get('scaladefs).map(_.toString)
+    assert(modelFileNameDotKyx.endsWith(".kyx"),
+      "\n[Error] Wrong model file name " + modelFileNameDotKyx + " used for -repl! Should. Please use: -repl MODEL.kyx TACTIC.kyt")
+    tacticFileNameDotKyt.foreach(name => assert(name.endsWith(".kyt"), "\n[Error] Wrong tactic file name " + tacticFileNameDotKyt + " used for -repl! Should. Please use: -repl MODEL.kyx TACTIC.kyt"))
+    val modelInput = scala.io.Source.fromFile(modelFileNameDotKyx).mkString
+    val tacticInput = tacticFileNameDotKyt.map(scala.io.Source.fromFile(_).mkString)
+    val defsInput = scaladefsFilename.map(scala.io.Source.fromFile(_).mkString)
+    val inputFormula:Formula = KeYmaeraXProblemParser(modelInput) match {
+      case f:Formula => f
+      case _ => ???
+    }
+    new BelleREPL(inputFormula, tacticInput, defsInput, tacticFileNameDotKyt, scaladefsFilename).run()
+  }
 
   /**
    * Code generation
@@ -516,7 +624,7 @@ object KeYmaeraX {
   // helpers
 
   /** Print brief information about all open goals in the proof tree under node */
-  def printOpenGoals(node: Provable): Unit = node.subgoals.foreach(g => printNode(g))
+  def printOpenGoals(node: ProvableSig): Unit = node.subgoals.foreach(g => printNode(g))
 
   def printNode(node: Sequent): Unit = node.toString + "\n"
 
@@ -567,7 +675,7 @@ object KeYmaeraX {
 
   /** KeYmaera C: A simple interactive command-line prover */
   @deprecated("Use web UI instead")
-  private def interactiveProver(root: Provable): Provable = {
+  private def interactiveProver(root: ProvableSig): ProvableSig = {
     val commands = io.Source.stdin.getLines()
     println("KeYmaera X Interactive Command-line Prover\n" +
       "If you are looking for the more convenient web user interface,\nrestart with option -ui\n\n")

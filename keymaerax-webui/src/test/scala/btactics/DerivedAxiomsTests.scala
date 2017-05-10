@@ -4,12 +4,13 @@ import java.io.{File, FileWriter}
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.BelleProvable
 import edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms._
-import edu.cmu.cs.ls.keymaerax.core.{Lemma, Provable, Sequent}
+import edu.cmu.cs.ls.keymaerax.core.{Lemma, Sequent}
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
 import edu.cmu.cs.ls.keymaerax.tags.{CheckinTest, IgnoreInBuildTest, SummaryTest, UsualTest}
 import testHelper.KeYmaeraXTestTags
 import testHelper.KeYmaeraXTestTags.OptimisticTest
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.collection.immutable
 
@@ -31,9 +32,9 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   }
 
   private def useToClose(lemma: Lemma): Unit = {
-    Provable.startProof(lemma.fact.conclusion)(lemma.fact, 0) shouldBe 'proved
+    ProvableSig.startProof(lemma.fact.conclusion)(lemma.fact, 0) shouldBe 'proved
     //@note same test as previous line, just to make sure the lemma can be used by substitution
-    theInterpreter(TactixLibrary.byUS(lemma), BelleProvable(Provable.startProof(lemma.fact.conclusion))) match {
+    theInterpreter(TactixLibrary.byUS(lemma), BelleProvable(ProvableSig.startProof(lemma.fact.conclusion))) match {
       case BelleProvable(provable, _) => provable shouldBe 'proved
       case _ => fail()
     }
@@ -142,7 +143,8 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "prove \\forall->\\exists" in {check(forallThenExistsAxiom)}
   //it should "prove DI differential invariance from DI" in {check(DIinvariance)}
   it should "prove DI differential invariant from DI" in {check(DIinvariant)}
-  it should "prove DIo open differential invariance >" in {check(DIOpeninvariantLess)}
+  it should "prove DIo open differential invariance <" in {check(DIOpeninvariantLess)}
+  it should "prove DIo open differential invariance <=" in {check(DIOpeninvariantLessEqual)}
   it should "prove DV differential variant <=" in withMathematica {qeTool => check(DVLessEqual)}
   it should "prove DW differential weakening" in {check(DWeakening)}
   it should "prove DW differential weakening and" in {check(DWeakeningAnd)}
@@ -171,7 +173,6 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "prove = commute" in withMathematica { qetool =>check(equalCommute)}
   it should "prove <=" in withMathematica { qetool =>check(lessEqual)}
   it should "prove ! !=" in withMathematica { qetool =>check(notNotEqual)}
-  it should "prove < negate" in withMathematica { qetool =>check(notGreaterEqual)}
   it should "prove >= flip" in withMathematica { qetool =>check(flipGreaterEqual)}
   it should "prove > flip" in withMathematica { qetool =>check(flipGreater)}
   it should "prove <= flip" in withMathematica { qetool =>check(flipLessEqual)}
@@ -228,6 +229,10 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "prove <=Div down" in withMathematica { qeTool => check(intervalDownDivide)}
   it should "prove K& down" in withMathematica { qeTool => check(Kand)}
   it should "prove &-> down" in withMathematica { qeTool => check(andImplies)}
+  it should "prove <= & <=" in withMathematica { qeTool => check(metricAndLe)}
+  it should "prove < & <" in withMathematica { qeTool => check(metricAndLt)}
+  it should "prove <= | <=" in withMathematica { qeTool => check(metricOrLe)}
+  it should "prove < | <" in withMathematica { qeTool => check(metricOrLt)}
 
   "Derived Axiom Tactics" should "tactically prove <-> reflexive" in {check(equivReflexiveAxiom)}
   it should "tactically prove !!" in {check(doubleNegationAxiom)}
@@ -250,7 +255,7 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "tactically prove = commute" in withMathematica { qeTool => check(equalCommute)}
   it should "tactically prove <=" in withMathematica { qeTool => check(lessEqual)}
   it should "tactically prove ! !=" in withMathematica { qeTool => check(notNotEqual)}
-  it should "tactically prove < negate" in withMathematica { qeTool => check(notGreaterEqual)}
+  it should "tactically prove ! >=" in withMathematica { qeTool => check(notGreaterEqual)}
   it should "tactically prove >= flip" in withMathematica { qeTool => check(flipGreaterEqual)}
   it should "tactically prove > flip" in withMathematica { qeTool => check(flipGreater)}
   it should "tactically prove all substitute" in {check(allSubstitute)}
@@ -265,5 +270,19 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "tactically prove abs" in withMathematica { qeTool => check(absDef)}
   it should "tactically prove min" in withMathematica { qeTool => check(minDef)}
   it should "tactically prove max" in withMathematica { qeTool => check(maxDef)}
+
+  "Mathematica" should "derive compatibility axiom dgZeroEquilibrium" in withMathematica { qeTool =>
+    import TactixLibrary._
+    val dgZeroEquilibrium = AxiomInfo.ofCodeName("dgZeroEquilibrium")
+    dgZeroEquilibrium.formula shouldBe "x=0 & n>0 -> [{x'=c*x^n}]x=0".asFormula
+
+    TactixLibrary.proveBy(dgZeroEquilibrium.formula,
+      implyR(1) & dG("y' = ( (-c*x^(n-1)) / 2)*y".asDifferentialProgram, Some("x*y^2=0&y>0".asFormula))(1) &
+      TactixLibrary.boxAnd(1, 0::Nil) &
+      DifferentialTactics.diffInd()(1, 0::0::Nil) &
+      dG("z' = (c*x^(n-1)/4) * z".asDifferentialProgram, Some("y*z^2 = 1".asFormula))(1, 0::1::Nil) &
+      dI()(1, 0::1::0::Nil) & QE
+    ) shouldBe 'proved
+  }
 
 }

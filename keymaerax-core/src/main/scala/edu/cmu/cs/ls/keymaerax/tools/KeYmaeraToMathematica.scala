@@ -10,9 +10,12 @@ package edu.cmu.cs.ls.keymaerax.tools
 // favoring immutable Seqs
 import scala.collection.immutable._
 import com.wolfram.jlink._
+import edu.cmu.cs.ls.keymaerax.btactics.FormulaTools
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.tools.MathematicaConversion.{KExpr, MExpr}
 import edu.cmu.cs.ls.keymaerax.tools.MathematicaNameConversion._
+
+import scala.math.BigDecimal
 
 /**
   * Converts KeYmaeara X [[edu.cmu.cs.ls.keymaerax.core.Expression expression data structures]]
@@ -36,7 +39,7 @@ class KeYmaeraToMathematica extends K2MConverter[KExpr] {
     e match {
       case t: Term => convertTerm(t)
       case f: Formula => convertFormula(f)
-      case fn: Function =>
+      case _: Function =>
         // can override in non-soundness critical converters (e.g., CEX and Simulation)
         throw new ConversionException("Uninterpreted function symbols are disallowed")
     }
@@ -51,13 +54,7 @@ class KeYmaeraToMathematica extends K2MConverter[KExpr] {
    * Converts a KeYmaera terms to a Mathematica expression.
    */
   protected def convertTerm(t : Term): MExpr = {
-    /** Convert tuples to list of sorts */
-    def flattenSort(s: Sort): List[Sort] = s match {
-      case Tuple(ls, rs) => flattenSort(ls) ++ flattenSort(rs)
-      case _ => s :: Nil
-    }
-
-    require(t.sort == Real || t.sort == Unit || flattenSort(t.sort).forall(_ == Real), "Mathematica can only deal with reals not with sort " + t.sort)
+    require(t.sort == Real || t.sort == Unit || FormulaTools.sortsList(t.sort).forall(_ == Real), "Mathematica can only deal with reals not with sort " + t.sort)
     t match {
       //@todo Code Review: clean up FuncOf conversion into two cases here
       //@solution: inlined and simplified the FuncOf cases, moved uniform name conversion into MathematicaNameConversion
@@ -69,10 +66,21 @@ class KeYmaeraToMathematica extends K2MConverter[KExpr] {
       case Plus(l, r) => new MExpr(MathematicaSymbols.PLUS, Array[MExpr](convertTerm(l), convertTerm(r)))
       case Minus(l, r) => new MExpr(MathematicaSymbols.MINUS, Array[MExpr](convertTerm(l), convertTerm(r)))
       case Times(l, r) => new MExpr(MathematicaSymbols.MULT, Array[MExpr](convertTerm(l), convertTerm(r)))
+      case Divide(l: Number, r: Number) => new MExpr(MathematicaSymbols.RATIONAL, Array[MExpr](convertTerm(l), convertTerm(r)))
       case Divide(l, r) => new MExpr(MathematicaSymbols.DIV, Array[MExpr](convertTerm(l), convertTerm(r)))
       case Power(l, r) => new MExpr(MathematicaSymbols.EXP, Array[MExpr](convertTerm(l), convertTerm(r)))
-      case Number(n) if n.isValidLong => new MExpr(n.longValue())
-      case Number(n) => new MExpr(n.underlying())
+      case Number(n) if n.isValidLong => new MExpr(n.longValue()) //@note matches isDecimalDouble && n.scale==0 with tighter max value
+      case Number(n) if n.isDecimalDouble && n.scale > 0 =>
+        val num = BigDecimal(n.bigDecimal.unscaledValue())
+        val denom = BigDecimal(BigDecimal(1).bigDecimal.movePointRight(n.scale))
+        assert(n == num/denom, "Expected double to rational conversion to have value " + n + ", but got numerator " + num + " and denominator " + denom)
+        new MExpr(MathematicaSymbols.RATIONAL, Array[MExpr](convert(Number(num)), convert(Number(denom))))
+      case Number(n) if n.isDecimalDouble && n.scale < 0 =>
+        //@note negative scale means: unscaled*10^(-scale)
+        val num = BigDecimal(n.bigDecimal.unscaledValue()).bigDecimal.movePointLeft(n.scale)
+        assert(n == BigDecimal(num), "Expected double conversion to have value " + n + ", but got " + num)
+        convert(Number(num))
+      case Number(n) => throw new ConversionException("Number is neither long nor encodable as rational of longs: " + n)
       case t: Variable => toMathematica(t)
       case Pair(l, r) =>
         //@note converts nested pairs into nested lists of length 2 each
@@ -137,6 +145,7 @@ class KeYmaeraToMathematica extends K2MConverter[KExpr] {
     case _: Pair =>
       assert(convertTerm(child).listQ(), "Converted pair expected to be a list, but was " + convertTerm(child))
       new MExpr(head, convertTerm(child).args())
+    case Nothing => new MExpr(head, Array[MExpr]())
     case _ => new MExpr(head, Array[MExpr](convertTerm(child)))
   }
 }

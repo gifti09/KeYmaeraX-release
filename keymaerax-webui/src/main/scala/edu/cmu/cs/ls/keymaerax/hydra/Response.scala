@@ -12,15 +12,16 @@ package edu.cmu.cs.ls.keymaerax.hydra
 
 import _root_.edu.cmu.cs.ls.keymaerax.btactics._
 import _root_.edu.cmu.cs.ls.keymaerax.core.{Expression, Formula}
-import edu.cmu.cs.ls.keymaerax.bellerophon.{Fixed, PosInExpr, PositionLocator, TacticDiff}
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXPrettyPrinter, Location}
 import spray.json._
 import java.io.{PrintWriter, StringWriter}
 
 import Helpers._
-import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BellePrettyPrinter
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.codegen.CGenerator
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.collection.mutable.ListBuffer
 
@@ -47,7 +48,7 @@ sealed trait Response {
   def getJson: JsValue
 }
 
-class BooleanResponse(flag : Boolean, errorText: Option[String] = None) extends Response {
+case class BooleanResponse(flag : Boolean, errorText: Option[String] = None) extends Response {
   override val schema = Some("BooleanResponse.js")
 
   def getJson = errorText match {
@@ -63,6 +64,10 @@ class BooleanResponse(flag : Boolean, errorText: Option[String] = None) extends 
         "type" -> JsNull
       )
   }
+}
+
+class PlainResponse(data: (String, JsValue)*) extends Response {
+  override def getJson = JsObject(data:_*)
 }
 
 class ModelListResponse(models : List[ModelPOJO]) extends Response {
@@ -170,6 +175,82 @@ class ModelPlexResponse(model: ModelPOJO, monitor: Formula) extends Response {
   )
 }
 
+class TestSynthesisResponse(model: ModelPOJO, metric: Formula,
+                           //@todo class: List[(SeriesName, List[(Var->Val, SafetyMargin, Variance)])]
+                            testCases: List[(String, List[(Map[Term, Term], Option[Number], Number)])]) extends Response {
+  private val fmlHtml = JsString(UIKeYmaeraXPrettyPrinter("", plainText=false)(metric))
+  private val fmlString = JsString(UIKeYmaeraXPrettyPrinter("", plainText=true)(metric))
+  private val fmlPlainString = JsString(KeYmaeraXPrettyPrinter(metric))
+
+  private val minRadius = 5  // minimum radius of bubbles even when all pre are equal to their post
+  private val maxRadius = 30 // maximum radius of bubbles even when wildly different values
+
+  private val Number(maxVariance) = testCases.flatMap(_._2).maxBy(_._3.value)._3
+
+  private def radius(n: BigDecimal): BigDecimal =
+    if (maxVariance > 0) minRadius + (maxRadius-minRadius)*(n/maxVariance)
+    else minRadius
+
+  private def scatterData(tc: List[(Map[Term, Term], Option[Number], Number)]) = JsArray(tc.zipWithIndex.map(
+      { case ((_, safetyMargin, Number(variance)), idx) => JsObject(
+    "x" -> JsNumber(idx),
+    "y" -> (safetyMargin match { case Some(Number(sm)) => JsNumber(sm) case None => JsNumber(-1) }),
+    "r" -> JsNumber(radius(variance))
+  ) }):_*)
+
+  // pre/post/labels/series
+  private def prePostVals(vals: Map[Term, Term]): (JsArray, JsArray, JsArray, JsArray) = {
+    val (pre, post) = vals.partition({ case (v, _) => v.isInstanceOf[BaseVariable] })
+    val preByPost: Map[Term, Term] = post.map({
+      case (post@FuncOf(Function(name, idx, Unit, Real, _), _), _) if name.endsWith("post") =>
+        post -> Variable(name.substring(0, name.length-"post".length), idx)
+      case (v, _) => v -> v
+    })
+    val preJson = pre.map({ case (v, Number(value)) => JsObject("v" -> JsString(v.prettyString), "val" -> JsNumber(value)) })
+    val postJson = post.map({ case (v, Number(value)) => JsObject("v" -> JsString(preByPost(v).prettyString), "val" -> JsNumber(value)) })
+    val sortedKeys = pre.keys.toList.sortBy(_.prettyString)
+    val labels = sortedKeys.map(v => JsString(v.prettyString))
+    val preSeries = sortedKeys.map(k => pre.get(k) match { case Some(Number(v)) => JsNumber(v) })
+    val postSeries = sortedKeys.map({ case k@BaseVariable(n, i, _) =>
+      post.get(FuncOf(Function(n + "post", i, Unit, Real), Nothing)) match {
+        case Some(Number(v)) => JsNumber(v)
+        case None => pre.get(k) match { case Some(Number(v)) => JsNumber(v) } //@note constants
+      }
+    })
+    (JsArray(preJson.toVector), JsArray(postJson.toVector), JsArray(labels.toVector),
+      JsArray(JsArray(preSeries.toVector), JsArray(postSeries.toVector)))
+  }
+
+  private def seriesData(data: List[(Map[Term, Term], Option[Number], Number)]): JsArray = JsArray(data.zipWithIndex.map({
+    case ((vals: Map[Term, Term], safetyMargin, Number(variance)), idx) =>
+      val (preVals, postVals, labels, series) = prePostVals(vals)
+      JsObject(
+        "name" -> JsString(""+idx),
+        "safetyMargin" -> (safetyMargin match { case Some(Number(sm)) => JsNumber(sm) case None => JsNumber(-1) }),
+        "variance" -> JsNumber(variance),
+        "pre" -> preVals,
+        "post" -> postVals,
+        "labels" -> labels,
+        "seriesData" -> series
+      )
+  }):_*)
+
+  def getJson = JsObject(
+    "modelid" -> JsString(model.modelId.toString),
+    "metric" -> JsObject(
+      "html" -> fmlHtml,
+      "string" -> fmlString,
+      "plainString" -> fmlPlainString
+    ),
+    "plot" -> JsObject(
+      "data" -> JsArray(testCases.map({ case (_, tc) => scatterData(tc) }):_*),
+      "series" -> JsArray(testCases.map({ case (name, _) => JsString(name) }):_*),
+      "labels" -> JsArray(JsString("Case"), JsString("Safety Margin"), JsString("Variance"))
+    ),
+    "caseInfos" -> JsArray(testCases.map({ case (name, data) => JsObject("series" -> JsString(name), "data" -> seriesData(data)) }):_*)
+  )
+}
+
 class ModelPlexCCodeResponse(model: ModelPOJO, monitor: Formula) extends Response {
   def getJson = JsObject(
     "modelid" -> JsString(model.modelId.toString),
@@ -198,8 +279,21 @@ class PossibleAttackResponse(val msg: String) extends Response {
 }
 
 class ErrorResponse(val msg: String, val exn: Throwable = null) extends Response {
-  lazy val writer = new StringWriter
-  lazy val stacktrace = if (exn != null) { exn.printStackTrace(new PrintWriter(writer)); writer.toString } else ""
+  private lazy val writer = new StringWriter
+  private lazy val stacktrace =
+    if (exn != null) {
+      exn.printStackTrace(new PrintWriter(writer))
+      writer.toString
+        .replaceAll("[\\t]at spray\\.routing\\..*", "")
+        .replaceAll("[\\t]at java\\.util\\.concurrent\\..*", "")
+        .replaceAll("[\\t]at java\\.lang\\.Thread\\.run.*", "")
+        .replaceAll("[\\t]at scala\\.Predef\\$\\.require.*", "")
+        .replaceAll("[\\t]at akka\\.spray\\.UnregisteredActorRefBase.*", "")
+        .replaceAll("[\\t]at akka\\.dispatch\\..*", "")
+        .replaceAll("[\\t]at scala\\.concurrent\\.forkjoin\\..*", "")
+        .replaceAll("[\\t]at scala\\.runtime\\.AbstractPartialFunction.*", "")
+        .replaceAll("\\s+$|\\s*(\n)\\s*|(\\s)\\s*", "$1$2") //@note collapse newlines
+    } else ""
   def getJson = JsObject(
     "textStatus" -> (if (msg != null) JsString(msg) else JsString("")),
     "errorThrown" -> JsString(stacktrace),
@@ -211,7 +305,8 @@ class KvpResponse(val key: String, val value: String) extends Response {
   override def getJson: JsValue = JsObject(key -> JsString(value))
 }
 
-class ParseErrorResponse(msg: String, expect: String, found: String, detailedMsg: String, loc: Location, exn: Throwable = null) extends ErrorResponse(msg, exn) {
+case class ParseErrorResponse(override val msg: String, expect: String, found: String, detailedMsg: String,
+                         loc: Location, override val exn: Throwable = null) extends ErrorResponse(msg, exn) {
   override def getJson = JsObject(super.getJson.fields ++ Map(
     "details" -> JsObject(
       "expect" -> JsString(expect),
@@ -257,7 +352,7 @@ class ProofIsLoadedResponse(proofId: String) extends ProofStatusResponse(proofId
 class ProofProgressResponse(proofId: String, isClosed: Boolean)
   extends ProofStatusResponse(proofId, if (isClosed) "closed" else "open")
 
-class ProofVerificationResponse(proofId: String, provable: Provable, tactic: String) extends Response {
+class ProofVerificationResponse(proofId: String, provable: ProvableSig, tactic: String) extends Response {
   override def getJson = JsObject(
     "proofId" -> JsString(proofId),
     "isProved" -> JsBoolean(provable.isProved),
@@ -272,7 +367,7 @@ class GetProblemResponse(proofid:String, tree:String) extends Response {
   )
 }
 
-class RunBelleTermResponse(proofId: String, nodeId: String, taskId: String) extends Response {
+case class RunBelleTermResponse(proofId: String, nodeId: String, taskId: String) extends Response {
   def getJson = JsObject(
     "proofId" -> JsString(proofId),
     "nodeId" -> JsString(nodeId),
@@ -281,8 +376,9 @@ class RunBelleTermResponse(proofId: String, nodeId: String, taskId: String) exte
   )
 }
 
-class TaskStatusResponse(proofId: String, nodeId: String, taskId: String, status: String, lastStep: Option[ExecutionStepPOJO]) extends Response {
-  def getJson =
+case class TaskStatusResponse(proofId: String, nodeId: String, taskId: String, status: String,
+                              lastStep: Option[ExecutionStepPOJO]) extends Response {
+  def getJson: JsValue =
     if (lastStep.isDefined) JsObject(
       "proofId" -> JsString(proofId),
       "parentId" -> JsString(nodeId),
@@ -301,13 +397,16 @@ class TaskStatusResponse(proofId: String, nodeId: String, taskId: String, status
       "type" -> JsString("taskstatus"))
 }
 
-class TaskResultResponse(parent: TreeNode, children: List[TreeNode], pos: Option[PositionLocator], progress: Boolean = true) extends Response {
+case class TaskResultResponse(proofId: String, parent: ProofTreeNode, progress: Boolean = true) extends Response {
+  private lazy val openChildren = parent.children.filter(_.numSubgoals > 0)
+
   def getJson = JsObject(
+    "proofId" -> JsString(proofId),
     "parent" -> JsObject(
-      "id" -> nodeIdJson(parent.id),
-      "children" -> childrenJson(children)
+      "id" -> JsString(parent.id.toString),
+      "children" -> JsArray(openChildren.map(c => JsString(c.id.toString)):_*)
     ),
-    "newNodes" -> JsArray(children.map(singleNodeJson(pos)):_*),
+    "newNodes" -> JsArray(openChildren.map(nodeJson(_)._2):_*),
     "progress" -> JsBoolean(progress),
     "type" -> JsString("taskresult")
   )
@@ -337,15 +436,16 @@ class OpenProofResponse(proof : ProofPOJO, loadStatus : String) extends Response
     "modelId" -> JsString(proof.modelId.toString),
     "stepCount" -> JsNumber(proof.stepCount),
     "status" -> JsBoolean(proof.closed),
+    "tactic" -> (proof.tactic match { case None => JsNull case Some(t) => JsString(t) }),
     "loadStatus" -> JsString(loadStatus)
   )
 }
 
-class ProofAgendaResponse(tasks : List[(ProofPOJO, String, String)]) extends Response {
+class ProofAgendaResponse(tasks : List[(ProofPOJO, List[Int], String)]) extends Response {
   override val schema = Some("proofagenda.js")
   val objects = tasks.map({ case (proofPojo, nodeId, nodeJson) => JsObject(
     "proofId" -> JsString(proofPojo.proofId.toString),
-    "nodeId" -> JsString(nodeId),
+    "nodeId" -> Helpers.nodeIdJson(nodeId),
     "proofNode" -> JsonParser(nodeJson)
   )})
 
@@ -381,7 +481,7 @@ object Helpers {
 
   def nodeJson(node: TreeNode, pos: Option[PositionLocator]): JsValue = {
     val id = nodeIdJson(node.id)
-    val sequent = sequentJson(node.sequent)
+    val sequent = sequentJson(node.provable.conclusion)
     val children = childrenJson(node.children)
     val parentOpt = node.parent.map(n => nodeIdJson(n.id))
     val parent = parentOpt.getOrElse(JsNull)
@@ -393,6 +493,29 @@ object Helpers {
       "parent" -> parent)
   }
 
+  def nodeJson(node: ProofTreeNode): (String, JsValue) = {
+    val id = JsString(node.id.toString)
+    val sequent = node.goal match { case None => JsNull case Some(goal) => sequentJson(goal) }
+    val childrenIds = JsArray(node.children.map(s => JsString(s.id.toString)):_*)
+    val parent = node.parent.map(n => JsString(n.id.toString)).getOrElse(JsNull)
+
+    val posLocator =
+      if (node.maker.isEmpty) None
+      else BelleParser(node.maker.get) match { //@todo probably performance bottleneck
+        case pt: AppliedPositionTactic => Some(pt.locator)
+        case pt: AppliedDependentPositionTactic => Some(pt.locator)
+        case _ => None
+      }
+
+    (node.id.toString, JsObject(
+      "id" -> id,
+      "isClosed" -> JsBoolean(node.goal match {case None => true case _ => false}),
+      "sequent" -> sequent,
+      "children" -> childrenIds,
+      "rule" -> ruleJson(node.makerShortName.getOrElse(""), posLocator),
+      "parent" -> parent))
+  }
+
   def sectionJson(section: List[String]): JsValue = {
     JsObject("path" -> JsArray(section.map(JsString(_)):_*))
   }
@@ -402,14 +525,14 @@ object Helpers {
 
   def itemJson(item: AgendaItem): (String, JsValue) = {
     val value = JsObject(
-      "id" -> JsString(item.id),
+      "id" -> JsString(item.id.toString),
       "name" -> JsString(item.name),
       "proofId" -> JsString(item.proofId),
       "deduction" -> deductionJson(List(item.path)))
-    (item.id, value)
+    (item.id.toString, value)
   }
 
-  def nodeIdJson(n: Int):JsValue = JsString(n.toString)
+  def nodeIdJson(n: List[Int]):JsValue = ??? //JsString(NodeId.toString(n))
   def proofIdJson(n: String):JsValue = JsString(n)
 
   def ruleJson(ruleName: String, pos: Option[PositionLocator]):JsValue = {
@@ -426,7 +549,7 @@ object Helpers {
   def singleNodeJson(pos: Option[PositionLocator] = None)(node: TreeNode): JsValue = {
     JsObject (
       "id" -> nodeIdJson(node.id),
-      "sequent" -> sequentJson(node.sequent),
+      "sequent" -> sequentJson(node.provable.conclusion),
       "children" -> childrenJson(node.children),
       "rule" -> ruleJson(node.rule, pos),
       "parent" -> node.parent.map(parent => nodeIdJson(parent.id)).getOrElse(JsNull)
@@ -442,25 +565,25 @@ object Helpers {
   }
 }
 
-class AgendaAwesomeResponse(proofId: String, root: TreeNode, leaves: List[(TreeNode, Option[PositionLocator])],
-                            agenda: List[AgendaItem]) extends Response {
+case class AgendaAwesomeResponse(proofId: String, root: ProofTreeNode, leaves: List[ProofTreeNode],
+                                 agenda: List[AgendaItem], closed: Boolean) extends Response {
   override val schema = Some("agendaawesome.js")
 
-  val proofTree = {
-    //@todo position locator
-    val theNodes: List[(String, JsValue)] = ((root, None) +: leaves).map(n => (n._1.id.toString, nodeJson(n._1, n._2)))
+  private lazy val proofTree = {
+    val theNodes: List[(String, JsValue)] = (root +: leaves).map(nodeJson)
     JsObject(
       "id" -> proofIdJson(proofId),
       "nodes" -> JsObject(theNodes.toMap),
-      "root" -> nodeIdJson(root.id))
+      "root" -> JsString(root.id.toString))
   }
 
-  val agendaItems = JsObject(agenda.map(itemJson):_*)
+  private lazy val agendaItems = JsObject(agenda.map(itemJson):_*)
 
   def getJson =
     JsObject (
       "proofTree" -> proofTree,
-      "agendaItems" -> agendaItems
+      "agendaItems" -> agendaItems,
+      "closed" -> JsBoolean(closed)
     )
 }
 
@@ -472,42 +595,41 @@ class SetAgendaItemNameResponse(item: AgendaItemPOJO) extends Response {
   def getJson = agendaItemJson(item)
 }
 
-class ProofNodeInfoResponse(proofId: String, nodeId: Option[String], nodeJson: String) extends Response {
+class ProofNodeInfoResponse(proofId: String, nodeId: List[Int], nodeJson: String) extends Response {
   def getJson = JsObject(
     "proofId" -> JsString(proofId),
-    "nodeId" -> JsString(nodeId match { case Some(nId) => nId case None => "" }),
+    "nodeId" -> nodeIdJson(nodeId),
     "proofNode" -> JsonParser(nodeJson)
   )
 }
 
-class ProofTaskParentResponse (parent: TreeNode, pos: Option[PositionLocator]) extends Response {
-  def getJson = singleNodeJson(pos)(parent)
+class ProofTaskParentResponse (parent: ProofTreeNode) extends Response {
+  def getJson: JsValue = nodeJson(parent)._2
 }
 
-class GetPathAllResponse(path: List[(TreeNode, Option[PositionLocator])], parentsRemaining: Int) extends Response {
-  import Helpers._
-  def getJson =
+class GetPathAllResponse(path: List[ProofTreeNode], parentsRemaining: Int) extends Response {
+  def getJson: JsValue =
     JsObject (
       "numParentsUntilComplete" -> JsNumber(parentsRemaining),
-      "path" -> JsArray(path.map(pe => nodeJson(pe._1, pe._2)):_*)
+      "path" -> JsArray(path.map(nodeJson(_)._2):_*)
     )
 }
 
-class GetBranchRootResponse(node: TreeNode, pos: Option[PositionLocator]) extends Response {
-  def getJson = singleNodeJson(pos)(node)
+class GetBranchRootResponse(node: ProofTreeNode) extends Response {
+  def getJson: JsValue = nodeJson(node)._2
 }
 
-class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Option[DerivationInfo])],
-                               suggestedInput: Option[Expression]) extends Response {
+case class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Option[DerivationInfo])],
+                                    suggestedInput: Map[ArgInfo, Expression]) extends Response {
   def inputJson(input: ArgInfo): JsValue = {
-    (suggestedInput, input) match {
-      case (Some(fml), FormulaArg(name)) =>
+    (suggestedInput.get(input), input) match {
+      case (Some(e), FormulaArg(name, _)) =>
         JsObject (
           "type" -> JsString(input.sort),
           "param" -> JsString(name),
-          "value" -> JsString(fml.prettyString)
+          "value" -> JsString(e.prettyString)
         )
-      case (_, ListArg(name, elementSort)) => //@todo suggested input for Formula*
+      case (_, ListArg(name, elementSort, _)) => //@todo suggested input for Formula*
         JsObject(
           "type" -> JsString(input.sort),
           "elementType" -> JsString(elementSort),
@@ -561,12 +683,23 @@ class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Option[De
   def ruleJson(info: TacticInfo, conclusion: SequentDisplay, premises: List[SequentDisplay]): JsObject = {
     val conclusionJson = sequentJson(conclusion)
     val premisesJson = JsArray(premises.map(sequentJson):_*)
+    val helpJson = {
+      val helpResource = getClass.getResourceAsStream(s"/help/axiomsrules/${info.codeName}.html")
+      if (helpResource == null) JsString("")
+      else JsString(scala.io.Source.fromInputStream(helpResource).mkString)
+    }
     JsObject(
       "type" -> JsString("sequentrule"),
       "conclusion" -> conclusionJson,
       "premise" -> premisesJson,
-      "input" -> inputsJson(info.inputs))
+      "input" -> inputsJson(info.inputs),
+      "help" -> helpJson
+    )
   }
+
+  private def name(i: DerivationInfo) =
+    if (i.codeName.isEmpty || i.codeName == i.display.name) i.display.name
+    else s"${i.display.name} <code>${i.codeName}</code>"
 
   def derivationJson(derivationInfo: DerivationInfo): JsObject = {
     val derivation =
@@ -581,7 +714,7 @@ class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Option[De
       }
     JsObject(
       "id" -> new JsString(derivationInfo.codeName),
-      "name" -> new JsString(derivationInfo.display.name),
+      "name" -> new JsString(name(derivationInfo)),
       "derivation" -> derivation
     )
   }
@@ -690,7 +823,8 @@ class ConfigureMathematicaResponse(linkNamePrefix : String, jlinkLibDirPrefix : 
 }
 
 //@todo these are a mess.
-class MathematicaConfigSuggestionResponse(os: String, version: String, kernelPath: String, kernelName: String,
+class MathematicaConfigSuggestionResponse(os: String, jvmBits: String, suggestionFound: Boolean,
+                                          version: String, kernelPath: String, kernelName: String,
                                           jlinkPath: String, jlinkName: String,
                                           allSuggestions: List[(String, String, String, String, String)]) extends Response {
 
@@ -704,8 +838,22 @@ class MathematicaConfigSuggestionResponse(os: String, version: String, kernelPat
 
   def getJson: JsValue = JsObject(
     "os" -> JsString(os),
+    "jvmArchitecture" -> JsString(jvmBits),
+    "suggestionFound" -> JsBoolean(suggestionFound),
     "suggestion" -> convertSuggestion((version, kernelPath, kernelName, jlinkPath, jlinkName)),
     "allSuggestions" -> JsArray(allSuggestions.map(convertSuggestion):_*)
+  )
+}
+
+class SystemInfoResponse(os: String, osVersion: String, jvmHome: String, jvmVendor: String,
+                         jvmVersion: String, jvmBits: String) extends Response {
+  def getJson: JsValue = JsObject(
+    "os" -> JsString(os),
+    "osVersion" -> JsString(osVersion),
+    "jvmHome" -> JsString(jvmHome),
+    "jvmVendor" -> JsString(jvmVendor),
+    "jvmVersion" -> JsString(jvmVersion),
+    "jvmArchitecture" -> JsString(jvmBits)
   )
 }
 
@@ -716,8 +864,9 @@ class MathematicaConfigurationResponse(linkName: String, jlinkLibDir: String) ex
   )
 }
 
-class ToolStatusResponse(configured : Boolean) extends Response {
+class ToolStatusResponse(tool: String, configured : Boolean) extends Response {
   def getJson: JsValue = JsObject(
+    "tool" -> JsString(tool),
     "configured" -> {if(configured) JsTrue else JsFalse}
   )
 }
@@ -821,6 +970,26 @@ class ExtractTacticResponse(tacticText: String) extends Response {
   )
 }
 
+case class ExpandTacticResponse(detailsProofId: Int, tacticParent: String, stepsTactic: String,
+                                tree: List[ProofTreeNode], openGoals: List[AgendaItem]) extends Response {
+  private lazy val proofTree = {
+    val theNodes: List[(String, JsValue)] = tree.map(nodeJson)
+    JsObject(
+      "nodes" -> JsObject(theNodes.toMap),
+      "root" -> JsString(tree.head.id.toString))
+  }
+
+  def getJson = JsObject(
+    "tactic" -> JsObject(
+      "stepsTactic" -> JsString(stepsTactic),
+      "parent" -> JsString(tacticParent)
+    ),
+    "detailsProofId" -> JsString(detailsProofId.toString),
+    if (tree.nonEmpty) "proofTree" -> proofTree else "proofTree" -> JsObject(),
+    "openGoals" -> JsObject(openGoals.map(itemJson):_*)
+  )
+}
+
 class TacticDiffResponse(diff: TacticDiff.Diff) extends Response {
   def getJson = JsObject(
     "context" -> JsString(BellePrettyPrinter(diff._1.t)),
@@ -833,6 +1002,20 @@ class ExtractProblemSolutionResponse(tacticText: String) extends Response {
   def getJson = JsObject(
     "fileContents" -> JsString(tacticText)
   )
+}
+
+class ValidateProofResponse(taskId: String, proved: Option[Boolean]) extends Response {
+  def getJson = proved match {
+    case Some(isProved) => JsObject(
+      "uuid" -> JsString(taskId),
+      "running" -> JsBoolean(false),
+      "proved" -> JsBoolean(isProved)
+    )
+    case None => JsObject(
+      "uuid" -> JsString(taskId),
+      "running" -> JsBoolean(true)
+    )
+  }
 }
 
 class MockResponse(resourceName: String) extends Response {

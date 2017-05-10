@@ -40,6 +40,7 @@ protected object FOQuantifierTactics {
   })
 
   def allInstantiate(quantified: Option[Variable] = None, instance: Option[Term] = None): DependentPositionTactic =
+  //@note can be internalized to a USubst tactic with internalized if-condition language
     //@todo save Option[.]; works for now because web UI always supplies instance, never quantified
     "allL" byWithInputs (instance match {case Some(i) => i::Nil case _ => Nil}, (pos: Position, sequent: Sequent) => {
       def vToInst(vars: Seq[Variable]) = if (quantified.isEmpty) vars.head else quantified.get
@@ -49,7 +50,8 @@ protected object FOQuantifierTactics {
         case (ctx, f@Forall(vars, qf)) if instance.isEmpty && (quantified.isEmpty || vars.contains(quantified.get)) =>
           useAt("all eliminate")(pos)
         case (ctx, f@Forall(vars, qf)) if instance.isDefined &&
-          StaticSemantics.boundVars(qf).symbols.intersect(vars.toSet).isEmpty =>
+          StaticSemantics.boundVars(qf).symbols.intersect(vars.toSet).isEmpty &&
+          (quantified.isEmpty || vars.contains(quantified.get)) =>
           //@todo assumes any USubstAboveURen
           useAt("all instantiate", uso => uso match { case Some(us) => us ++ RenUSubst(("f()".asTerm, us.renaming(instance.get)) :: Nil) })(pos)
         case (ctx, f@Forall(vars, qf)) if quantified.isEmpty || vars.contains(quantified.get) =>
@@ -69,11 +71,11 @@ protected object FOQuantifierTactics {
             cohide('Rlast) & CMon(pos.inExpr) & byUS("all instantiate") & done
             )
         case (_, (f@Forall(v, _))) if quantified.isDefined && !v.contains(quantified.get) =>
-          throw new BelleError("Cannot instantiate: universal quantifier " + f + " does not bind " + quantified.get)
+          throw new BelleThrowable("Cannot instantiate: universal quantifier " + f + " does not bind " + quantified.get)
         case (_, f) =>
-          throw new BelleError("Cannot instantiate: formula " + f.prettyString + " at pos " + pos + " is not a universal quantifier")
+          throw new BelleThrowable("Cannot instantiate: formula " + f.prettyString + " at pos " + pos + " is not a universal quantifier")
         case _ =>
-          throw new BelleError("Position " + pos + " is not defined in " + sequent.prettyString)
+          throw new BelleThrowable("Position " + pos + " is not defined in " + sequent.prettyString)
       }
     })
 
@@ -87,7 +89,8 @@ protected object FOQuantifierTactics {
         case (ctx, f@Exists(vars, qf)) if instance.isEmpty && (quantified.isEmpty || vars.contains(quantified.get)) =>
           useAt("exists eliminate")(pos)
         case (ctx, f@Exists(vars, qf)) if instance.isDefined &&
-          StaticSemantics.boundVars(qf).symbols.intersect(vars.toSet).isEmpty =>
+          StaticSemantics.boundVars(qf).symbols.intersect(vars.toSet).isEmpty &&
+          (quantified.isEmpty || vars.contains(quantified.get))  =>
           //@todo assumes any USubstAboveURen
           useAt("exists generalize", PosInExpr(1::Nil), (uso: Option[Subst]) => uso match { case Some(us) => us ++ RenUSubst(("f()".asTerm, us.renaming(instance.get)) :: Nil) })(pos)
         case (ctx, f@Exists(vars, qf)) if quantified.isEmpty || vars.contains(quantified.get) =>
@@ -109,23 +112,24 @@ protected object FOQuantifierTactics {
               cohide('Rlast) & CMon(pos.inExpr) & byUS("exists generalize", subst) & done
               )
         case (_, (f@Exists(v, _))) if quantified.isDefined && !v.contains(quantified.get) =>
-          throw new BelleError("Cannot instantiate: existential quantifier " + f + " does not bind " + quantified.get)
+          throw new BelleThrowable("Cannot instantiate: existential quantifier " + f + " does not bind " + quantified.get)
         case (_, f) =>
-          throw new BelleError("Cannot instantiate: formula " + f.prettyString + " at pos " + pos + " is not a existential quantifier")
+          throw new BelleThrowable("Cannot instantiate: formula " + f.prettyString + " at pos " + pos + " is not a existential quantifier")
         case _ =>
-          throw new BelleError("Position " + pos + " is not defined in " + sequent.prettyString)
+          throw new BelleThrowable("Position " + pos + " is not defined in " + sequent.prettyString)
       }
     })
 
 
   /** @see [[SequentCalculus.allR]] */
   lazy val allSkolemize: DependentPositionTactic = new DependentPositionTactic("allR") {
+    //@note could also try to skolemize directly and then skolemize to a fresh name index otherwise
     override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
       override def computeExpr(sequent: Sequent): BelleExpr = {
         require(pos.isSucc, "All skolemize only in succedent")
         val xs = sequent.sub(pos) match {
           case Some(Forall(vars, _)) => vars
-          case f => throw new BelleError("All skolemize expects universal quantifier at position " + pos + ", but got " + f)
+          case f => throw new BelleThrowable("All skolemize expects universal quantifier at position " + pos + ", but got " + f)
         }
         val namePairs = xs.map(x => (x, TacticHelper.freshNamedSymbol(x, sequent)))
         //@note rename variable x wherever bound to fresh x_0, so that final uniform renaming step renames back
@@ -147,19 +151,19 @@ protected object FOQuantifierTactics {
 
     private def outerMostBoundPos(x: Variable, fmls: IndexedSeq[Formula], posFactory: (Int, List[Int]) => Position): IndexedSeq[Position] = {
       fmls.map(outerMostBoundPos(x, _)).
-        zipWithIndex.map({case (Some(posInExpr), i) => Some(posFactory(i+1, posInExpr.pos)) case (None, i) => None}).
-        filter(_.isDefined).
-        map(_.get)
+        zipWithIndex.flatMap({case (posInExpr, i) => posInExpr.map(pie => posFactory(i+1, pie.pos)) })
     }
 
-    private def outerMostBoundPos(x: Variable, fml: Formula): Option[PosInExpr] = {
-      var outerMostBound: Option[PosInExpr] = None
+    private def outerMostBoundPos(x: Variable, fml: Formula): List[PosInExpr] = {
+      var outerMostBound: List[PosInExpr] = List()
       ExpressionTraversal.traverse(new ExpressionTraversal.ExpressionTraversalFunction {
         override def preF(p: PosInExpr, f: Formula): Either[Option[ExpressionTraversal.StopTraversal], Formula] = f match {
-          case Forall(xs, _) if xs.contains(x) => outerMostBound = Some(p); Left(Some(ExpressionTraversal.stop))
-          case Exists(xs, _) if xs.contains(x) => outerMostBound = Some(p); Left(Some(ExpressionTraversal.stop))
-          case Box(Assign(y, _), _) if x==y => outerMostBound = Some(p); Left(Some(ExpressionTraversal.stop))
-          case Diamond(Assign(y, _), _) if x==y => outerMostBound = Some(p); Left(Some(ExpressionTraversal.stop))
+          case Forall(xs, _) if xs.contains(x) && !outerMostBound.exists(_.isPrefixOf(p)) => outerMostBound = outerMostBound :+ p; Left(None)
+          case Exists(xs, _) if xs.contains(x) && !outerMostBound.exists(_.isPrefixOf(p))  => outerMostBound = outerMostBound :+ p; Left(None)
+          case Box(Assign(y, _), _) if x==y  && !outerMostBound.exists(_.isPrefixOf(p)) => outerMostBound = outerMostBound :+ p; Left(None)
+          case Box(AssignAny(y), _) if x==y  && !outerMostBound.exists(_.isPrefixOf(p)) => outerMostBound = outerMostBound :+ p; Left(None)
+          case Diamond(Assign(y, _), _) if x==y  && !outerMostBound.exists(_.isPrefixOf(p)) => outerMostBound = outerMostBound :+ p; Left(None)
+          case Diamond(AssignAny(y), _) if x==y  && !outerMostBound.exists(_.isPrefixOf(p)) => outerMostBound = outerMostBound :+ p; Left(None)
           case _ => Left(None)
         }
       }, fml)
@@ -209,7 +213,7 @@ protected object FOQuantifierTactics {
             /* use */ implyL('Llast) <(closeIdWith('Rlast), hide(pos, fml) & ProofRuleTactics.boundRenaming(Variable("x_"), x)('Llast) partial) partial,
             /* show */ cohide('Rlast) & TactixLibrary.by(DerivedAxioms.derivedAxiomOrRule("exists generalize")(subst))
             )
-        case _ => throw new BelleError("Position " + pos + " must refer to a formula in sequent " + sequent)
+        case _ => throw new BelleThrowable("Position " + pos + " must refer to a formula in sequent " + sequent)
       }
     }
 
@@ -283,27 +287,23 @@ protected object FOQuantifierTactics {
    * @param order The order of quantifiers.
    * @return The tactic.
    */
-  def universalClosure(order: List[NamedSymbol] = Nil): DependentPositionTactic = new DependentPositionTactic("universalClosure") {
-    override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
-      override def computeExpr(sequent: Sequent): BelleExpr = {
-        // fetch non-bound variables and parameterless function symbols
-        require(pos.isTopLevel, "Universal closure only at top-level")
-        val varsFns: Set[NamedSymbol] = StaticSemantics.freeVars(sequent(pos.top)).toSet ++ StaticSemantics.signature(sequent(pos.top))
-        require(order.toSet.subsetOf(varsFns), "Order of variables must be a subset of the free symbols+signature, but "
-          + (order.toSet -- varsFns) + " is not in the subset")
-        // use specified order in reverse, prepend the rest alphabetically
-        // @note get both: specified order and compatibility with previous sorting, which resulted in
-        //       reverse-alphabetical ordering of quantifiers
-        val sorted: List[Term] = ((varsFns -- order).
-          filter({ case BaseVariable(_, _, _) => true case Function(_, _, Unit, _, false) => true case _ => false }).
-          // guarantee stable sorting of quantifiers so that Mathematica behavior is predictable
-          toList.sorted ++ order.reverse).
-          map({ case v@BaseVariable(_, _, _) => v case fn@Function(_, _, Unit, _, false) => FuncOf(fn, Nothing) case _ => throw new IllegalArgumentException("Should have been filtered") })
+  def universalClosure(order: List[NamedSymbol] = Nil): DependentPositionTactic = "universalClosure" byWithInputs (order, (pos: Position, sequent: Sequent) => {
+    // fetch non-bound variables and parameterless function symbols
+    require(pos.isTopLevel, "Universal closure only at top-level")
+    val varsFns: Set[NamedSymbol] = StaticSemantics.freeVars(sequent(pos.top)).toSet ++ StaticSemantics.signature(sequent(pos.top))
+    require(order.toSet.subsetOf(varsFns), "Order of variables must be a subset of the free symbols+signature, but "
+      + (order.toSet -- varsFns) + " is not in the subset")
+    // use specified order in reverse, prepend the rest alphabetically
+    // @note get both: specified order and compatibility with previous sorting, which resulted in
+    //       reverse-alphabetical ordering of quantifiers
+    val sorted: List[Term] = ((varsFns -- order).
+      filter({ case BaseVariable(_, _, _) => true case Function(_, _, Unit, _, false) => true case _ => false }).
+      // guarantee stable sorting of quantifiers so that Mathematica behavior is predictable
+      toList.sorted ++ order.reverse).
+      map({ case v@BaseVariable(_, _, _) => v case fn@Function(_, _, Unit, _, false) => FuncOf(fn, Nothing) case _ => throw new IllegalArgumentException("Should have been filtered") })
 
-        if (sorted.isEmpty) skip
-        else sorted.map(t => universalGen(None, t)(pos)).reduce[BelleExpr](_ & _)
-      }
-    }
-  }
+    if (sorted.isEmpty) skip
+    else sorted.map(t => universalGen(None, t)(pos)).reduce[BelleExpr](_ & _)
+  })
   lazy val universalClosure: DependentPositionTactic = universalClosure()
 }

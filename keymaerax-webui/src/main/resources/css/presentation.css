@@ -22,18 +22,6 @@ a {
     color: var(--lsmain);
 }
 
-.editable-click:hover, a.editable-click:hover {
-    text-decoration: none;
-    color: var(--lsmain);
-    border-bottom-color: var(--lsmain);
-}
-
-.editable-click, a.editable-click {
-    text-decoration: none;
-    color: var(--lsmain);
-    border-bottom: dashed 1px var(--lsmain);
-}
-
 body {
   font-size: 18px;
   color: var(--lsmain);
@@ -106,8 +94,43 @@ del {
 
 .hl {background: transparent; }
 .hlhover {
-    background-color:var(--lsmain);
-    color: var(--lsmainback);
+  background-color:var(--lsmain);
+  color: var(--lsmainback);
+  position: relative;
+}
+
+.edithover {
+  border-bottom: 1px dashed;
+  position: relative;
+}
+.edithover:after {
+  content: "\f040"; /* fontawesome pencil */
+  font-family: FontAwesome;
+  right: -15px;
+  position: absolute;
+  top: 0;
+}
+
+.editable-error {
+  position: absolute;
+  background: white;
+  white-space: normal;
+  padding: 5px;
+  margin-left: -5px;
+  z-index: 1;
+}
+
+.well-compact {
+  padding: 0px;
+  margin-bottom: 10px;
+}
+
+.panel-heading-compact {
+  padding: 0px 15px 0px 0px;
+}
+
+.panel-sm {
+  margin-bottom: 10px;
 }
 
 .list-group-item.active,
@@ -302,7 +325,7 @@ del {
 
 .k4-carousel-caption {
   position: absolute;
-  right: 0%;
+  right: 2%;
   bottom: 20px;
   left: 0%;
   z-index: 10;
@@ -325,6 +348,24 @@ del {
 
 .popover .k4-tactic-popover-entry {
   width: 700px; /* @todo solve tactic popover layout problem for real */
+}
+
+.increase-popover-width {
+   width: 180px;
+}
+
+.modal-magnifyingglass {
+  width: 98%;
+  height: 95%;
+}
+
+.tacticalert-popover {
+   width: 90%;
+   left: 5% !important;
+}
+
+.k4-narrowinput {
+  max-width: 45px;
 }
 
 .k4-sequentRulePremise {
@@ -650,13 +691,16 @@ del {
   padding: 4px 4px 4px 4px;
   border-top-right-radius: 3px;
   border-bottom-right-radius: 3px;
-  display: table-cell;
+  display: block;
   font-size: 24px;
 }
 .k4-formula .k4-formula-content-abbreviate {
   padding: 4px 4px 4px 4px;
   border-top-right-radius: 3px;
   border-bottom-right-radius: 3px;
+}
+.k4-formula-container {
+  max-width: 90%;
 }
 
 /*

@@ -14,22 +14,22 @@ class DatabaseTacticSerializer(db: DBAbstraction) extends IOListener {
   def begin(input: BelleValue, expr: BelleExpr): Unit = {
     if (ignoreUntilAfter.isEmpty) {
       expr match {
-        case t: InputTactic[Formula] => {
+        case t: InputTactic => {
           print(t.prettyString)
           ignoreUntilAfter = Some(expr)
         }
-        case t: InputTactic[_] => println("Don't know what to do with InputTactics that don't take Formulas.")
+        case t: InputTactic => println("Don't know what to do with InputTactics that don't take Formulas.")
         case PartialTactic(t, _) => print("partial(")
       }
     }
   }
 
-  def end(input: BelleValue, expr: BelleExpr, output: Either[BelleValue,BelleError]): Unit = {
+  def end(input: BelleValue, expr: BelleExpr, output: Either[BelleValue,BelleThrowable]): Unit = {
     if (ignoreUntilAfter.isEmpty) {
       expr match {
           //@todo print(l + ")")???
         case PartialTactic(t, l) => print(")")
-        case t : InputTactic[_] => //nothing.
+        case t : InputTactic => //nothing.
       }
     }
     else if (ignoreUntilAfter.nonEmpty && ignoreUntilAfter.get == expr) {

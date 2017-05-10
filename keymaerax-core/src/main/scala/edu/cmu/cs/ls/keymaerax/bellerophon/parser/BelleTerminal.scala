@@ -7,7 +7,7 @@ import scala.util.matching.Regex
 
 private object PSEUDO  extends BelleTerminal("<pseudo>")
 
-sealed abstract class BelleTerminal(val img: String) {
+sealed abstract class BelleTerminal(val img: String, val postfix: String = "[\\s\\S]*") {
   assert(img != null)
 
   override def toString = getClass.getSimpleName// + "\"" + img + "\""
@@ -15,7 +15,7 @@ sealed abstract class BelleTerminal(val img: String) {
     * @return The regex that identifies this token.
     */
   def regexp : scala.util.matching.Regex = img.r
-  val startPattern: Regex = ("^" + regexp.pattern.pattern + "[\\s\\S]*").r
+  val startPattern: Regex = ("^" + regexp.pattern.pattern + postfix).r
 }
 
 private case class IDENT(name: String) extends BelleTerminal(name) {
@@ -30,7 +30,11 @@ private object IDENT {
 
 
 // Combinator Tokens
-private object SEQ_COMBINATOR extends BelleTerminal("&") {
+object SEQ_COMBINATOR extends BelleTerminal(";") {
+  override def regexp = ";".r
+}
+
+private object DEPRECATED_SEQ_COMBINATOR extends BelleTerminal("&") {
   override def regexp = "\\&".r
 }
 
@@ -38,7 +42,7 @@ private object EITHER_COMBINATOR extends BelleTerminal("|") {
   override def regexp = "\\|".r
 }
 
-private object BRANCH_COMBINATOR extends BelleTerminal("<")
+object BRANCH_COMBINATOR extends BelleTerminal("<")
 
 private object ON_ALL extends BelleTerminal("doall")
 
@@ -66,6 +70,18 @@ private object N_TIMES {
 
 
 private object US_MATCH extends BelleTerminal("USMatch")
+
+private object LET extends BelleTerminal("let", "[\\s][\\s\\S]*")
+
+private object IN extends BelleTerminal("in", "[\\s][\\s\\S]*")
+
+private object TACTIC extends BelleTerminal("tactic", "[\\s][\\s\\S]*")
+
+private object AS extends BelleTerminal("as", "[\\s][\\s\\S]*")
+
+private object DEF extends BelleTerminal("def", "[\\s][\\s\\S]*")
+
+private object EXPAND extends BelleTerminal("expand", "[\\s][\\s\\S]*")
 
 private object RIGHT_ARROW extends BelleTerminal("=>")
 
@@ -97,6 +113,8 @@ private object SEARCH_ANTECEDENT extends BelleTerminal("'L") with TACTIC_ARGUMEN
 private object SEARCH_EVERYWHERE extends BelleTerminal("'_") with TACTIC_ARGUMENT {
   override def regexp = "'\\_".r
 }
+private object EXACT_MATCH extends BelleTerminal("==") with TACTIC_ARGUMENT
+private object UNIFIABLE_MATCH extends BelleTerminal("~=") with TACTIC_ARGUMENT
 
 private object PARTIAL extends BelleTerminal("partial") {
   override def regexp = "(?i)partial".r // allow case-insensitive use of the word partial.
@@ -106,11 +124,12 @@ private object DONE extends BelleTerminal("done") {
   override def regexp = "(?i)done".r // allow case-insensitive use of the word done.
 }
 
-/** A dL expression. We allow both terms and formulas as arguments; e.g. in diffGhost. */
+/** A tactic argument expression. We allow strings, terms, and formulas as arguments. */
 private case class EXPRESSION(exprString: String) extends BelleTerminal(exprString) with TACTIC_ARGUMENT {
-  val undelimitedExprString = exprString.drop(2).dropRight(2)
-  
-  val expression: Expression = {
+  lazy val undelimitedExprString: String = exprString.drop(2).dropRight(2)
+
+  /** Parses the `exprString` as dL expression. May throw a parse exception. */
+  lazy val expression: Expression = {
     assert(exprString.startsWith("{`") && exprString.endsWith("`}"),
       s"EXPRESSION.regexp should ensure delimited expression begin and end with {` `}, but an EXPRESSION was constructed with argument: $exprString")
 
@@ -118,12 +137,12 @@ private case class EXPRESSION(exprString: String) extends BelleTerminal(exprStri
     KeYmaeraXParser(undelimitedExprString)
   }
 
-  override def regexp = EXPRESSION.regexp
-  override val startPattern = EXPRESSION.startPattern
+  override def regexp: Regex = EXPRESSION.regexp
+  override val startPattern: Regex = EXPRESSION.startPattern
 
   override def toString = s"EXPRESSION($exprString)"
 
-  override def equals(other: Any) = other match {
+  override def equals(other: Any): Boolean = other match {
     case EXPRESSION(str) => str == exprString
     case _ => false
   }

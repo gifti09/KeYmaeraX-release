@@ -41,7 +41,7 @@ class RoundtripTests extends TacticTestBase {
   }
 
   it should "combinators" in {
-    roundTrip(Idioms.nil & Idioms.nil, "nil & nil")
+    roundTrip(Idioms.nil & Idioms.nil, "nil ; nil")
     roundTrip(Idioms.nil | Idioms.nil, "nil | nil")
     roundTrip(OnAll(Idioms.nil), "doall(nil)")
     roundTrip(Idioms.nil*2, "nil*2")
@@ -53,25 +53,16 @@ class RoundtripTests extends TacticTestBase {
   }
 
   it should "input tactic generalizeb" in {
-    roundTrip(TactixLibrary.generalize("x>0".asFormula)(1), "generalizeb({`x>0`}, 1)")
+    roundTrip(TactixLibrary.generalize("x>0".asFormula)(1), "MR({`x>0`}, 1)")
   }
 
   it should "input tactic diffCut" in {
-    roundTrip(TactixLibrary.diffCut("x>0".asFormula)(1), "diffCut({`x>0`}, 1)")
+    roundTrip(TactixLibrary.dC("x>0".asFormula)(1), "dC({`x>0`}, 1)")
   }
 
-  it should "input tactic DA4" in {
-    //@todo test with BelleExpr data structure, but DifferentialTactics is private
-    roundTrip("DA4({`x=0`}, {`x`}, {`1`}, {`2`}, 1)")
-  }
-
-  it should "input tactic diffGhost" in {
-    //@todo test with BelleExpr data structure, but DifferentialTactics is private
-    roundTrip("diffGhost({`x`}, {`1`}, {`2`}, {`0`}, 1)")
-  }
-
-  it should "input tactic DGTactic" in {
-    roundTrip(TactixLibrary.DG(AtomicODE(DifferentialSymbol("x".asVariable), "5*x+2".asTerm))(1), "DGTactic({`x`}, {`5`}, {`2`}, 1)")
+  it should "input tactic dG" in {
+    roundTrip(TactixLibrary.dG(AtomicODE(DifferentialSymbol("x".asVariable), "5*x+2".asTerm), None)(1), "dG({`x`}, {`5`}, {`2`}, 1)")
+    roundTrip(TactixLibrary.dG(AtomicODE(DifferentialSymbol("x".asVariable), "5*x+2".asTerm), Some("x>0".asFormula))(1), "dG({`x`}, {`5`}, {`2`}, {`x>0`}, 1)")
   }
 
   it should "input tactic cut, cutL, cutR" in {
