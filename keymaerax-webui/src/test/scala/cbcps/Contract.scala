@@ -17,6 +17,7 @@ import edu.cmu.cs.ls.keymaerax.btactics.{DerivedAxioms, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.btactics.TreeForm.Var
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXPrettyPrinter}
 import ProofHelper._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import sun.misc.FloatingDecimal.BinaryToASCIIConverter
 
 import scala.collection.immutable._
@@ -804,7 +805,7 @@ object Contract {
     * @tparam C The type of contract to be composed, as only contracts of the same type can be composed.
     * @return The verified composit contract.
     */
-  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], side1: mutable.Map[Seq[Variable], Provable], side2: mutable.Map[Seq[Variable], Provable], verify: Boolean = true, check: Boolean = false): C = {
+  def compose[C <: Contract](ctr1: C, ctr2: C, X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), ProvableSig], side1: mutable.Map[Seq[Variable], ProvableSig], side2: mutable.Map[Seq[Variable], ProvableSig], verify: Boolean = true, check: Boolean = false): C = {
     //Initial checks
     require(ctr1.getClass.equals(ctr2.getClass), "only contracts of the same type can be composed")
     require(!verify || (ctr1.isVerified() && ctr2.isVerified()), "only verified contracts can be composed and verified")
@@ -1502,7 +1503,7 @@ object Contract {
         t
     })
 
-    def closeSide(side: mutable.Map[Seq[Variable], Provable]): DependentPositionTactic = "Close With Sidecondition" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def closeSide(side: mutable.Map[Seq[Variable], ProvableSig]): DependentPositionTactic = "Close With Sidecondition" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(Compose(Compose(Compose(dp, ctrl), told), plant), True)) =>
         (if (PRINT_CLOSE_SIDE) print("CLOSE SIDE 0 - true") else skip) & boxTrue
       case Some(Box(Compose(Compose(Compose(dp, ctrl), told), plant), out)) => {
@@ -1518,7 +1519,7 @@ object Contract {
       }
     })
 
-    def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), Provable], vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+    def introduceAndWeakenForAll(piIn: LinkedHashMap[Seq[Variable], Formula], piOut: LinkedHashMap[Seq[Variable], Formula], X: mutable.LinkedHashMap[Seq[Variable], Seq[Variable]], cpoT: mutable.Map[(Seq[Variable], Seq[Variable]), ProvableSig], vIn3: Seq[Seq[Variable]]): DependentPositionTactic = "Introduce And Weaken For All" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, Box(in, Box(ports, Box(ports3, _))))) =>
         var t: BelleExpr = (if (PRINT_INTRODUCE_AND_WEAKEN_FOR_ALL) print("introduceAndWeakenForAll") else skip)
         val vInCon: mutable.LinkedHashMap[Seq[Variable], Formula] = piIn.filter((e) => X.keySet.contains(e._1))
@@ -1622,7 +1623,7 @@ object Contract {
 
     def introduceTestFor(vIn: Seq[Variable], tIn: Formula, vOut: Seq[Variable], tOut: Formula,
                          nIn: Int, cntIn: Int, nPorts: Int, cntPorts: Int, nPorts3: Int, cntPorts3: Int,
-                         inPos: Int, portPos: Int, cpo: Provable,
+                         inPos: Int, portPos: Int, cpo: ProvableSig,
                          Xin: Seq[Seq[Variable]]): DependentPositionTactic
     = "Introduce And Weaken For" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
       case Some(Box(p, _)) =>

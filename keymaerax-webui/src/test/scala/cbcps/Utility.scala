@@ -7,7 +7,7 @@ import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.core.{And, NamedSymbol, StaticSemantics, SuccPos, _}
-import edu.cmu.cs.ls.keymaerax.launcher.{DefaultConfiguration}
+import edu.cmu.cs.ls.keymaerax.launcher.DefaultConfiguration
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.tools.{KeYmaera, Mathematica, Tool, ToolEvidence}
@@ -17,6 +17,7 @@ import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 import edu.cmu.cs.ls.keymaerax.btactics.DebuggingTactics._
 import edu.cmu.cs.ls.keymaerax.btactics.PropositionalTactics.{implyRi, andLi => _, modusPonens => _, _}
 import edu.cmu.cs.ls.keymaerax.btactics._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import sun.security.provider.certpath.IndexedCollectionCertStore
 
 import scala.collection.immutable._
@@ -69,7 +70,7 @@ object Utility {
 
   def loadLemma(id: LemmaID): Option[Lemma] = LemmaDBFactory.lemmaDB.get(id)
 
-  def addLemma(lemmaName: String, fact: Provable): Lemma = {
+  def addLemma(lemmaName: String, fact: ProvableSig): Lemma = {
     require(fact.isProved, "only proved Provables would be accepted as lemmas: " + lemmaName + " got\n" + fact)
     // create evidence (traces input into tool and output from tool)
     val evidence = new ToolEvidence(immutable.List("input" -> fact.toString, "output" -> "true")) :: Nil
@@ -637,13 +638,13 @@ object Lemmas {
   val n5 = "Proof of Lemma5 - Introduce Test"
   val t5 = implyR('R) & equivR('R) < (
     // ->
-    (if (PRINT_LEMMA5) print("-> -1") else skip) & implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & composeb(1, 0 :: Nil) & testb(1, 0 :: 1 :: Nil) &
+    (if (PRINT_LEMMA5) print("-> -1") else skip) & implyRi()(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & composeb(1, 0 :: Nil) & testb(1, 0 :: 1 :: Nil) &
       (if (PRINT_LEMMA5) print("-> 1") else skip) & useAt("K modal modus ponens", PosInExpr(1 :: Nil))('R) & monb &
       (if (PRINT_LEMMA5) print("-> 2") else skip) & implyR('R) & modusPonens(SeqPos(-1).asInstanceOf[AntePos], SeqPos(-2).asInstanceOf[AntePos]) & closeId &
       (if (PRINT_LEMMA5) print("-> 3") else skip)
     ,
     // <-
-    (if (PRINT_LEMMA5) print("<- 0") else skip) & implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) &
+    (if (PRINT_LEMMA5) print("<- 0") else skip) & implyRi()(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) &
       (if (PRINT_LEMMA5) print("<- 1") else skip) & composeb(1, 1 :: Nil) & testb(1, 1 :: 1 :: Nil) &
       (if (PRINT_LEMMA5) print("<- 2") else skip) & K('R) &
       (if (PRINT_LEMMA5) print("<- 3") else skip) & monb & implyR('R) & implyR('R) & closeId
@@ -801,8 +802,8 @@ object Lemmas {
   val f7 = "[a;](F(||)->G(||)) -> (([a;][?G(||);]A(||)) -> [a;][?F(||);]A(||))".asFormula
   val n7 = "Proof of Corollary1- Weaken Test Context"
   val t7 = implyR('R) & implyR('R) & andLi & useAt(DerivedAxioms.boxAnd, PosInExpr(1 :: Nil))('L) & monb & andL('L) &
-    implyRi(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) &
-    implyRi(SeqPos(-1).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & t6
+    implyRi()(SeqPos(-2).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) &
+    implyRi()(SeqPos(-1).asInstanceOf[AntePos], SeqPos(1).asInstanceOf[SuccPos]) & t6
 
   /**
     * Applies Lemma 7 (i.e., Corollary 1) to weaken a test.
@@ -831,6 +832,11 @@ object Lemmas {
         )
     }
   })
+
+
+
+
+
 
   //  def lemma(n: String): Option[Lemma] = {
   //    val lemmaDB = LemmaDBFactory.lemmaDB
@@ -908,7 +914,7 @@ object Lemmas {
       implyR('R) & composeb('R) & composeb(1, 1 :: Nil) & lemma1(1, 1 :: Nil) & normalize).isProved)
     println("==> Test Lemma 2 - proved? " + TactixLibrary.proveBy("t=0&a=0 -> [a:=2;{t'=1,a'=1,b'=1&(a<10&b<10)&t<10}]a<20".asFormula,
       implyR('R) & composeb('R) &
-        lemma2_DC(mutable.Seq("b".asVariable), "b<10".asFormula)('R) & assignb('R) & diffSolve('R) & QE & print("y")
+        lemma2_DC(mutable.Seq("b".asVariable), "b<10".asFormula)('R) & assignb('R) & solve('R) & QE & print("y")
     ).isProved)
     println("==> Test Lemma 3 - proved? " + TactixLibrary.proveBy("[a:=4;?a>0;]a>0".asFormula,
       composeb('R) & useAt("ANON", lemma3.fact, PosInExpr(1 :: Nil))('R) & randomb('R) & allR('R) & testb('R) & prop).isProved)

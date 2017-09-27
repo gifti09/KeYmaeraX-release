@@ -764,7 +764,6 @@ class PerformanceTest extends TacticTestBase {
 
     println(trainCtr.contract())
 
-    /*
     trainCtr.verifyBaseCase(baseTactic)
     trainCtr.verifyUseCase(useTactic)
 
@@ -775,7 +774,7 @@ class PerformanceTest extends TacticTestBase {
     trainCtr shouldBe 'verified
 
     Contract.save(trainCtr, "pt4-train"+ext+".cbcps")
-    */
+
   }
 
   /* CPO and sidecondition */
@@ -1011,17 +1010,17 @@ class PerformanceTest extends TacticTestBase {
       s"-($t) * (v - $a/2*($t)) <= y - old(y) & y - old(y) <= ($t) * (v - $a/2*($t))".asFormula)
 
     val dw1: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 3 /* 3 old(...) in DI */ & (andL('_) *) &
-      print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
+      print("Before diffWeaken") & dW(1) & print("After diffWeaken")
 
     def accArithTactic1: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
       replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-9) & print("After replaceTransform") &
       speculativeQE & print("Proved acc arithmetic")
 
-    val robStepTactic = print("Induction step") & implyR('R) & (andL('L) *) & chase(1) & print("After chase") & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
-      print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
-      print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+    val robStepTactic = print("Induction step") & implyR('R) & (andL('L) *) & chase(1) & print("After chase") & unfoldProgramNormalize & printIndexed("After normalize") < (
+      print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) */ & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+      print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) */ & OnAll(speculativeQE) & print("Stopped branch done"),
       print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
+        di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(betaRule, skip, skip) */ & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
         hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
         hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
       ) & print("Acceleration branch done")
@@ -1304,11 +1303,11 @@ class PerformanceTest extends TacticTestBase {
     followCtr.verifyBaseCase(baseTactic)
     followCtr.verifyUseCase(useTactic)
 
-    val followStepTactic = implyR('R) & chase(1) & normalize(andR('R), skip, skip) &
-      OnAll(diffSolve(1) partial) < (
+    val followStepTactic = implyR('R) & chase(1) & unfoldProgramNormalize &
+      OnAll(solve(1) partial) < (
         normalize & OnAll(speculativeQE),
         normalize & OnAll(speculativeQE),
-        (normalize(betaRule, skip, skip) < (
+        (normalize() /*TODO normalize(betaRule, skip, skip) */< (
           QE,
           allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
             & exhaustiveEqL2R(true)(-18) & exhaustiveEqL2R(true)(-14) & exhaustiveEqL2R(true)(-13)
@@ -1542,17 +1541,17 @@ class PerformanceTest extends TacticTestBase {
       s"-($t) * (v - $a/2*($t)) <= y - old(y) & y - old(y) <= ($t) * (v - $a/2*($t))".asFormula)
 
     val dw1: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 3 /* 3 old(...) in DI */ & (andL('_) *) &
-      print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
+      print("Before diffWeaken") & dW(1) & print("After diffWeaken")
 
     def accArithTactic1: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
       replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-9) & print("After replaceTransform") &
       speculativeQE & print("Proved acc arithmetic")
 
-    val robStepTactic = print("Induction step") & implyR('R) & (andL('L) *) & chase(1) & print("After chase") & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
-      print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
-      print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+    val robStepTactic = print("Induction step") & implyR('R) & (andL('L) *) & chase(1) & print("After chase") & unfoldProgramNormalize & printIndexed("After normalize") < (
+      print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) */ & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+      print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) */ & OnAll(speculativeQE) & print("Stopped branch done"),
       print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
+        di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(betaRule, skip, skip) */ & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
         hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
         hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
       ) & print("Acceleration branch done")
@@ -1701,7 +1700,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   //Mathematica
-  behavior of "Component-based Robix"
+  behavior of "Component-based Robix Global"
   ignore should "prove Robot Component" in withMathematica { implicit tool =>
     cb_robix_robot()
   }
@@ -1715,14 +1714,14 @@ class PerformanceTest extends TacticTestBase {
     cb_robix_composition()
   }
 
-  behavior of "Monolithic Robix"
+  behavior of "Monolithic Robix Global"
   ignore should "prove System" in withMathematica { implicit tool =>
     mon_robix
   }
 
   //Z3
-  behavior of "Component-based Robix Z3"
-  ignore should "prove Robot Component" in withZ3 { implicit tool =>
+  behavior of "Component-based Robix Global Z3"
+  ignore should "prove Robot Component Z3" in withZ3 { implicit tool =>
     cb_robix_robot("-Z3")
   }
   ignore should "prove Obstacle Component" in withZ3 { implicit tool =>
@@ -1735,7 +1734,7 @@ class PerformanceTest extends TacticTestBase {
     cb_robix_composition("-Z3")
   }
 
-  behavior of "Monolithic Robix Z3"
+  behavior of "Monolithic Robix GLobal Z3"
   ignore should "prove System" in withZ3 { implicit tool =>
     mon_robix
   }

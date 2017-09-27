@@ -73,6 +73,12 @@ object Tester {
     println(TactixLibrary.proveBy(f, composeb('R) & print("before") & useAt("DGiA", PosInExpr(1::Nil))(1,1::Nil) & print("after") & assignb('R) & master()).isProved)
   }
 
+  def testProofRules() = {
+    val f="[x:=*;?x>0]x>0 -> [x:=2;?x>0]x>0".asFormula
+
+    println(TactixLibrary.proveBy(f, implyR & randomb('L)))
+  }
+
   def test() = {
     ProofHelper.initProver
     //Match Test
@@ -112,8 +118,9 @@ object Tester {
     //boxTrue Test
     //    testBoxTrue()
     //Two-ODE Axiom
-    testTwoODEAxiom()
-
+//    testTwoODEAxiom()
+    //Test Proof Rules
+    testProofRules()
 
     //        val t1 = test1(true)
     //        val bt = bigTest(true)
@@ -1158,17 +1165,17 @@ object Tester {
         s"-($t) * (v - $a/2*($t)) <= y - old(y) & y - old(y) <= ($t) * (v - $a/2*($t))".asFormula)
 
       val dw1: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 3 /* 3 old(...) in DI */ & (andL('_) *) &
-        print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
+        print("Before diffWeaken") & dW(1) & print("After diffWeaken")
 
       def accArithTactic1: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
         replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-10) & print("After replaceTransform") &
         speculativeQE & print("Proved acc arithmetic")
 
-      val st1 = print("Induction step") & (andL('L) *) & chase(1) & print("After chase") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & printIndexed("After normalize") < (
-        print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
-        print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(andR('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+      val st1 = print("Induction step") & (andL('L) *) & chase(1) & print("After chase") & normalize() /* TODO normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) */ & printIndexed("After normalize") < (
+        print("Braking branch") & di1("-B", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(choiceb('R) | composeb('R) | andR('R) | randomb('R) | testb('R) | implyR('R) | assignb('R), skip, skip) */  & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+        print("Stopped branch") & di1("0", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & unfoldProgramNormalize & OnAll(speculativeQE) & print("Stopped branch done"),
         print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
-          di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
+          di1("a", "t-tOld")(1) & print("After DI") & dw1 & print("After DW") & normalize() /* TODO normalize(betaRule, skip, skip) */ & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
           hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic1,
           hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic1
         ) & print("Acceleration branch done")
@@ -1239,9 +1246,9 @@ object Tester {
 
       val bct2 = print("Base case...") & speculativeQE & print("Base case done")
       val uct2 = print("Use case...") & speculativeQE & print("Use case done")
-      val st2 = print("Induction step") & chase(1) & normalize(composeb('R) | assignb('R), skip, skip) & printIndexed("After normalize1") &
-        chase(1) & normalize(andR('R), skip, skip) & printIndexed("After normalize2") &
-        diffSolve('R) & master()
+      val st2 = print("Induction step") & chase(1) & normalize() /* TODO normalize(composeb('R) | assignb('R), skip, skip) */ & printIndexed("After normalize1") &
+        chase(1) & unfoldProgramNormalize & printIndexed("After normalize2") &
+        solve('R) & master()
 
       if (ctr2.verifyBaseCase(bct2).isEmpty)
         println("ctr2-baseCase NOT verified!")
@@ -1271,8 +1278,8 @@ object Tester {
     println("verify obstacle step test: " + TactixLibrary.proveBy(lctr2.proofGoals()(2), TactixLibrary.by(lctr2.stepLemma.get) & prop))
 
     if (initialize) {
-      val sct = normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R), skip, skip) &
-        diffSolve('R) & master()
+      val sct = normalize() /* TODO normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R), skip, skip) */ &
+        solve('R) & master()
       //Verify lemmas for side conditions
       println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
@@ -1382,8 +1389,8 @@ object Tester {
       val bct1 = print("Base case") & QE & print("Base case done")
       val uct1 = print("Use case") & QE & print("Use case done")
       val st1 = print("Induction step") & implyR('R) & (andL('L) *) & print("Induction step Go...") &
-        chase(1) & normalize(andR('R), skip, skip) & print("chased and normalized...") &
-        OnAll(diffSolve(1) partial) & print("diffsolved...") &
+        chase(1) & unfoldProgramNormalize & print("chased and normalized...") &
+        OnAll(solve(1) partial) & print("diffsolved...") &
         OnAll(speculativeQE) & printIndexed("Induction step done")
 
 
@@ -1448,7 +1455,7 @@ object Tester {
       val bct2 = print("Base case") & master() & print("Base case done")
       val uct2 = print("Use case") & master() & print("Use case done")
       //@todo proves only when notL is disabled in normalize, because diffSolve hides facts
-      val st2 = print("Induction step") & implyR('R) & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve('R) & print("Foo") partial) &
+      val st2 = print("Induction step") & implyR('R) & chase(1) & unfoldProgramNormalize & printIndexed("WTF?") & OnAll(solve('R) & print("Foo") partial) &
         printIndexed("After diffSolve") & OnAll(normalize partial) & printIndexed("After normalize") & OnAll(speculativeQE) & printIndexed("Induction step done")
 
 
@@ -1481,8 +1488,8 @@ object Tester {
       val sct = print("sideT") & master()
       implyR('R) & (andL('L) *) & print("sideT - implyR/andL") &
         chase(1) & print("sideT - chased") &
-        normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) & print("sideT - normalized") &
-        diffSolve('R) & master()
+        normalize() /* TODO normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) */ & print("sideT - normalized") &
+        solve('R) & master()
       //Verify lemmas for side conditions
       println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
@@ -1633,12 +1640,12 @@ object Tester {
 
       val bct2 = print("Base case") & master() & print("Base case done")
       val uct2 = print("Use case") & master() & print("Use case done")
-      val st2 = print("Induction step") & implyR('R) & chase(1) & normalize(andR('R), skip, skip) & print("after normalize") &
-        OnAll(diffSolve(1) partial) < (
+      val st2 = print("Induction step") & implyR('R) & chase(1) & unfoldProgramNormalize & print("after normalize") &
+        OnAll(solve(1) partial) < (
           print("Braking branch") & normalize & OnAll(speculativeQE) & print("Braking branch done"),
           print("Stopped branch") & normalize & OnAll(speculativeQE) & print("Stopped branch done"),
           (printIndexed("Acceleration branch")
-            & normalize(betaRule, skip, skip) < (
+            & normalize() /* TODO normalize(betaRule, skip, skip) */ < (
             print("branch1") & QE & print("b1 done"),
             printIndexed("branch2")
               & allL("s_".asVariable, "t_".asVariable)(-20) & implyL(-20) < (hide(1) & QE, skip) & andL(-20)
@@ -1687,8 +1694,8 @@ object Tester {
       val sct = print("sideT") & master()
       implyR('R) & (andL('L) *) & print("sideT - implyR/andL") &
         chase(1) & print("sideT - chased") &
-        normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) & print("sideT - normalized") &
-        diffSolve('R) & master()
+        normalize() /* TODO normalize(andL('L) | composeb('R) | assignb('R) | randomb('R) | implyR('R) | testb('R) | allR('R), skip, skip) */ & print("sideT - normalized") &
+        solve('R) & master()
       //Verify lemmas for side conditions
       println("Robot sideConditions: " + lctr1.sideConditions().mkString("\n"))
       lctr1.sideConditions().foreach { case (v, f: Formula) => {
@@ -1941,7 +1948,7 @@ object Tester {
     }));
     println(ctr1.component.name + " - Step: " + (ctr1.verifyStep(
       implyR('R) & (composeb('R) *) & testb('R)
-        & implyR('R) & assignb('R) & assignb('R) & diffSolve('R)
+        & implyR('R) & assignb('R) & assignb('R) & solve('R)
         & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R)
         & QE
     ) match {
@@ -1964,8 +1971,8 @@ object Tester {
     println(ctr2.component.name + " - Step: " + (ctr2.verifyStep(
       implyR('R) & (composeb('R) *) & testb('R)
         & implyR('R) & choiceb('R) & andR('R) < (
-        assignb('R) & assignb('R) & diffSolve('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE,
-        assignb('R) & assignb('R) & diffSolve('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE
+        assignb('R) & assignb('R) & solve('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE,
+        assignb('R) & assignb('R) & solve('R) & implyR('R) & composeb('R) & randomb('R) & allR('R) & testb('R) & implyR('R) & testb('R) & implyR('R) & QE
       )
     ) match {
       case None => "NOT verified."

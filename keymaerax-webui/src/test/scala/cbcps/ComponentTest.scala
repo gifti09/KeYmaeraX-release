@@ -37,7 +37,7 @@ class ComponentTest extends TacticTestBase {
     val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
       print("Base case") & QE & print("Base case done"),
       print("Use case") & QE & print("Use case done"),
-      print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & OnAll(diffSolve(1) partial) &
+      print("Induction step") & chase(1) & unfoldProgramNormalize & OnAll(solve(1) partial) &
         OnAll(speculativeQE) & printIndexed("Induction step done")
       ) & print("Proof done")
 
@@ -59,7 +59,7 @@ class ComponentTest extends TacticTestBase {
     val tactic = implyR(1) & (andL('L) *) & loop(invariant)(1) < (
       print("Base case") & master() & print("Base case done"),
       print("Use case") & master() & print("Use case done"),
-      print("Induction step") & chase(1) & normalize(andR('R), skip, skip) & printIndexed("WTF?") & OnAll(diffSolve('R) & print("Foo") partial) &
+      print("Induction step") & chase(1) & unfoldProgramNormalize & printIndexed("WTF?") & OnAll(solve('R) & print("Foo") partial) &
         printIndexed("After diffSolve") & OnAll(normalize partial) & printIndexed("After normalize") & OnAll(speculativeQE) & printIndexed("Induction step done")
       ) & print("Proof done")
 
@@ -90,7 +90,7 @@ class ComponentTest extends TacticTestBase {
       s"-($t) * (v - $a/2*($t)) <= y - old(y) & y - old(y) <= ($t) * (v - $a/2*($t))".asFormula)
 
     val dw: BelleExpr = exhaustiveEqR2L(hide = true)('Llast) * 3 /* 3 old(...) in DI */ & (andL('_) *) &
-      print("Before diffWeaken") & diffWeaken(1) & print("After diffWeaken")
+      print("Before diffWeaken") & dW(1) & print("After diffWeaken")
 
     def accArithTactic: BelleExpr = (alphaRule *) & printIndexed("Before replaceTransform") &
       replaceTransform("ep".asTerm, "(t-tOld)".asTerm)(-10) & print("After replaceTransform") &
@@ -99,11 +99,11 @@ class ComponentTest extends TacticTestBase {
     val tactic = implyR('R) & (andL('L) *) & loop(invariant("t-tOld"))('R) < (
       /* base case */ print("Base case...") & speculativeQE & print("Base case done"),
       /* use case */ print("Use case...") & speculativeQE & print("Use case done"),
-      /* induction step */ print("Induction step") & chase(1) & print("After chase") & normalize(andR('R), skip, skip) & printIndexed("After normalize") < (
-      print("Braking branch") & di("-B", "t-tOld")(1) & print("After DI") & dw & print("After DW") & normalize(andR('R), skip, skip) & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
-      print("Stopped branch") & di("0", "t-tOld")(1) & print("After DI") & dw & print("After DW") & normalize(andR('R), skip, skip) & OnAll(speculativeQE) & print("Stopped branch done"),
+      /* induction step */ print("Induction step") & chase(1) & print("After chase") & unfoldProgramNormalize & printIndexed("After normalize") < (
+      print("Braking branch") & di("-B", "t-tOld")(1) & print("After DI") & dw & print("After DW") & unfoldProgramNormalize & print("After braking normalize") & OnAll(speculativeQE) & print("Braking branch done"),
+      print("Stopped branch") & di("0", "t-tOld")(1) & print("After DI") & dw & print("After DW") & unfoldProgramNormalize & OnAll(speculativeQE) & print("Stopped branch done"),
       print("Acceleration branch") & hideL(Find.FindL(0, Some("v=0|abs(x-xoIn)>v^2/(2*B)+V*(v/B)|abs(y-yoIn)>v^2/(2*B)+V*(v/B)".asFormula))) &
-        di("a", "t-tOld")(1) & print("After DI") & dw & print("After DW") & normalize(betaRule, skip, skip) & print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
+        di("a", "t-tOld")(1) & print("After DI") & dw & print("After DW") & unfoldProgramNormalize /* TODO normalize(betaRule,skip,skip) */& print("After acc normalize") & OnAll(hideFactsAbout("dx", "dy", "k", "k_0") partial) < (
         hideFactsAbout("y", "yoIn", "yoIn0") & accArithTactic,
         hideFactsAbout("x", "xoIn", "xoIn0") & accArithTactic
         ) & print("Acceleration branch done")

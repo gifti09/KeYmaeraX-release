@@ -13,6 +13,7 @@ import edu.cmu.cs.ls.keymaerax.core.{Lemma, NamedSymbol, Provable, StaticSemanti
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter.StringToStringConverter
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
 
 import scala.collection.immutable
@@ -66,7 +67,7 @@ class Component() extends Serializable {
 
   private var componentProof: Option[ComponentProof] = None
 
-  def proof: Option[Provable] = if (lemma.isEmpty) None else Some(lemma.get.fact)
+  def proof: Option[ProvableSig] = if (lemma.isEmpty) None else Some(lemma.get.fact)
 
   def name = _name
 
