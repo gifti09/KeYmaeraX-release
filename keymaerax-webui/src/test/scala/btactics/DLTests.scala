@@ -509,38 +509,50 @@ class DLTests extends TacticTestBase {
   "Convergence" should "work in easy case" in {
     val fml = "<{x:=x-1;}*>x < 0".asFormula
     val arg = Variable("v")
-    val defn = Equal(Variable("v"), Variable("x"))
+    val defn = Greater(Variable("v"), Variable("x"))
     val result = proveBy(fml,DLBySubst.conRule(arg,defn)(1))
-    result.subgoals(0).succ should contain only "\\exists v v=x".asFormula
-    result.subgoals(1).ante should contain only ("v>0".asFormula, "v=x".asFormula)
-    result.subgoals(1).succ should contain only "<x:=x-1;>v-1=x".asFormula
-    result.subgoals(2).ante should contain only ("v<0".asFormula, "v=x".asFormula)
+    result.subgoals(0).succ should contain only "\\exists v v>x".asFormula
+    result.subgoals(1).ante should contain only ("v>0".asFormula, "v>x".asFormula)
+    result.subgoals(1).succ should contain only "<x:=x-1;>v-1>x".asFormula
+    result.subgoals(2).ante should contain only ("v<=0".asFormula, "v>x".asFormula)
+    result.subgoals(2).succ should contain only "x < 0".asFormula
+  }
+
+  it should "allow any variant argument name" in {
+    val fml = "<{x:=x-1;}*>x < 0".asFormula
+    val arg = Variable("y")
+    val defn = Greater(arg, Variable("x"))
+    val result = proveBy(fml,DLBySubst.conRule(arg,defn)(1))
+    result.subgoals(0).succ should contain only "\\exists y y>x".asFormula
+    result.subgoals(1).ante should contain only ("y>0".asFormula, "y>x".asFormula)
+    result.subgoals(1).succ should contain only "<x:=x-1;>y-1>x".asFormula
+    result.subgoals(2).ante should contain only ("y<=0".asFormula, "y>x".asFormula)
     result.subgoals(2).succ should contain only "x < 0".asFormula
   }
 
   it should "work with preconditions" in {
     val fml = "x = 0 & 0 >= 0 -> <{x:=x-1;}*>x < 0".asFormula
     val arg = Variable("v")
-    val defn = Equal(Variable("v"), Variable("x"))
+    val defn = Greater(Variable("v"), Variable("x"))
     val result = proveBy(fml,implyR(1) & andL(-1) & DLBySubst.conRule(arg,defn)(1))
     result.subgoals(0).ante should contain only ("x=0".asFormula, "0>=0".asFormula)
-    result.subgoals(0).succ should contain only "\\exists v v=x".asFormula
-    result.subgoals(1).ante should contain only ("v>0".asFormula, "v=x".asFormula)
-    result.subgoals(1).succ should contain only "<x:=x-1;>v-1=x".asFormula
-    result.subgoals(2).ante should contain only ("v<0".asFormula, "v=x".asFormula)
+    result.subgoals(0).succ should contain only "\\exists v v>x".asFormula
+    result.subgoals(1).ante should contain only ("v>0".asFormula, "v>x".asFormula)
+    result.subgoals(1).succ should contain only "<x:=x-1;>v-1>x".asFormula
+    result.subgoals(2).ante should contain only ("v<=0".asFormula, "v>x".asFormula)
     result.subgoals(2).succ should contain only "x < 0".asFormula
   }
 
   it should "work in second position" in {
     val fml = "x = 0 & 0 >= 0 -> (0 = 1 | <{x:=x-1;}*>x < 0)".asFormula
     val arg = Variable("v")
-    val defn = Equal(Variable("v"), Variable("x"))
+    val defn = Greater(Variable("v"), Variable("x"))
     val result = proveBy(fml, implyR(1) & andL(-1) & orR(1) & DLBySubst.conRule(arg, defn)(2))
     result.subgoals(0).ante should contain only ("x=0".asFormula, "0>=0".asFormula)
-    result.subgoals(0).succ should contain only ("0=1".asFormula, "\\exists v v=x".asFormula)
-    result.subgoals(1).ante should contain only ("v>0".asFormula, "v=x".asFormula)
-    result.subgoals(1).succ should contain only "<x:=x-1;>v-1=x".asFormula
-    result.subgoals(2).ante should contain only ("v<0".asFormula, "v=x".asFormula)
+    result.subgoals(0).succ should contain only ("0=1".asFormula, "\\exists v v>x".asFormula)
+    result.subgoals(1).ante should contain only ("v>0".asFormula, "v>x".asFormula)
+    result.subgoals(1).succ should contain only "<x:=x-1;>v-1>x".asFormula
+    result.subgoals(2).ante should contain only ("v<=0".asFormula, "v>x".asFormula)
     result.subgoals(2).succ should contain only "x < 0".asFormula
   }
 
@@ -583,7 +595,7 @@ class DLTests extends TacticTestBase {
     val tactic = implyR('R) & loop("x>0".asFormula)('R)
 
     val proofId = db.createProof(model)
-    val interpreter = SpoonFeedingInterpreter(proofId, db.db.createProof, listener(db.db), SequentialInterpreter)
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db), SequentialInterpreter))
 
     val BelleProvable(result, _) = interpreter(tactic, BelleProvable(ProvableSig.startProof(fml)))
     result.subgoals.size shouldBe 3
@@ -592,7 +604,7 @@ class DLTests extends TacticTestBase {
     (finalTree.nodes.toSet - finalTree.root).foreach(_.maker shouldBe 'defined)
   }
 
-  ignore should "work with multi-variate abstract invariant" in {
+  it should "work with multi-variate abstract invariant" ignore {
     val fml = "x>1 & y < -1 -> [{x:=x+1;y:=y-1;}*](x>0&y<0)".asFormula
     val tactic = implyR('R) & loop("J(x,y)".asFormula)('R) <(skip, skip, normalize partial)
     val result = proveBy(fml, tactic)
@@ -644,6 +656,21 @@ class DLTests extends TacticTestBase {
     result.subgoals(2).succ should contain only "[x:=A+B+1;]x>1".asFormula
   }
 
+  it should "not fail on program constants" in {
+    val result = proveBy(s"A>0 ==> C<1, [{a_;}*]x>0".asSequent, loop("x>1".asFormula)(2))
+
+    result.subgoals should have size 3
+    // init
+    result.subgoals.head.ante should contain theSameElementsAs "A>0".asFormula::Nil
+    result.subgoals.head.succ should contain theSameElementsAs "C<1".asFormula::"x>1".asFormula::Nil
+    // step
+    result.subgoals(1).ante should contain theSameElementsAs "x>1".asFormula::Nil
+    result.subgoals(1).succ should contain theSameElementsAs "[a_;]x>1".asFormula::Nil
+    // use case
+    result.subgoals(2).ante should contain theSameElementsAs "x>1".asFormula::Nil
+    result.subgoals(2).succ should contain theSameElementsAs "x>0".asFormula::Nil
+  }
+
   "Discrete ghost" should "introduce assignment to fresh variable" in {
     val result = proveBy("y>0".asFormula, discreteGhost("y".asVariable)(1))
     result.subgoals should have size 1
@@ -670,10 +697,6 @@ class DLTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "[z:=x+5;]y>0".asFormula
-  }
-
-  it should "not allow arbitrary terms t when no ghost name is specified" in {
-    a [BelleThrowable] should be thrownBy proveBy("y>0".asFormula, discreteGhost("x+5".asTerm)(1))
   }
 
   it should "use same variable if asked to do so" in {
@@ -733,6 +756,13 @@ class DLTests extends TacticTestBase {
     result.subgoals.head.succ should contain only "[y_0:=y;][{y'=1}]y>0".asFormula
   }
 
+  it should "work on ODEs mentioning the ghost in the evolution domain" in {
+    val result = proveBy("[{y'=1 & y+1>0}]y>0".asFormula, discreteGhost("y+1".asTerm)(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "[ghost:=y+1;][{y'=1 & y+1>0}]y>0".asFormula
+  }
+
   it should "not propagate arbitrary terms into ODEs" in {
     val result = proveBy("[{y'=1}]y>0".asFormula, discreteGhost("y+1".asTerm, Some("z".asVariable))(1))
     result.subgoals should have size 1
@@ -745,6 +775,20 @@ class DLTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain only "[z:=0;][x:=5+z;]x>z".asFormula
+  }
+
+  it should "introduce anonymous ghosts for terms" in {
+    val result = proveBy("x>0".asFormula, discreteGhost("y+v/1".asTerm)(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante shouldBe empty
+    result.subgoals.head.succ should contain only "[ghost:=y+v/1;]x>0".asFormula
+  }
+
+  it should "not clash with preexisting variables when introducing anonymous ghosts" in {
+    val result = proveBy("ghost>0 ==> x>0".asSequent, discreteGhost("y+v/1".asTerm)(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain only "ghost>0".asFormula
+    result.subgoals.head.succ should contain only "[ghost_0:=y+v/1;]x>0".asFormula
   }
 
   "[:=] assign exists" should "turn existential quantifier into assignment" in {

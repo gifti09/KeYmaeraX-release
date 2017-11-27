@@ -10,8 +10,9 @@ package edu.cmu.cs.ls.keymaerax.core
 
 import java.security.MessageDigest
 
+import edu.cmu.cs.ls.keymaerax.btactics.{AxiomInfo, DerivationInfo, DerivedAxiomInfo, DerivedRuleInfo}
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXExtendedLemmaParser}
-import edu.cmu.cs.ls.keymaerax.pt.{NoProofTermProvable, ProvableSig}
+import edu.cmu.cs.ls.keymaerax.pt._
 import edu.cmu.cs.ls.keymaerax.tools.{HashEvidence, ToolEvidence}
 
 // require favoring immutable Seqs for unmodifiable Lemma evidence
@@ -63,14 +64,29 @@ object Lemma {
       case Some(HashEvidence(hash)) =>
         assert(hash == checksum(sequents.to),
           "Expected hashed evidence to match hash of conclusion + subgoals: " + name + "\n" + lemma)
-      case None => {
-        if(LEMMA_COMPAT_MODE) println(s"WARNING: ${name.getOrElse("An unnamed lemma")} was reloaded without a hash confirmation.")
-        else throw new CoreException("Cannot reload a lemma without some Hash evidence: " + name)
-      }
+      case None =>
+        if(!LEMMA_COMPAT_MODE) throw new CoreException("Cannot reload a lemma without Hash evidence: " + name)
     }
     //@note soundness-critical
     val fact = Provable.oracle(sequents.head, sequents.tail.toIndexedSeq)
-    Lemma(NoProofTermProvable(fact), evidence, name) //@todo also load proof terms.
+
+    val ptProvable =
+      if (ProvableSig.PROOF_TERMS_ENABLED) {
+        PTProvable(NoProofTermProvable(fact), name match { case Some(n) =>
+          DerivedAxiomInfo.allInfo.find(info => info.storedName == n) match {
+            case Some(info) =>
+            AxiomTerm(info.canonicalName)
+            case None =>
+              if(DerivedRuleInfo.allInfo.exists(info => info.storedName == n))
+                RuleTerm(n)
+              else
+                NoProof()
+          }
+        case None => FOLRConstant(sequents.head.succ.head) })
+      } else {
+        NoProofTermProvable(fact)
+      }
+    Lemma(ptProvable, evidence, name) //@todo also load proof terms.
   }
 
   /** Compute the checksum for the given Provable, which provides some protection against accidental changes. */
@@ -81,7 +97,10 @@ object Lemma {
     digest(sequents.map(s => printer.stringify(s)).mkString(","))
 
   /** Checksum computation implementation */
-  private[this] def digest(s: String): String = digest.digest(s.getBytes("UTF-8")).map("%02x".format(_)).mkString
+  private[this] def digest(s: String): String = digest.synchronized {
+    //@note digest() is not threadsafe. It calls digest.update() internally, so may compute hash of multiple strings at once
+    digest.digest(s.getBytes("UTF-8")).map("%02x".format(_)).mkString
+  }
 
   /** Computes the required extra evidence to add to `fact` in order to turn it into a lemma */
   def requiredEvidence(fact: ProvableSig, evidence: List[Evidence] = Nil): List[Evidence] = {
@@ -157,7 +176,13 @@ final case class Lemma(fact: ProvableSig, evidence: immutable.List[Evidence], na
   override def toString: String = {
     toStringInternal
     //@note soundness-critical check that reparse succeeds as expected
-  } ensuring(r => Lemma.fromStringInternal(r) == this, "Printed lemma should reparse to this original lemma\n\n" + toStringInternal)
+  } ensuring(r =>  {
+    val reparsed = Lemma.fromStringInternal(r)
+    reparsed.fact.underlyingProvable == fact.underlyingProvable &&
+    reparsed.evidence == evidence &&
+    reparsed.name == name
+    },
+    "Printed lemma should reparse to this original lemma\n\n" + toStringInternal)
 
   /** Produces a string representation of this lemma that is speculated to reparse as this lemma
     * and will be checked to do so in [[toString]]. */

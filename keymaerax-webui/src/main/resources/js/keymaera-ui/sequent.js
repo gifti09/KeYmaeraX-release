@@ -15,6 +15,15 @@ angular.module('sequent', ['ngSanitize', 'formula', 'ui.bootstrap', 'ngCookies',
             onApplyTwoPositionTactic: '&'
         },
         link: function(scope, elem, attr) {
+            scope.sequentSuggestions = [];
+
+            if (!scope.readOnly) {
+              derivationInfos.sequentSuggestionDerivationInfos(scope.userId, scope.proofId, scope.nodeId)
+                .then(function(response) {
+                  scope.sequentSuggestions = response.data;
+                });
+            }
+
             //@todo duplicate with provingawesome.js#getCounterExample
             scope.getCounterExample = function() {
                 spinnerService.show('counterExampleSpinner');
@@ -34,14 +43,6 @@ angular.module('sequent', ['ngSanitize', 'formula', 'ui.bootstrap', 'ngCookies',
                       });
                     })
                     .finally(function() { spinnerService.hide('counterExampleSpinner'); });
-            }
-
-            scope.exportFormula = function(formulaId) {
-                $http.get("proofs/user/exportformula/" + scope.userId + '/' + scope.proofId + "/" + scope.nodeId + "/" + formulaId)
-                    .then(function(response) {
-                        if(response.data.errorThrown) showCaughtErrorMessage($uibModal, response.data.message, response.data)
-                        else showVerbatimMessage($uibModal, "Copy/Paste Formula", response.data.formula)
-                    })
             }
 
             scope.onTactic = function(formulaId, tacticId) {

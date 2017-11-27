@@ -11,8 +11,68 @@ import edu.cmu.cs.ls.keymaerax.parser.OpSpec.op
 import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 
 object UIKeYmaeraXPrettyPrinter {
+  private val HTML_OPEN = "$#@@$"
+  private val HTML_CLOSE = "$@@#$"
+  private val HTML_END_SPAN = htmlEndTag("span")
+
+  //@todo custom OpSpec?
+  private val rewritings = List(
+    "&" -> "&and;",
+    "!=" -> "&ne;",
+    "!" -> "&not;",
+    "|" -> "&or;",
+    "<->" -> "&#8596;",
+    "->" -> "&rarr;",
+    "<=" -> "&leq;",
+    ">=" -> "&geq;",
+    "\\forall" -> "&forall;",
+    "\\exists" -> "&exist;",
+    "[" -> "&#91;",
+    "]" -> "&#93;",
+    "++" -> "&#8746;",
+    "<" -> "&lt;",
+    ">" -> "&gt;",
+    HTML_OPEN -> "<",
+    HTML_CLOSE -> ">"
+  )
+
+  private val textTagRewritings = List(
+    "&" -> "&amp;",
+    "<" -> "&lt;",
+    ">" -> "&gt;",
+    HTML_OPEN -> "<",
+    HTML_CLOSE -> ">"
+  )
+
+  //private val opPattern: Regex = "(&|!=|!|\\||<->|->|<=|>=|\\\\forall|\\\\exists|\\[|\\]|<|>|\\$#@@\\$|\\$@@#\\$)".r
+
   /** UIKeYmaeraXPrettyPrinter(topId) is a UI pretty printer for sequent-formula with identifier topId */
   def apply(topId: String, plainText: Boolean): Expression=>String = new UIKeYmaeraXPrettyPrinter(topId, plainText)
+
+  /** Returns an opening tag with encoded <>. */
+  def htmlOpenTag(tag: String, clazz: Option[String] = None): String = clazz match {
+    case None => s"$HTML_OPEN$tag$HTML_CLOSE"
+    case Some(c) => s"""$HTML_OPEN$tag class="$c"$HTML_CLOSE"""
+  }
+
+  /** Returns a closing tag with encoded <>. */
+  def htmlEndTag(tag: String): String = s"$HTML_OPEN/$tag$HTML_CLOSE"
+
+  /** Returns the `body` enclosed in an encoded HTML `tag`. */
+  def htmlElement(tag: String, body: String, clazz: Option[String] = None): String = htmlOpenTag(tag, clazz) + body + htmlEndTag(tag)
+
+  /** Replaces KeYmaeraX syntax with HTML characters (e.g., < becomes &lt;) and introduces opening/closing tags HTML syntax. */
+  def htmlEncode(html: String): String = {
+    rewritings.foldLeft(html)({ case (s, (key, repl)) => s.replaceAllLiterally(key, repl) })
+    //@note single pass with regex matching is slower than multi-pass literal replacement
+    //val mapper = (m: Match) => rewritings.get(m.group(1))
+    //opPattern.replaceSomeIn(stringify(expr), mapper)
+  }
+
+  /** Encodes HTML tags <>& etc. that may occur in text. */
+  def htmlTagEncode(text: String): String = {
+    textTagRewritings.foldLeft(text)({ case (s, (key, repl)) => s.replaceAllLiterally(key, repl) })
+  }
 }
 
 /**
@@ -20,8 +80,8 @@ object UIKeYmaeraXPrettyPrinter {
   * @author Andre Platzer
   */
 class UIKeYmaeraXPrettyPrinter(val topId: String, val plainText: Boolean) extends KeYmaeraXWeightedPrettyPrinter {
-  private val HTML_OPEN = "$#@@$"
-  private val HTML_CLOSE = "$@@#$"
+  import UIKeYmaeraXPrettyPrinter._
+  private def htmlSpan(c: String, body: String): String = htmlElement("span", body, Some(c))
 
   private var topExpr: Expression = _
   //@note just to get isAnte right for UIIndex
@@ -29,37 +89,17 @@ class UIKeYmaeraXPrettyPrinter(val topId: String, val plainText: Boolean) extend
 
   override def apply(expr: Expression): String = {
     topExpr=expr
-    stringify(expr)
-    //@todo custom OpSpec?
-    .replaceAllLiterally("&", "&#8743;")
-    .replaceAllLiterally("!=", "&ne;")
-    .replaceAllLiterally("!", "&not;")
-    .replaceAllLiterally("|", "&#8744;")
-    .replaceAllLiterally("<->", "&#8596;")
-    .replaceAllLiterally("->", "&rarr;")
-    .replaceAllLiterally("<=", "&leq;")
-    .replaceAllLiterally(">=", "&geq;")
-    //.replaceAllLiterally("*", "&middot;") // program * vs. multiplication *
-    // ^y --> <sup>y</sup>
-    .replaceAllLiterally("\\forall", "&forall;")
-    .replaceAllLiterally("\\exists", "&exist;")
-    .replaceAllLiterally("[", "&#91;")
-    .replaceAllLiterally("]", "&#93;")
-    .replaceAllLiterally("++", "&#8746;")
-    .replaceAllLiterally("<", "&lt;")
-    .replaceAllLiterally(">", "&gt;")
-    .replaceAllLiterally(HTML_OPEN, "<")
-    .replaceAllLiterally(HTML_CLOSE, ">")
+    htmlEncode(stringify(expr))
   }
 
   protected override def emit(q: PosInExpr, s: String): String = {
     val hasStep = plainText || (topExpr match {
       case t: Term => UIIndex.allStepsAt(t.sub(q).get, Some(pos++q), None).isEmpty
       case f: Formula => UIIndex.allStepsAt(f.sub(q).get, Some(pos++q), None).isEmpty
+      case _ => false
     })
 
     val editable = !plainText && (topExpr match {
-      case _: Term => false
       case f: Formula => f.sub(q).get match {
         case fml: Formula => fml.isFOL
         case _: Variable => false
@@ -67,12 +107,13 @@ class UIKeYmaeraXPrettyPrinter(val topId: String, val plainText: Boolean) extend
         case _: Term => true
         case _ => false
       }
+      case _ => false
     })
 
     //@note base pretty printer emits a quantifier and its variable with same ID -> avoid spans with same ID
     val isQuantifiedVar = topExpr match {
       case f: Formula => f.sub(q) match {
-        case Some(quant: Quantified) => !s.startsWith(op(quant).opcode)
+        case Some(quant: Quantified) => !s.startsWith(ppOp(quant))
         case _ => false
       }
       case _ => false
@@ -86,9 +127,30 @@ class UIKeYmaeraXPrettyPrinter(val topId: String, val plainText: Boolean) extend
     }
   }
 
+  protected override def ppOp(expr: Expression): String = expr match {
+    case _: Term => htmlSpan("k4-op k4-term-op", super.ppOp(expr))
+    case _: CompositeFormula => htmlSpan("k4-op k4-propfml-op", super.ppOp(expr))
+    case _: ComparisonFormula => htmlSpan("k4-op k4-cmpfml-op", super.ppOp(expr))
+    case _: Formula => htmlSpan("k4-op k4-fml-op", super.ppOp(expr))
+    case _: Dual => htmlSpan("k4-op k4-prg-op", s"${HTML_OPEN}sup$HTML_CLOSE@$HTML_OPEN/sup$HTML_CLOSE")
+    case _: Program => htmlSpan("k4-op k4-prg-op", super.ppOp(expr))
+    case _ => super.ppOp(expr)
+  }
+
+  protected override def wrap(text: String, expr: Expression): String = expr match {
+    case _: Box  =>
+      htmlSpan("k4-mod-open", "[") + text + htmlSpan("k4-mod-close", "]")
+    case _: Diamond =>
+      htmlSpan("k4-mod-open", "<") + text + htmlSpan("k4-mod-close", ">")
+    case _: ODESystem | _: Program | _: DifferentialProgram | _: UnaryCompositeProgram =>
+      htmlSpan("k4-prg-open", "{") + text + htmlSpan("k4-prg-close", "}")
+    case _ => super.wrap(text, expr)
+  }
+
   protected override def pp(q: PosInExpr, term: Term): String = emit(q, term match {
+    case FuncOf(f, Nothing) => f.asString + "()"
     case t: Power =>
-      wrapLeft(t, pp(q++0, t.left)) + "$#@@$sup$@@#$" + wrapRight(t, pp(q++1, t.right)) + "$#@@$/sup$@@#$"
+      wrapLeft(t, pp(q++0, t.left)) + s"${HTML_OPEN}sup$HTML_CLOSE" + wrapRight(t, pp(q++1, t.right)) + s"$HTML_OPEN/sup$HTML_CLOSE"
     case _ => super.pp(q, term)
   })
 

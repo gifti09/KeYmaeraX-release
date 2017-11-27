@@ -1,8 +1,8 @@
 package edu.cmu.cs.ls.keymaerax.pt
 
-import edu.cmu.cs.ls.keymaerax.btactics.DerivedRuleInfo
+import edu.cmu.cs.ls.keymaerax.btactics.{AxiomInfo, DerivedAxiomInfo, DerivedRuleInfo, ProvableInfo}
 import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
+import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary.{US, _}
 
 import scala.collection.immutable
 
@@ -17,193 +17,123 @@ import scala.collection.immutable
  * Created by nfulton on 10/15/15.
   *
   * @author Nathan Fulton
+  * @author Brandon Bohrer
  * @see [[ProofTerm]]
  * @see [[ProvableSig]]
  */
 object ProofChecker {
+  case class ProofCheckException(str: String) extends Exception {}
+
   private val tool = new edu.cmu.cs.ls.keymaerax.tools.Mathematica()
 
   private def goalSequent(phi : Formula) = Sequent(immutable.IndexedSeq(), immutable.IndexedSeq(phi))
   private def proofNode(phi : Formula) = ProvableSig.startProof(goalSequent(phi))
+  private def proofNode(phi : Sequent) = ProvableSig.startProof(phi)
 
   /**
    * Converts proof term e for goal phi into a Provable iff e indeed justifies phi.
     *
     * @todo could remove phi except no more contract then
    */
-  def apply(e: ProofTerm, phi: Formula) : Option[ProvableSig] = {
-    e match {
-      case dLConstant(label) => Some(
-        ProvableSig.startProof(goalSequent(phi))
-        (ProvableSig.axioms(label), 0)
-      )
+  def apply(e: ProofTerm, phi: Option[Formula] = None) : ProvableSig = {
+    val result : ProvableSig =
+      e match {
+        case FOLRConstant(f) => {
+          val node = proofNode(f)
+          proveBy(node, QE & done)
+        }
 
-      case FOLRConstant(f) => {
-        val node = proofNode(phi)
-        Some(proveBy(node, QE & done))
-      }
-
-      case AndTerm(e, d) => phi match {
-        case And(varphi, psi) => {
-          val varphiCert = ProofChecker(e, varphi)
-          val psiCert = ProofChecker(d, psi)
-          (varphiCert, psiCert) match {
-            case (Some(varphiCert), Some(psiCert)) => {
-              //This is the ^R schematic proof rule referred to in the theory proof.
-              val andR = edu.cmu.cs.ls.keymaerax.core.AndRight(SuccPos(0))
-              Some(
-                ProvableSig.startProof(goalSequent(phi))
-                  (andR, 0)
-                  // left branch
-                  (varphiCert, 0)
-                //right branch
-                  (psiCert, 0)
-              )
-            }
-            case _ => None
+        case AxiomTerm(axiomName) => {
+          try {
+            val info = ProvableInfo.ofStoredName(axiomName)
+            val axiomFml = info.provable.conclusion
+            val node = proofNode(axiomFml)
+            //@TODO: Why?
+            //Just do an empty uniform substitution...
+            proveBy(node, US(USubst.apply(scala.collection.immutable.Seq()), info.canonicalName))
+          } catch {
+            // If derived axioms didn't do it, try core axioms too
+            case e:Exception =>
+              val axiomFml = AxiomInfo(axiomName).provable.conclusion
+              val node = proofNode(axiomFml)
+              proveBy(node, US(USubst.apply(scala.collection.immutable.Seq()), axiomName))
           }
         }
-        case _ => None
+
+        case RuleApplication(child, ruleName, subgoal, sequentPositions, expArgs) =>
+          val ps:ProvableSig = apply(child)
+          def pos(i:Int):SeqPos = sequentPositions(i)
+          def apos(i:Int):AntePos = sequentPositions(i).asInstanceOf[AntePos]
+          def spos(i:Int):SuccPos = sequentPositions(i).asInstanceOf[SuccPos]
+          def f(i:Int):Formula = expArgs(i).asInstanceOf[Formula]
+          def v(i:Int):Variable = expArgs(i).asInstanceOf[Variable]
+          def pr(r:Rule):ProvableSig = ps(r, subgoal)
+          val res =
+          ruleName match {
+            case "Close" => pr(Close(apos(0),spos(1)))
+            case "CoHide2"  => pr(CoHide2(apos(0),spos(1)))
+            case "cut Right" => pr(CutRight(f(0),spos(0)))
+            case "Imply Right"=> pr(ImplyRight(spos(0)))
+            case "And Right"=> pr(AndRight(spos(0)))
+            case "CoHideRight" => pr(CoHideRight(spos(0)))
+            case "CommuteEquivRight" => pr(CommuteEquivRight(spos(0)))
+            case "EquivifyRight" => pr(EquivifyRight(spos(0)))
+            case "Equiv Right" => pr(EquivRight(spos(0)))
+            case "Not Right" => pr(NotRight(spos(0)))
+            case "CloseTrue" => pr(CloseTrue(spos(0)))
+            case "HideRight" => pr(HideRight(spos(0)))
+            case "Or Right"=> pr(OrRight(spos(0)))
+
+            case "Or Left" => pr(OrLeft(apos(0)))
+            case "And Left" => pr(AndLeft(apos(0)))
+            case "HideLeft" => pr(HideLeft(apos(0)))
+            case "cut Left" => pr(CutLeft(f(0),apos(0)))
+            case "Imply Left"=> pr(ImplyLeft(apos(0)))
+            case "Not Left" => pr(NotLeft(apos(0)))
+            case "Equiv Left" => pr(EquivLeft(apos(0)))
+            case "CloseFalse" => pr(CloseFalse(apos(0)))
+
+            case "Bound Renaming" => pr(BoundRenaming(v(0),v(1),pos(0)))
+            case "Uniform Renaming" => pr(UniformRenaming(v(0),v(1)))
+            case "Skolemize" => pr(Skolemize(pos(0)))
+            case "cut" => pr(Cut(f(0)))
+
+            case name => throw ProofCheckException("Unsupported rule \"" + name + "\" found during proof replay")
+          }
+          res
+
+        case RuleTerm(name) =>
+          if(ProvableSig.rules.contains(name))
+            ProvableSig.rules(name)
+         else
+            DerivedRuleInfo.allInfo.find(info => info.storedName == name).get.provable
+
+        case ForwardNewConsequenceTerm(child, con, rule) =>
+          val pschild = apply(child)
+          pschild(con,rule)
+
+        case ProlongationTerm(child, pro) =>
+          val pschild = apply(child)
+          val pspro = apply(pro)
+          pschild(pspro)
+
+        case Sub(child,sub,i) =>
+          val pschild = apply(child)
+          val pssub = apply(sub)
+          val res = pschild(pssub,i)
+          res
+
+        case StartProof(goal) =>
+          val res =  ProvableSig.startProof(goal)
+          res
+
+        case NoProof() => throw ProofCheckException("Tried to check proof of " + phi + ", but it has NoProof()")
+
+        case UsubstProvableTerm(child, sub) =>
+          val pschild = apply(child)
+          pschild(sub)
       }
 
-      case ApplicationTerm(e, psi, d) => {
-        val implCert = ProofChecker(e, Imply(psi, phi))
-        val psiCert = ProofChecker(d, psi)
-
-        if(implCert.isDefined && implCert.get.isProved && psiCert.isDefined && psiCert.get.isProved)
-          //@todo Eisegesis. Adopt implementation or adopt proof so that they are the same.
-          Some(
-            ProvableSig.startProof(goalSequent(phi))
-              (Cut(Imply(psi, phi)), 0)
-              (HideRight(SuccPos(0)), 1)(implCert.get, 1) // hide phi and prove psi -> phi using proof produced by IH
-              (Cut(psi), 0)
-              (HideLeft(AntePos(0)), 1)(HideRight(SuccPos(0)), 1)(psiCert.get, 1) // have phi -> psi |- phi, psi. Hides antecendent and phi, and proves psi by IH.
-              (ImplyLeft(AntePos(0)), 0)
-              (Close(AntePos(0), SuccPos(1)), 0)
-              (Close(AntePos(1), SuccPos(0)), 0)
-          )
-        else None
-      }
-
-      case LeftEquivalence(e, psi, d) => {
-        val equivCert = ProofChecker(e, Equiv(psi, phi))
-        val psiCert   = ProofChecker(d, psi)
-
-        if(equivCert.isDefined && equivCert.get.isProved && psiCert.isDefined && psiCert.get.isProved) {
-          /* Game plan:
-           *     - Transform to the goal psi<->phi, phi |- psi (readyForRewrite)
-           *     - Rewrite to phi |- phi using equality rewriting tactics and then close the proof
-           *     - Extract provable (rewritingWitness)
-           *     - apply tactic provable to the remaining goal on the provable with the desired conclusion (readyForRewrite)
-           */
-          //@todo Eisegesis. Adopt implementation or adopt proof so that they are the same.
-          val readyForRewrite = (
-            ProvableSig.startProof(goalSequent(phi))
-            (Cut(Equiv(psi, phi)), 0)
-            (HideRight(SuccPos(0)), 1)(equivCert.get, 1) // hide phi and prove psi <-> phi using proof produced by IH
-            (Cut(psi), 0)
-            (HideLeft(AntePos(0)), 1)(HideRight(SuccPos(0)), 1)(psiCert.get, 1) // have phi <-> psi |- phi, psi. Hides antecendent and phi, and proves psi by IH.
-            (CommuteEquivLeft(AntePos(0)), 0)
-          )
-
-          //@todo is there a better way of combining scheduled tactics with direct manipulation proofs?
-          //@todo and/or is there a better way of doing equivalence rewriting with direct manipulation proofs?
-          val rewritingWitness = {
-            val node = readyForRewrite.subgoals.last
-            proveBy(node, eqL2R(-1)(1) & closeId)
-          } ensuring(r => r.isProved)
-
-          Some(readyForRewrite(rewritingWitness, 0))
-        }
-        else None
-      }
-
-      case RightEquivalence(e, psi, d) => {
-        val equivCert = ProofChecker(e, Equiv(psi, phi))
-        val psiCert   = ProofChecker(d, psi)
-        //@note in principle could use CommuteEquivRight to reduce to LeftEquivalence case
-
-        if(equivCert.isDefined && equivCert.get.isProved && psiCert.isDefined && psiCert.get.isProved) {
-          /* Game plan:
-           *     - Transform to the goal psi<->phi, phi |- psi (readyForRewrite)
-           *     - Rewrite to phi |- phi using equality rewriting tactics and then close the proof
-           *     - Extract provable (rewritingWitness)
-           *     - apply tactic provable to the remaining goal on the provable with the desired conclusion (readyForRewrite)
-           */
-          //@todo Eisegesis. Adopt implementation or adopt proof so that they are the same.
-          val readyForRewrite = (
-            ProvableSig.startProof(goalSequent(phi))
-            (Cut(Equiv(psi, phi)), 0)
-            (HideRight(SuccPos(0)), 1)(equivCert.get, 1) // hide phi and prove psi <-> phi using proof produced by IH
-            (Cut(psi), 0)
-            (HideLeft(AntePos(0)), 1)(HideRight(SuccPos(0)), 1)(psiCert.get, 1) // have phi <-> psi |- phi, psi. Hides antecendent and phi, and proves psi by IH.
-            (CommuteEquivLeft(AntePos(0)), 0)
-          )
-
-          //@todo is there a better way of combining scheduled tactics with direct manipulation proofs?
-          //@todo and/or is there a better way of doing equivalence rewriting with direct manipulation proofs?
-          val rewritingWitness = {
-            val node = readyForRewrite.subgoals.last
-            proveBy(node, eqL2R(-1)(1) & closeId)
-          } ensuring(r => r.isProved)
-
-          Some(readyForRewrite(rewritingWitness, 0))
-        }
-        else None
-      }
-
-      case UsubstTerm(e, phiPrime, usubst) => {
-        val phiPrimeCert = ProofChecker(e, phiPrime)
-        if(phiPrimeCert.isDefined && phiPrimeCert.get.isProved) {
-          val goalS = goalSequent(phi)
-          Some(??? /*@todo
-            Provable.startProof(goalS)
-            (UniformSubstitutionRule(usubst, goalSequent(phiPrime)), 0)
-            (phiPrimeCert.get, 0)
-          */)
-        }
-        else None
-      }
-
-      case RenamingTerm(e, phiPrime, what, repl) => {
-        val phiPrimeCert = ProofChecker(e, phiPrime)
-        if(phiPrimeCert.isDefined && phiPrimeCert.get.isProved) {
-          val goalS = goalSequent(phi)
-          Some( UniformRenaming.UniformRenamingForward(ProvableSig.startProof(goalS), what, repl) )
-        }
-        else None
-      }
-
-        //@todo There's a question whether flat usubst "triple" would be better in the long term than one specialized to the names in rule.
-      case CTTerm(e, premise, usubst) => {
-        val equalityCert = ProofChecker(e, premise)
-        if(equalityCert.isDefined && equalityCert.get.isProved) Some(
-          ProvableSig.startProof(goalSequent(phi))
-          (DerivedRuleInfo("CT term congruence").provable(usubst), 0)
-          (equalityCert.get, 0)
-        )
-        else None
-      }
-
-      case CQTerm(e, premise, usubst) => {
-        val equalityCert = ProofChecker(e, premise)
-        if(equalityCert.isDefined && equalityCert.get.isProved) Some(
-          ProvableSig.startProof(goalSequent(phi))
-          (ProvableSig.rules("CQ term congruence")(usubst), 0)
-          (equalityCert.get, 0)
-        )
-        else None
-      }
-
-      case CETerm(e, premise, usubst) => {
-        val equalityCert = ProofChecker(e, premise)
-        if(equalityCert.isDefined && equalityCert.get.isProved) Some(
-          ProvableSig.startProof(goalSequent(phi))
-          (ProvableSig.rules("CE congruence")(usubst), 0)
-          (equalityCert.get, 0)
-        )
-        else None
-      }
-    }
-  } ensuring(r => r.isEmpty || r.get.conclusion == goalSequent(phi), "Resulting Provable proves given formula if defined for " + phi + " : " + e)
+    result
+  } ensuring(r => phi.isEmpty || r.conclusion == goalSequent(phi.get), "Resulting Provable proves given formula if defined for " + phi + " : " + e)
 }

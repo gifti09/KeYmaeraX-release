@@ -2,6 +2,7 @@ package edu.cmu.cs.ls.keymaerax.bellerophon
 
 import edu.cmu.cs.ls.keymaerax.btactics.{DerivationInfo, Generator, TactixLibrary, TypedFunc}
 import edu.cmu.cs.ls.keymaerax.core._
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXProblemParser.Declaration
 
 import scala.reflect.runtime.universe.typeTag
 
@@ -12,14 +13,14 @@ import scala.reflect.runtime.universe.typeTag
   */
 object ReflectiveExpressionBuilder {
   def build(info: DerivationInfo, args: List[Either[Seq[Any], PositionLocator]],
-            generator: Option[Generator.Generator[Expression]], defs: List[SubstitutionPair]): BelleExpr = {
+            generator: Option[Generator.Generator[Expression]], defs: Declaration): BelleExpr = {
     val posArgs = args.filter(_.isRight).map(_.right.getOrElse(throw new ReflectiveExpressionBuilderExn("Filtered down to only right-inhabited elements... this exn should never be thrown.")))
     val withGenerator =
       if (info.needsGenerator) {
         generator match {
           case Some(theGenerator) => info.belleExpr.asInstanceOf[Generator.Generator[Expression] => Any](theGenerator)
           case None =>
-            println(s"Need a generator for tactic ${info.codeName} but none was provided; switching to default.")
+            if (BelleExpr.DEBUG) println(s"Need a generator for tactic ${info.codeName} but none was provided; switching to default.")
             info.belleExpr.asInstanceOf[Generator.Generator[Formula] => Any](TactixLibrary.invGenerator)
         }
       } else {
@@ -27,7 +28,7 @@ object ReflectiveExpressionBuilder {
       }
     val expressionArgs = args.filter(_.isLeft).
       map(_.left.getOrElse(throw new ReflectiveExpressionBuilderExn("Filtered down to only left-inhabited elements... this exn should never be thrown."))).
-      map(_.map(exhaustiveSubst(defs, _)))
+      map(_.map({ case e: Expression => defs.exhaustiveSubst(e) case e => e }))
 
     val applied: Any = expressionArgs.foldLeft(withGenerator) {
       //@note matching on generics only to make IntelliJ happy, "if type <:< other" is the relevant check
@@ -40,9 +41,10 @@ object ReflectiveExpressionBuilder {
       case (expr: TypedFunc[Option[Variable], _], (y: Variable) :: Nil) if expr.argType.tpe <:< typeTag[Option[Variable]].tpe => expr(Some(y))
       case (expr: TypedFunc[Option[Term], _], (term: Term) :: Nil) if expr.argType.tpe <:< typeTag[Option[Term]].tpe => expr(Some(term))
       case (expr: TypedFunc[Option[Expression], _], (ex: Expression) :: Nil) if expr.argType.tpe <:< typeTag[Option[Expression]].tpe => expr(Some(ex))
+      case (expr: TypedFunc[Option[String], _], (s: String) :: Nil) if expr.argType.tpe <:< typeTag[Option[String]].tpe => expr(Some(s))
       case (expr: TypedFunc[Seq[Expression], _], fmls: Seq[Expression]) if expr.argType.tpe <:< typeTag[Seq[Expression]].tpe => expr(fmls)
-      case (expr: TypedFunc[_,_], _) => throw new Exception(s"Expected argument of type ${expr.argType}, but got " + expr.getClass.getSimpleName)
-      case _ => throw new Exception("Expected a TypedFunc (cannot match due to type erasure)")
+      case (expr: TypedFunc[_,_], _) => throw new ReflectiveExpressionBuilderExn(s"Expected argument of type ${expr.argType}, but got " + expr.getClass.getSimpleName)
+      case _ => throw new ReflectiveExpressionBuilderExn("Expected a TypedFunc (cannot match due to type erasure)")
     }
 
     def fillOptions(expr: Any): Any = expr match {
@@ -76,16 +78,15 @@ object ReflectiveExpressionBuilder {
   }
 
   def apply(name: String, arguments: List[Either[Seq[Any], PositionLocator]] = Nil,
-            generator: Option[Generator.Generator[Expression]], defs: List[SubstitutionPair]) : BelleExpr = {
-    if(!DerivationInfo.hasCodeName(name)) {
+            generator: Option[Generator.Generator[Expression]], defs: Declaration) : BelleExpr = {
+    if (!DerivationInfo.hasCodeName(name)) {
       throw new ReflectiveExpressionBuilderExn(s"Identifier '$name' is not recognized as a tactic identifier.")
     } else {
       try {
         build(DerivationInfo.ofCodeName(name), arguments, generator, defs)
       } catch {
         case e: java.util.NoSuchElementException =>
-          println("Error: " + e)
-          throw new Exception(s"Encountered errror when trying to find info for identifier $name, even though $name is a code-name for a tactic.")
+          throw new ReflectiveExpressionBuilderExn(s"Error when building tactic $name", e)
       }
     }
   }
@@ -102,5 +103,5 @@ object ReflectiveExpressionBuilder {
   }
 }
 
-
+/** Exceptions raised by the reflective expression builder on unexpected tactics/arguments. */
 class ReflectiveExpressionBuilderExn(msg: String, cause: Throwable = null) extends Exception(msg, cause)

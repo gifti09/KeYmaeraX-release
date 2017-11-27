@@ -30,6 +30,18 @@ object KeYmaeraXPrettyPrinter extends KeYmaeraXPrecedencePrinter {
 }
 
 /**
+  * KeYmaera X Pretty Printer without contract checking
+  *
+  * @see [[edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrecedencePrinter]]
+  */
+object KeYmaeraXNoContractPrettyPrinter extends KeYmaeraXPrecedencePrinter {
+  /** This default pretty printer without contract checking. */
+  val pp = this
+
+  override def apply(expr: Expression): String = stringify(expr)
+}
+
+/**
   * Common base functionality for KeYmaera X Pretty Printers.
   */
 trait BasePrettyPrinter extends PrettyPrinter {
@@ -109,12 +121,14 @@ object FullPrettyPrinter extends BasePrettyPrinter {
 
   private def pp(term: Term): String = term match {
     case Nothing       => op(term).opcode
-    case DotTerm(sort) => op(term).opcode + (sort match { case Tuple(_, _) => sort.toString case _ => "" }) //@note will parse as Pair(Variable("Real"), ...), which has Sort sort
+    case DotTerm(sort, idx) => "•" +
+      (idx match { case None => "" case Some(i) => "_" + i }) +
+      (sort match { case Tuple(_, _) => sort.toString case _ => "" }) //@note will parse as Pair(Variable("Real"), ...), which has Sort sort
     case x: Variable            => x.asString
     case DifferentialSymbol(x)  => pp(x) + op(term).opcode
     case Differential(t)        => "(" + pp(t) + ")" + op(term).opcode
     // forcing parentheses around numbers to avoid Neg(Times(Number(5),Variable("x")) to be printed as -5*x yet reparsed as (-5)*x. Alternatively could add space after unary Neg.
-    case Number(n)              => "(" + n.toString() + ")"
+    case Number(n)              => "(" + n.bigDecimal.toPlainString() + ")"
     case FuncOf(f, c)           => f.asString + "(" + pp(c) + ")"
     // special notation
     case Pair(l, r)             => "(" + pp(l) + op(term).opcode + pp(r) + ")"
@@ -216,78 +230,94 @@ class KeYmaeraXPrinter extends BasePrettyPrinter {
   /**@note The extra space disambiguates x<-7 as in x < (-7) from x REVIMPLY 7 as well as x<-(x^2) from x REVIMPLY ... */
   private val LEXSPACE: String = " "
 
+  /** Pretty-print the operator of a term */
+  protected def ppOp(expr: Expression): String = expr match {
+    //@note in statementSemicolon mode, suppress opcode of Compose since already after each statement
+    case _: Compose if OpSpec.statementSemicolon => ""
+    case _ => op(expr).opcode
+  }
+
+  /** Pretty-print enclosing parentheses, braces, brackets etc. */
+  protected def wrap(text: String, expr: Expression): String = expr match {
+    case _: Box => "[" + text + "]"
+    case _: Diamond => "<" + text + ">"
+    case _: Program => "{" + text + "}"
+    case _: PredOf => "(" + text + ")"
+    case _: Pair => "(" + text + ")"
+    case _: PredicationalOf => "{" + text + "}"
+  }
+
   //@todo could add contract that TermAugmentor(original)(q) == term
   protected def pp(q: PosInExpr, term: Term): String = emit(q, term match {
-    case Nothing       => op(term).opcode
-    case DotTerm(sort) => op(term).opcode + (sort match { case Tuple(_, _) => sort.toString case _ => "" }) //@note will parse as Pair(Variable("Real"), ...), which has Sort sort
+    case Nothing       => ppOp(term)
+    case DotTerm(sort, idx) => "•" +
+        (idx match { case None => "" case Some(i) => "_" + i }) +
+        (sort match { case Tuple(_, _) => sort.toString case _ => "" }) //@note will parse as Pair(Variable("Real"), ...), which has Sort sort
     case x: Variable            => x.asString
-    case DifferentialSymbol(x)  => x.asString + op(term).opcode
-    case Differential(t)        => "(" + pp(q++0, t) + ")" + op(term).opcode
+    case DifferentialSymbol(x)  => x.asString + ppOp(term)
+    case Differential(t)        => "(" + pp(q++0, t) + ")" + ppOp(term)
       // special case forcing parentheses around numbers to avoid Neg(Times(Number(5),Variable("x")) to be printed as -5*x yet reparsed as (-5)*x. Alternatively could add space after unary Neg.
     case Number(n)              => if (negativeBrackets) {
-      if (OpSpec.negativeNumber) "(" + n.toString() + ")"
-      else assert(n>=0 || OpSpec.negativeNumber); n.toString()
-    } else n.toString()
+      if (OpSpec.negativeNumber) "(" + n.bigDecimal.toPlainString() + ")"
+      else assert(n>=0 || OpSpec.negativeNumber); n.bigDecimal.toPlainString()
+    } else n.bigDecimal.toPlainString()
     case FuncOf(f, c)           => f.asString + "(" + pp(q++0, c) + ")"
     // special notation
-    case Pair(l, r)             => "(" + pp(q++0, l) + op(term).opcode + pp(q++1, r) + ")"
+    case Pair(l, r)             => wrap(pp(q++0, l) + ppOp(term) + pp(q++1, r), term)
     case UnitFunctional(name,space,sort) => name + "(" + space + ")"
     // special case forcing to disambiguate between -5 as in the number (-5) as opposed to -(5). OpSpec.negativeNumber
-    case t@Neg(Number(n))       => op(t).opcode + "(" + pp(q++0, Number(n)) + ")"
+    case t@Neg(Number(n))       => ppOp(t) + "(" + pp(q++0, Number(n)) + ")"
     // special case forcing space between unary negation and numbers to avoid Neg(Times(Number(5),Variable("x")) to be printed as -5*x yet reparsed as (-5)*x.
     case t: Neg if !negativeBrackets => val c = pp(q++0, t.child)
-      op(t).opcode + (if (c.charAt(0).isDigit) " " else "") + wrapChild(t, c)
-    case t: UnaryCompositeTerm  => op(t).opcode + wrapChild(t, pp(q++0, t.child))
+      ppOp(t) + (if (c.charAt(0).isDigit) " " else "") + wrapChild(t, c)
+    case t: UnaryCompositeTerm  => ppOp(t) + wrapChild(t, pp(q++0, t.child))
     case t: BinaryCompositeTerm =>
-      wrapLeft(t, pp(q++0, t.left)) + op(t).opcode + wrapRight(t, pp(q++1, t.right))
+      wrapLeft(t, pp(q++0, t.left)) + ppOp(t) + wrapRight(t, pp(q++1, t.right))
   })
 
   private def pp(q: PosInExpr, formula: Formula): String = emit(q, formula match {
-    case True|False|DotFormula  => op(formula).opcode
+    case True|False|DotFormula  => ppOp(formula)
     case PredOf(p, c)           => p.asString + "(" + pp(q++0, c) + ")"
     case PredicationalOf(p, c)  => p.asString + "{" + pp(q++0, c) + "}"
     // special case to disambiguate between x<-y as in x < -y compared to x REVIMPLY y
-    case f: Less                => wrapLeft(f, pp(q++0, f.left)) + LEXSPACE + op(formula).opcode + LEXSPACE + wrapRight(f, pp(q++1, f.right))
-    case f: ComparisonFormula   => wrapLeft(f, pp(q++0, f.left)) + op(formula).opcode + wrapRight(f, pp(q++1, f.right))
-    case DifferentialFormula(g) => "(" + pp(q++0, g) + ")" + op(formula).opcode
+    case f: Less                => wrapLeft(f, pp(q++0, f.left)) + LEXSPACE + ppOp(formula) + LEXSPACE + wrapRight(f, pp(q++1, f.right))
+    case f: ComparisonFormula   => wrapLeft(f, pp(q++0, f.left)) + ppOp(formula) + wrapRight(f, pp(q++1, f.right))
+    case DifferentialFormula(g) => "(" + pp(q++0, g) + ")" + ppOp(formula)
     //@note the q position for variables is a little weird since it identifies the quantifier not the variable
-    case f: Quantified          => op(formula).opcode + " " + f.vars.map(pp(q,_)).mkString(",") + " " + wrapChild(f, pp(q++0, f.child))
-    case f: Box                 => "[" + pp(q++0, f.program) + "]" + wrapChild(f, pp(q++1, f.child))
-    case f: Diamond             => "<" + pp(q++0, f.program) + ">" + wrapChild(f, pp(q++1, f.child))
+    case f: Quantified          => ppOp(formula) + " " + f.vars.map(pp(q,_)).mkString(",") + " " + wrapChild(f, pp(q++0, f.child))
+    case f: Box                 => wrap(pp(q++0, f.program), f) + wrapChild(f, pp(q++1, f.child))
+    case f: Diamond             => wrap(pp(q++0, f.program), f) + wrapChild(f, pp(q++1, f.child))
     case UnitPredicational(name,space) => name + "(" + space + ")"
-    case t: UnaryCompositeFormula=> op(t).opcode + wrapChild(t, pp(q++0, t.child))
+    case t: UnaryCompositeFormula=> ppOp(t) + wrapChild(t, pp(q++0, t.child))
     case t: BinaryCompositeFormula=>
-      wrapLeft(t, pp(q++0, t.left)) + op(t).opcode + wrapRight(t, pp(q++1, t.right))
+      wrapLeft(t, pp(q++0, t.left)) + ppOp(t) + wrapRight(t, pp(q++1, t.right))
   })
 
   private def pp(q: PosInExpr, program: Program): String = emit(q, program match {
     case a: ProgramConst        => statement(a.asString)
     case a: SystemConst         => statement(a.toString)
-    case Assign(x, e)           => statement(pp(q++0, x) + op(program).opcode + pp(q++1, e))
+    case Assign(x, e)           => statement(pp(q++0, x) + ppOp(program) + pp(q++1, e))
     //case DiffAssign(xp, e)      => statement(pp(q++0, xp) + op(program).opcode + pp(q++1, e))
-    case AssignAny(x)           => statement(pp(q++0, x) + op(program).opcode)
-    case Test(f)                => statement(op(program).opcode + pp(q++0, f))
-    case ODESystem(ode, f)      => "{" + ppODE(q++0, ode) + (if (false && f==True) "" else op(program).opcode + pp(q++1, f)) + "}"
+    case AssignAny(x)           => statement(pp(q++0, x) + ppOp(program))
+    case Test(f)                => statement(ppOp(program) + pp(q++0, f))
+    case ODESystem(ode, f)      => wrap(ppODE(q++0, ode) + (if (false && f==True) "" else ppOp(program) + pp(q++1, f)), program)
     //@note unambiguously reparse as ODE not as equation that happens to involve a differential symbol.
     //@note This is only used in printing internal data structures, not user input.
     //@note no positional change since only internal data structure swap-over
-    case ode: DifferentialProgram => "{" + ppODE(q, ode) + "}"
+    case ode: DifferentialProgram => wrap(ppODE(q, ode), program)
     //@note forced parentheses in grammar for loops and duals
-    case t: UnaryCompositeProgram => "{" + pp(q++0, t.child) + "}" + op(program).opcode
+    case t: UnaryCompositeProgram => wrap(pp(q++0, t.child), program) + ppOp(program)
     //case t: UnaryCompositeProgram=> (if (skipParens(t)) pp(t.child) else "{" + pp(t.child) + "}") + op(program).opcode
-    case t: Compose if OpSpec.statementSemicolon =>
-      //@note in statementSemicolon mode, suppress opcode of Compose since already after each statement
-      pwrapLeft(t, pp(q++0, t.left)) + /*op(t).opcode + */ pwrapRight(t, pp(q++1, t.right))
-    case t: BinaryCompositeProgram =>
-      pwrapLeft(t, pp(q++0, t.left)) + op(t).opcode + pwrapRight(t, pp(q++1, t.right))
+    case t: Compose => pwrapLeft(t, pp(q++0, t.left)) + ppOp(t) + pwrapRight(t, pp(q++1, t.right))
+    case t: BinaryCompositeProgram => pwrapLeft(t, pp(q++0, t.left)) + ppOp(t) + pwrapRight(t, pp(q++1, t.right))
   })
 
   private def ppODE(q: PosInExpr, program: DifferentialProgram): String = emit(q, program match {
     case a: DifferentialProgramConst => a.asString
-    case AtomicODE(xp, e)       => pp(q++0, xp) + op(program).opcode + pp(q++1, e)
+    case AtomicODE(xp, e)       => pp(q++0, xp) + ppOp(program) + pp(q++1, e)
     case t: DifferentialProduct =>
       assert(op(t).assoc==RightAssociative && !t.left.isInstanceOf[DifferentialProduct], "differential products are always right-associative")
-      ppODE(q++0, t.left) + op(t).opcode + ppODE(q++1, t.right)
+      ppODE(q++0, t.left) + ppOp(t) + ppODE(q++1, t.right)
   })
 
 

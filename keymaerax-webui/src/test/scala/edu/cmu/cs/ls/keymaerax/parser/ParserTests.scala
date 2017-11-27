@@ -289,7 +289,7 @@ class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
     called shouldBe true
   }
 
-  it should "add () and then expand functions to their defintion" in {
+  it should "add () and then expand functions to their definition" in {
     val input = "Functions. R y() = (3+7). End. ProgramVariables. R x. End. Problem. x>=y+2 -> [{x:=x+1;}*@invariant(x>=y+1)]x>=y End."
     //@todo mock objects
     var called = false
@@ -303,7 +303,6 @@ class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
   }
 
   it should "expand properties to their definition" in {
-    //@todo support for n-ary functions/predicates
     val input = "Functions. B init() <-> (x>=2). B safe(R) <-> (.>=0). End. ProgramVariables. R x. End. Problem. init() -> [{x:=x+1;}*]safe(x) End."
     KeYmaeraXProblemParser(input) shouldBe "x>=2 -> [{x:=x+1;}*]x>=0".asFormula
   }
@@ -332,6 +331,18 @@ class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
     called shouldBe true
   }
 
+  it should "add () when expanding functions in properties" in {
+    val input = "Functions. R b. R y() = (3+b). B inv() <-> (x>=y()). End. ProgramVariables. R x. End. Problem. x>=2 -> [{x:=x+b;}*@invariant(inv())]x>=0 End."
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x:=x+b();}*".asProgram
+      fml shouldBe "x>=3+b()".asFormula
+    })
+    KeYmaeraXProblemParser(input) shouldBe "x>=2 -> [{x:=x+b();}*]x>=0".asFormula
+    called shouldBe true
+  }
+
   it should "complain about sort mismatches in function declaration and operator" in {
     val input = "Functions. R y() <-> (3+7). End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
     the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
@@ -351,7 +362,7 @@ class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
   it should "complain about non-delimited definitions" in {
     val input = "Functions. R y() = (3>2. End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
     the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
-      """1:18 Non-delimited function definition
+      """1:18 Non-delimited definition
         |Found:    NUM(2.) at 1:18 to 1:23
         |Expected: )""".stripMargin
   }

@@ -6,7 +6,7 @@
   * Uniform Substitution for KeYmaera X
   * @author Andre Platzer
   * @author smitsch
-  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 2016.
+  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 59(2), pp. 219-266, 2017.
   * @see Andre Platzer. [[http://dx.doi.org/10.1007/978-3-319-21401-6_32 A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015. [[http://arxiv.org/pdf/1503.01981.pdf arXiv 1503.01981]]
   * @see Andre Platzer. [[http://dx.doi.org/10.1145/2817824 Differential game logic]]. ACM Trans. Comput. Log. 17(1), 2015. [[http://arxiv.org/pdf/1408.1980 arXiv 1408.1980]]
   * @note Code Review: 2016-08-17
@@ -20,6 +20,17 @@ import SetLattice.bottom
 import SetLattice.allVars
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
+/** Admissibility conditions. */
+object SubstitutionAdmissibility {
+  /** Checks whether the term `t` used as a function/predicate argument is admissible for substitution, i.e., is
+    * Nothing, a DotTerm, or composed of only DotTerms. */
+  def isSubstitutableArg(t: Term): Boolean = t match {
+    case Nothing => true
+    case _: DotTerm => true
+    case Pair(l, r) => isSubstitutableArg(l) && isSubstitutableArg(r)
+    case _ => false
+  }
+}
 
 /**
   * Representation of a substitution replacing `what` with `repl` uniformly, everywhere.
@@ -35,7 +46,7 @@ import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
   *          - [[DotFormula]]
   * @param repl the expression to be used in place of `what`.
   * @requires what.kind==repl.kind && what.sort==repl.sort && what has an acceptable shpe
-  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 2016.
+  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 59(2), pp. 219-266, 2017.
   */
 final case class SubstitutionPair (what: Expression, repl: Expression) {
   insist(what.kind == repl.kind, "Substitution to same kind of expression (terms for terms, formulas for formulas, programs for programs): " + this + " substitutes " + what.kind + " ~> " + repl.kind)
@@ -130,8 +141,8 @@ final case class SubstitutionPair (what: Expression, repl: Expression) {
     case a: ProgramConst             => a
     case a: SystemConst              => a
     case a: DifferentialProgramConst => a
-    case PredOf(p: Function, DotTerm(_) | Nothing) if !p.interpreted => p
-    case FuncOf(f: Function, DotTerm(_) | Nothing) if !f.interpreted => f
+    case PredOf(p: Function, arg) if !p.interpreted && SubstitutionAdmissibility.isSubstitutableArg(arg) => p
+    case FuncOf(f: Function, arg) if !f.interpreted && SubstitutionAdmissibility.isSubstitutableArg(arg) => f
     case PredicationalOf(p: Function, DotFormula)  if !p.interpreted => p
     case d: DotTerm                  => d
     case DotFormula                  => DotFormula
@@ -145,10 +156,10 @@ final case class SubstitutionPair (what: Expression, repl: Expression) {
     */
   private[core] def sameHead(other: ApplicationOf): Boolean = what match {
     case FuncOf(lf, arg) =>
-      assert(arg match { case DotTerm(_) | Nothing => true case _ => false }, "Only DotTerm/Nothing allowed as argument")
+      assert(SubstitutionAdmissibility.isSubstitutableArg(arg), "Only DotTerm/Nothing allowed as argument")
       other match { case FuncOf(rf, _) => lf == rf case _ => false }
     case PredOf(lf, arg) =>
-      assert(arg match { case DotTerm(_) | Nothing => true case _ => false }, "Only DotTerm/Nothing allowed as argument")
+      assert(SubstitutionAdmissibility.isSubstitutableArg(arg), "Only DotTerm/Nothing allowed as argument")
       other match { case PredOf(rf, _) => lf == rf case _ => false }
     case PredicationalOf(lf, arg) =>
       assert(arg match { case DotFormula => true case _ => false }, "Only DotFormula allowed as argument")
@@ -174,7 +185,7 @@ final case class SubstitutionPair (what: Expression, repl: Expression) {
   * Main ingredient of prover core.
   * @note soundness-critical
   * @author Andre Platzer
-  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 2016.
+  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 59(2), pp. 219-266, 2017.
   * @see Andre Platzer. [[http://dx.doi.org/10.1007/978-3-319-21401-6_32 A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015.
   * @see Andre Platzer. [[http://arxiv.org/pdf/1503.01981.pdf A uniform substitution calculus for differential dynamic logic.  arXiv 1503.01981]], 2015.
   * @see Andre Platzer. [[http://dx.doi.org/10.1145/2817824 Differential game logic]]. ACM Trans. Comput. Log. 17(1), 2015. [[http://arxiv.org/pdf/1408.1980 arXiv 1408.1980]]
@@ -345,10 +356,10 @@ final case class USubst(subsDefsInput: immutable.Seq[SubstitutionPair]) extends 
         val subs = uniqueElementOf[SubstitutionPair](subsDefs, sp => sp.what.isInstanceOf[FuncOf] && sp.sameHead(app))
         val FuncOf(wf, wArg) = subs.what
         assert(wf == of, "match on same function heads")
-        assert(wArg.isInstanceOf[DotTerm] || wArg == Nothing)
+        assert(SubstitutionAdmissibility.isSubstitutableArg(wArg))
         // unofficial substitution for Nothing (no effect) and Anything in analogy to substitution for DotTerm
         //@note Uniform substitution of the argument placeholder applied to the replacement subs.repl for the shape subs.what
-        USubst(SubstitutionPair(wArg, usubst(theta)) :: Nil).usubst(subs.repl.asInstanceOf[Term])
+        USubst(toSubsPairs(wArg, theta)).usubst(subs.repl.asInstanceOf[Term])
       case app@FuncOf(g:Function, theta) if !matchHead(app) => FuncOf(g, usubst(theta))
       case Nothing =>
         assert(!subsDefs.exists(sp => sp.what == Nothing /*&& sp.repl != Nothing*/), "can replace Nothing only by Nothing, and nothing else");
@@ -382,10 +393,10 @@ final case class USubst(subsDefsInput: immutable.Seq[SubstitutionPair]) extends 
         val subs = uniqueElementOf[SubstitutionPair](subsDefs, sp => sp.what.isInstanceOf[PredOf] && sp.sameHead(app))
         val PredOf(wp, wArg) = subs.what
         assert(wp == op, "match only if same head")
-        assert(wArg.isInstanceOf[DotTerm] || wArg == Nothing)
+        assert(SubstitutionAdmissibility.isSubstitutableArg(wArg))
         // unofficial substitution for Nothing (no effect) and Anything in analogy to substitution for DotTerm
         //@note Uniform substitution of the argument placeholder applied to the replacement subs.repl for the shape subs.what
-        USubst(SubstitutionPair(wArg, usubst(theta)) :: Nil).usubst(subs.repl.asInstanceOf[Formula])
+        USubst(toSubsPairs(wArg, theta)).usubst(subs.repl.asInstanceOf[Formula])
       case app@PredOf(q, theta) if !matchHead(app) => PredOf(q, usubst(theta))
       case app@PredicationalOf(op, fml) if matchHead(app) =>
         requireAdmissible(allVars, fml, formula)
@@ -493,6 +504,11 @@ final case class USubst(subsDefsInput: immutable.Seq[SubstitutionPair]) extends 
     }
   } ensuring(r => r.kind==ode.kind && r.sort==ode.sort, "Uniform Substitution leads to same kind and same sort " + ode)
 
+  /** Turns matching terms into substitution pairs (traverses pairs to create component-wise substitutions). */
+  def toSubsPairs(w: Term, r: Term): List[SubstitutionPair] = (w, r) match {
+    case (Pair(wl, wr), Pair(rl, rr)) => toSubsPairs(wl, rl) ++ toSubsPairs(wr, rr)
+    case _ => SubstitutionPair(w, usubst(r)) :: Nil
+  }
 
   // admissibility
 

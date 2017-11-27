@@ -5,16 +5,17 @@ import java.lang.reflect.ReflectPermission
 import java.security.Permission
 
 import edu.cmu.cs.ls.keymaerax.api.ScalaTacticCompiler
-import edu.cmu.cs.ls.keymaerax.bellerophon.BelleExpr
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser._
 import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
-import edu.cmu.cs.ls.keymaerax.codegen.CGenerator
+import edu.cmu.cs.ls.keymaerax.codegen.{CGenerator, CMonitorGenerator}
 import edu.cmu.cs.ls.keymaerax.btactics.IsabelleSyntax._
 import edu.cmu.cs.ls.keymaerax.hydra.{DBAbstraction, DBAbstractionObj}
-import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXArchiveParser.ParsedArchiveEntry
+import edu.cmu.cs.ls.keymaerax.pt.{IsabelleConverter, PTProvable, ProvableSig}
 
 import scala.collection.immutable
 import scala.compat.Platform
@@ -38,35 +39,42 @@ object KeYmaeraX {
   val usage: String = "KeYmaera X Prover" + " " + VERSION +
     """
       |
-      |Usage: java -Xss20M -jar keymaerax.jar
-      |  -prove filename.kyx -tactic filename.kyt [-out filename.kyp] |
-      |  -check filename.kya |
-      |  -modelplex filename.kyx [-monitorKind ctrl|model] [-out filename.kym]
-      |             [-isar] |
-      |  -codegen filename.kyx [-vars var1,var2,..,varn] [-out file.c] |
+      |Usage: java -jar keymaerax.jar
+      |  -prove file.kyx -tactic file.kyt [-out file.kyp] |
+      |  -check file.kya |
+      |  -modelplex file.kyx [-monitor ctrl|model] [-out file.kym] [-isar] |
+      |  -codegen file.kyx [-vars var1,var2,..,varn] [-out file.c] |
       |  -ui [web server options] |
-      |  -parse filename.kyx |
-      |  -bparse filename.kyt |
-      |  -repl filename.kyx [filename.kyt] [scaladefs]
+      |  -parse file.kyx |
+      |  -bparse file.kyt |
+      |  -repl file.kyx [file.kyt] [scaladefs]
+      |  -coasterx ( -component component-name [-formula] [-tactic] [-stats]
+      |                [-num-runs N] [-debug-level (0|1|2)]
+      |            | -coaster file.rctx -feet-per-unit X [-num-runs N]
+      |              [-velocityFPS V] [-formula] [-stats] [-compare-reuse]
+      |              [-debug-level (0|1|2)]  [-naive-arith]
+      |            | -table [-num-runs N] [-debug-level (0|1|2)])
       |
       |Actions:
-      |  -prove     run KeYmaera X prover on given problem file with given tactic
-      |  -check     run KeYmaera X prover on an archive of problems with tactics
+      |  -prove     run KeYmaera X prover on given model file with given tactic
+      |  -check     run KeYmaera X prover on an archive of models and tactics
       |  -modelplex synthesize monitor from given file by proof with ModelPlex tactic
-      |  -codegen   generate executable code from given file
-      |  -ui        start web user interface with optional arguments
-      |  -parse     return error code !=0 if the input problem file does not parse
+      |  -codegen   generate executable code from given model file
+      |  -ui        start web user interface with optional server arguments
+      |  -parse     return error code !=0 if the input model file does not parse
       |  -bparse    return error code !=0 if bellerophon tactic file does not parse
-      |  -repl      prove interactively from command line
+      |  -repl      prove interactively from REPL command line
+      |  -coasterx  verify roller coasters
       |
       |Additional options:
       |  -tool mathematica|z3 choose which tool to use for arithmetic
       |  -mathkernel MathKernel(.exe) path to the Mathematica kernel executable
       |  -jlink path/to/jlinkNativeLib path to the J/Link native library directory
-      |  -monitorKind ctrl|model what kind of monitor to generate with ModelPlex
+      |  -monitor  ctrl|model what kind of monitor to generate with ModelPlex
       |  -vars     use ordered list of variables, treating others as constant functions
       |  -interval guard reals by interval arithmetic in floating point (recommended)
       |  -nointerval skip interval arithmetic presuming no floating point errors
+      |  -savept path export proof term s-expression from -check to path
       |  -lax      use lax mode with more flexible parser, printer, prover etc.
       |  -strict   use strict mode with no flexibility in prover
       |  -debug    use debug mode with more exhaustive messages
@@ -103,6 +111,10 @@ object KeYmaeraX {
       else if (options.get('mode).contains("codegen"))
       //@note no MathKernel initialization needed for C generation
         codegen(options)
+      else if (options.get('mode).contains("coasterx")) {
+        CoasterXMain.main(options)
+        shutdownProver()
+      }
       else if (!options.get('mode).contains("ui") ) {
         try {
           initializeProver(
@@ -146,11 +158,45 @@ object KeYmaeraX {
     }
   }
 
-  private def makeVariables(varNames: Array[String]): Array[Variable] = {
+  private def makeVariables(varNames: Array[String]): Array[BaseVariable] = {
     varNames.map(vn => KeYmaeraXParser(vn) match {
-      case v: Variable => v
+      case v: BaseVariable => v
       case v => throw new IllegalArgumentException("String " + v + " is not a valid variable name")
     })
+  }
+
+  // Separate argument parsing function so that options (e.g. the -tactic option) can be different for coasterx vs.
+  // regular usage
+  private def nextCoasterOption(map: OptionMap, list: List[String]): OptionMap = {
+    //-coasterx (-component component-name [-formula] [-tactic] [-stats] | -coaster filename.rctx -feet-per-unit X [-velocity V] [-formula] [-stats] | -table2)
+    list match {
+      case "-debug-level" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextCoasterOption(map ++ Map('debugLevel -> value), tail)
+        else optionErrorReporter("-debug-level")
+      case "-component" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextCoasterOption(map ++ Map('coasterxMode -> "component", 'in -> value), tail)
+        else optionErrorReporter("-component")
+      case "-table" :: tail => nextCoasterOption(map ++ Map('coasterxMode -> "table"), tail)
+      case "-formula" :: tail => nextCoasterOption(map ++ Map('doFormula -> "true"), tail)
+      case "-tactic" :: tail => nextCoasterOption(map ++ Map('doTactic -> "true"), tail)
+      case "-stats" :: tail => nextCoasterOption(map ++ Map('doStats -> "true"), tail)
+      case "-compare-reuse" :: tail => nextCoasterOption(map ++ Map('compareReuse -> "true"), tail)
+      case "-num-runs" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextCoasterOption(map ++ Map('numRuns -> value), tail)
+        else optionErrorReporter("-num-runs")
+      case "-coaster" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextCoasterOption(map ++ Map('coasterxMode -> "coaster", 'in -> value), tail)
+        else optionErrorReporter("-coaster")
+      case "-naive-arith" :: tail =>
+        nextCoasterOption(map ++ Map('naiveArith -> "true"), tail)
+      case "-feet-per-unit" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextCoasterOption(map ++ Map('feetPerUnit -> value), tail)
+        else optionErrorReporter("-feet-per-unit")
+      case "-velocityFPS" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextCoasterOption(map ++ Map('velocity -> value), tail)
+        else optionErrorReporter("-velocityFPS")
+      case _ => map
+    }
   }
 
   private def nextOption(map: OptionMap, list: List[String]): OptionMap = {
@@ -169,6 +215,9 @@ object KeYmaeraX {
       case "-check" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "check", 'in -> value), tail)
         else optionErrorReporter("-check")
+      case "-savept" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('ptOut -> value), tail)
+        else optionErrorReporter("-savept")
       case "-modelplex" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "modelplex", 'in -> value), tail)
         else optionErrorReporter("-modelPlex")
@@ -176,6 +225,8 @@ object KeYmaeraX {
       case "-codegen" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('mode -> "codegen", 'in -> value), tail)
         else optionErrorReporter("-codegen")
+      case "-coasterx" :: tail =>
+        nextCoasterOption(map ++ Map('mode -> "coasterx"), tail)
       case "-repl" :: model :: tactic_and_scala_and_tail =>
         val posArgs = tactic_and_scala_and_tail.takeWhile(x => !x.startsWith("-"))
         val restArgs = tactic_and_scala_and_tail.dropWhile(x => !x.startsWith("-"))
@@ -191,9 +242,9 @@ object KeYmaeraX {
       case "-vars" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('vars -> makeVariables(value.split(","))), tail)
         else optionErrorReporter("-vars")
-      case "-monitorKind" :: value :: tail =>
-        if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('monitorKind -> Symbol(value)), tail)
-        else optionErrorReporter("-monitorKind")
+      case "-monitor" :: value :: tail =>
+        if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('monitor -> Symbol(value)), tail)
+        else optionErrorReporter("-monitor")
       case "-tactic" :: value :: tail =>
         if(value.nonEmpty && !value.toString.startsWith("-")) nextOption(map ++ Map('tactic -> value), tail)
         else optionErrorReporter("-tactic")
@@ -278,6 +329,7 @@ object KeYmaeraX {
       case tool => throw new Exception("Unknown tool " + tool)
     }
 
+    BelleInterpreter.setInterpreter(SequentialInterpreter())
     PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter.pp)
 
     val generator = new ConfigurableGenerator[Formula]()
@@ -392,12 +444,24 @@ object KeYmaeraX {
         "\n[Error] Wrong file name " + outputFileName + " used for -out! KeYmaera X only produces proof evidence as .kyp file. Please use: -out FILENAME.kyp")
     }
 
-    prove(inputModel, tactic, outputFileName, options, storeWitness=true)
+    try {
+      prove(inputModel, tactic, outputFileName, options, storeWitness=true)
+    } catch {
+      case ex: Throwable =>
+        println("==================================================")
+        println(s"Error while checking $inputFileName failed")
+        println(s"Error details:")
+        ex.printStackTrace(System.out)
+        println(s"Error while checking $inputFileName")
+        println("==================================================")
+        throw ex
+    }
   }
 
   private def prove(input: Formula, tactic: BelleExpr, outputFileName: String, options: OptionMap, storeWitness: Boolean): Unit = {
     val inputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(input))
 
+    Console.println("[start proof " + outputFileName + "]")
     //@note open print writer to create empty file (i.e., delete previous evidence if this proof fails).
     val pw = new PrintWriter(outputFileName)
 
@@ -439,7 +503,7 @@ object KeYmaeraX {
         "reparse of printed lemma is not original lemma")
 
       println("==================================")
-      println("Tactic finished the proof")
+      println("Tactic finished the proof: " + outputFileName)
       println("==================================")
 
       if (storeWitness) {
@@ -449,14 +513,17 @@ object KeYmaeraX {
       }
       pw.close()
     } else {
+      // prove did not work
       assert(!witness.isProved)
       assert(witness.subgoals.nonEmpty)
       //@note PrintWriter above has already emptied the output file
       pw.close()
+      new File(outputFileName).delete()
       println("==================================")
-      println("Tactic did not finish the proof    open goals: " + witness.subgoals.size)
+      println("Tactic did NOT finish the proof: " + outputFileName + "\n    open goals: " + witness.subgoals.size)
       println("==================================")
       printOpenGoals(witness)
+      println("NO completed proof: " + outputFileName)
       println("==================================")
       if (options.getOrElse('interactive,false)==true) {
         interactiveProver(witness)
@@ -468,25 +535,88 @@ object KeYmaeraX {
   }
 
   /**
-    * Check given archive file to produce lemmas.
+    * Checks the given archive file.
     * {{{KeYmaeraXLemmaPrinter(Prover(tactic)(KeYmaeraXProblemParser(input)))}}}
     *
     * @param options The prover options.
     */
   def check(options: OptionMap): Unit = {
     require(options.contains('in), usage)
-    val inputFileName = options('in).toString
-    assert(inputFileName.endsWith(".kya"),
-      "\n[Error] Wrong file name " + inputFileName + " used for -check! KeYmaera X only checks .kya files. Please use: -check FILENAME.kya")
-    val input = scala.io.Source.fromFile(inputFileName).mkString
-    val archiveContent = KeYmaeraXArchiveParser.parse(input)
 
-    archiveContent.foreach({case (modelName, modelString, model: Formula, tactics) =>
+    val inputFileName = options('in).toString
+    val archiveContent = KeYmaeraXArchiveParser(inputFileName)
+
+    val statistics = scala.collection.mutable.LinkedHashMap[String, Either[(Long, Long, Int, Int, Int), Throwable]]()
+
+    def printStatistics(info: String, v: Either[(Long, Long, Int, Int, Int), Throwable]) = v match {
+      case Left((duration, qeDuration, tacticSize, tacticLines, proofSteps)) =>
+        println(s"=============== Succeeded ===============")
+        println(s"Proved $inputFileName: $info")
+        println("Proof duration [ms]: " + duration)
+        println("QE duration [ms]: " + qeDuration)
+        println("Tactic size: " + tacticSize)
+        println("Tactic lines: " + tacticLines)
+        println("Proof steps: " + proofSteps)
+        println("==========================================")
+      case Right(ex) =>
+        println(s"================ Failed =================")
+        println(s"Error while checking $inputFileName: $info")
+        println(s"Error details:")
+        ex.printStackTrace(System.out)
+        println(s"Error while checking $inputFileName: $info")
+        println("==========================================")
+    }
+
+    def savePt(pt:ProvableSig):Unit = {
+      (pt, options.get('ptOut)) match {
+        case (ptp:PTProvable, Some(path:String)) =>
+          val conv = new IsabelleConverter(ptp.pt)
+          val source = conv.sexp
+          val writer = new PrintWriter(path)
+          writer.write(source)
+          writer.close()
+        case (_, None) => ()
+        case (ptp:PTProvable, None) => assert(false, "Proof term output path specified but proof did not contain proof term")
+      }
+    }
+
+    val qeDurationListener = new IOListeners.StopwatchListener((_, t) => t match {
+      case DependentTactic("QE") => true
+      case DependentTactic("smartQE") => true
+      case _ => false
+    })
+
+    if(options.contains('ptOut)) {
+      ProvableSig.PROOF_TERMS_ENABLED = true
+    }
+    BelleInterpreter.setInterpreter(SequentialInterpreter(qeDurationListener::Nil))
+
+    archiveContent.foreach({case ParsedArchiveEntry(modelName, _, _, model: Formula, tactics) =>
       tactics.foreach({case (tacticName, tactic) =>
-        val witnessFileName = (modelName + "_" + tacticName).replaceAll("\\s", "") + ".kyp"
-        prove(model, tactic, witnessFileName, options, storeWitness=false)
+        val statisticName = modelName + " with " + tacticName
+        try {
+          println("==========================================")
+          println(s"Proving $inputFileName: model $modelName with tactic $tacticName")
+          qeDurationListener.reset()
+          val start = System.currentTimeMillis()
+          val proof = TactixLibrary.proveBy(model, tactic)
+          val end = System.currentTimeMillis()
+          val qeDuration = qeDurationListener.duration
+          assert(proof.isProved, "Expected finished proof")
+
+          statistics(statisticName) = Left(end-start, qeDuration, TacticStatistics.size(tactic), TacticStatistics.lines(tactic), proof.steps)
+
+          printStatistics(statisticName, statistics(statisticName))
+          savePt(proof)
+        } catch {
+          case ex: Throwable =>
+            statistics(statisticName) = Right(ex)
+            printStatistics(statisticName, Right(ex))
+        }
       })
     })
+
+    statistics.foreach({ case (k, v) => printStatistics(k, v) })
   }
 
   /**
@@ -498,15 +628,24 @@ object KeYmaeraX {
   def modelplex(options: OptionMap) = {
     require(options.contains('in), usage)
 
-    // KeYmaeraXPrettyPrinter(ModelPlex(vars)(KeYmaeraXProblemParser(input))
-    val inputFileNameDotKey = options('in).toString
-    assert(inputFileNameDotKey.endsWith(".key") || inputFileNameDotKey.endsWith(".kyx"),
-      "\n[Error] Wrong file name " + inputFileNameDotKey + " used for -modelplex! ModelPlex only handles .key or .kyx files. Please use: -modelplex FILENAME.[key/kyx]")
-    val input = scala.io.Source.fromFile(inputFileNameDotKey).mkString
-    val inputModel = KeYmaeraXProblemParser(input)
-    val verifyOption = options.getOrElse('verify, false).asInstanceOf[Boolean]
-    val isarOption = options.getOrElse('isar,false).asInstanceOf[Boolean]
-    val inputFileName = inputFileNameDotKey.dropRight(4)
+    val in = options('in).toString
+    val inputModel = KeYmaeraXArchiveParser(in).head.model.asInstanceOf[Formula]
+
+    val verifyOption:Option[(ProvableSig => Unit)] =
+      if (options.getOrElse('verify, false).asInstanceOf[Boolean]) {
+        Some({case ptp:PTProvable =>
+          val conv = new IsabelleConverter(ptp.pt)
+          val source = conv.sexp
+          val pwPt = new PrintWriter(options('ptOut).asInstanceOf[String]+".pt")
+          pwPt.write(source)
+          pwPt.close()
+        case _:ProvableSig => ()
+        })
+      } else Some{case _ => ()}
+    //val isarOption = options.getOrElse('isar,false).asInstanceOf[Boolean]
+
+    val inputFileName = in.split('#')(0).dropRight(4)
+
     var outputFileName = inputFileName
     if(options.contains('out)) {
       val outputFileNameDotMx = options('out).toString
@@ -518,9 +657,12 @@ object KeYmaeraX {
     val pw = new PrintWriter(outputFileName + ".kym")
 
     val kind =
-      if (options.contains('monitorKind)) options('monitorKind).asInstanceOf[Symbol]
+      if (options.contains('monitor)) options('monitor).asInstanceOf[Symbol]
       else 'model
 
+    if(options.contains('ptOut)) {
+      ProvableSig.PROOF_TERMS_ENABLED = true
+    }
     val outputFml = if (options.contains('vars))
       ModelPlex(options('vars).asInstanceOf[Array[Variable]].toList, kind, verifyOption)(inputModel)
     else
@@ -544,6 +686,14 @@ object KeYmaeraX {
       pw2.write(prettyProg(prog))
       pw2.close()
 
+    options.get('ptOut) match {
+      case Some(path:String) =>
+        val pwProg = new PrintWriter(path+".hp")
+        val (prog,proof) = isarSyntax(outputFml)
+        pwProg.write("/************************************\n * Pretty printer syntax for Isabelle/HOL import \n ************************************/\n\n")
+        pwProg.write(prettyProg(prog))
+        pwProg.close()
+      case None => ()
     }
   }
 
@@ -601,11 +751,12 @@ object KeYmaeraX {
         "\n[Error] Wrong file name " + outputFileNameDotC + " used for -out! C generator only generates .c file. Please use： -out FILENAME.c")
       outputFileName = outputFileNameDotC.dropRight(2)
     }
-    val vars: List[Variable] =
-      if(options.contains('vars)) options('vars).asInstanceOf[Array[Variable]].toList
-      else StaticSemantics.vars(inputFormula).symbols.map((x:NamedSymbol)=>x.asInstanceOf[Variable]).toList.sortWith((x, y)=>x<y)
+    val vars: Set[BaseVariable] =
+      if (options.contains('vars)) options('vars).asInstanceOf[Array[BaseVariable]].toSet
+      else StaticSemantics.vars(inputFormula).symbols.filter(_.isInstanceOf[BaseVariable]).map(_.asInstanceOf[BaseVariable])
     val codegenStart = Platform.currentTime
-    val output = CGenerator(inputFormula, vars, outputFileName)
+    //@todo input variables (nondeterministically assigned in original program)
+    val output = (new CGenerator(new CMonitorGenerator()))(inputFormula, vars, Set(), outputFileName)
     Console.println("[codegen time " + (Platform.currentTime - codegenStart) + "ms]")
     val pw = new PrintWriter(outputFileName + ".c")
     pw.write(stampHead(options))

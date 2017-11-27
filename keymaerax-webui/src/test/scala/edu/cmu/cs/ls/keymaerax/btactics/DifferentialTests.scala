@@ -314,6 +314,10 @@ class DifferentialTests extends TacticTestBase {
     ) shouldBe 'proved
   }
 
+  it should "disregard other modalities when auto-proving x>=5 -> [{x'=2}]x>=5" taggedAs KeYmaeraXTestTags.SummaryTest in withMathematica { _ =>
+    proveBy("x>=5, [y:=3;]y<=3 ==> [{x'=2}]x>=5".asSequent, dI()(1)) shouldBe 'proved
+  }
+
   it should "behave as DI rule on x>=5 -> [{x'=2}]x>=5" taggedAs KeYmaeraXTestTags.SummaryTest in withMathematica { qeTool =>
     val result = proveBy(Sequent(IndexedSeq(), IndexedSeq("x>=5 -> [{x'=2}]x>=5".asFormula)),
       implyR(1) & dI('none)(1)
@@ -722,6 +726,40 @@ class DifferentialTests extends TacticTestBase {
     result.subgoals(1).succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z)}]x>=old".asFormula)
   }
 
+  it should "auto-generate multiple names for term-ghosts when special function old is used" in withMathematica { qeTool =>
+    val result = proveBy(Sequent(IndexedSeq(), IndexedSeq("[{x'=2 & x>=0 | y<z}]x>=0".asFormula)),
+      dC("x>=old(x^2+4)+old(y*z)".asFormula)(1))
+    result.subgoals should have size 2
+    result.subgoals.head.ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula)
+    result.subgoals.head.succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z) & x>=old+old_0}]x>=0".asFormula)
+    result.subgoals(1).ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula)
+    result.subgoals(1).succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z)}]x>=old+old_0".asFormula)
+  }
+
+  it should "auto-generate multiple names for term-ghosts when special function old is used over consecutive cuts" in withMathematica { _ =>
+    val result = proveBy(Sequent(IndexedSeq(), IndexedSeq("[{x'=2 & x>=0 | y<z}]x>=0".asFormula)),
+      dC("x>=old(x^2+4)+old(y*z)".asFormula)(1) & Idioms.<(dC("x>old(2+4)".asFormula)(1), nil))
+    result.subgoals should have size 3
+    result.subgoals.head.ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula, "old_1=2+4".asFormula)
+    result.subgoals.head.succ should contain theSameElementsAs List("[{x'=2 & ((x>=0 | y<z) & x>=old+old_0) & x>old_1}]x>=0".asFormula)
+    result.subgoals(1).ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula)
+    result.subgoals(1).succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z)}]x>=old+old_0".asFormula)
+    result.subgoals(2).ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula, "old_1=2+4".asFormula)
+    result.subgoals(2).succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z) & x>=old+old_0}]x>old_1".asFormula)
+  }
+
+  it should "auto-generate and re-use names" in withMathematica { _ =>
+    val result = proveBy(Sequent(IndexedSeq(), IndexedSeq("[{x'=2 & x>=0 | y<z}]x>=0".asFormula)),
+      dC("x>=old(x^2+4)+old(y*z)+old(x^2+4)".asFormula)(1) & Idioms.<(dC("x>old(x^2+4)".asFormula)(1), nil))
+    result.subgoals should have size 3
+    result.subgoals.head.ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula)
+    result.subgoals.head.succ should contain theSameElementsAs List("[{x'=2 & ((x>=0 | y<z) & x>=old+old_0+old) & x>old}]x>=0".asFormula)
+    result.subgoals(1).ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula)
+    result.subgoals(1).succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z)}]x>=old+old_0+old".asFormula)
+    result.subgoals(2).ante should contain theSameElementsAs List("old=x^2+4".asFormula, "old_0=y*z".asFormula)
+    result.subgoals(2).succ should contain theSameElementsAs List("[{x'=2 & (x>=0 | y<z) & x>=old+old_0+old}]x>old".asFormula)
+  }
+
   it should "already rewrite existing conditions and introduce ghosts when special function old is used" in withMathematica { qeTool =>
     val result = proveBy(Sequent(IndexedSeq("x>0".asFormula), IndexedSeq("[{x'=2}]x>=0".asFormula)),
       dC("x>=old(x)".asFormula)(1))
@@ -764,6 +802,20 @@ class DifferentialTests extends TacticTestBase {
     result.subgoals(1).succ should contain theSameElementsAs List("[{x'=v,v'=2}]v>=0".asFormula)
     result.subgoals(2).ante should contain theSameElementsAs List("v>=0".asFormula, "x_0>0".asFormula, "x_0=x".asFormula)
     result.subgoals(2).succ should contain theSameElementsAs List("[{x'=v,v'=2 & true & v>=0}]x>=x_0".asFormula)
+  }
+
+  it should "not expand old() ghosts in context" in withMathematica { _ =>
+    val result = proveBy("[x:=0;][{x'=1}]x>=0".asFormula, dC("x>=old(x)".asFormula)(1, 1::Nil))
+    result.subgoals should have size 2
+    result.subgoals.head.ante shouldBe empty // contain theSameElementsAs "!t<0".asFormula::Nil
+    result.subgoals.head.succ should contain theSameElementsAs "[x:=0;][x_0:=x;][{x'=1 & true & x>=x_0}]x>=0".asFormula::Nil
+  }
+
+  it should "compute the followup position correctly" in withMathematica { _ =>
+    val result = proveBy("y=1 ==> [x:=0;][{x'=1,y'=-1}]x>=0".asSequent, dC("x>=old(x) & y<=old(y)".asFormula)(1, 1::Nil))
+    result.subgoals should have size 2
+    result.subgoals.head.ante should contain theSameElementsAs "y=1".asFormula::Nil
+    result.subgoals.head.succ should contain theSameElementsAs "[x:=0;][y_0:=y;][x_0:=x;][{x'=1,y'=-1 & true & (x>=x_0 & y<=y_0)}]x>=0".asFormula::Nil
   }
 
   "Diamond differential cut" should "cut in a simple formula" in withMathematica { qeTool =>
@@ -1252,6 +1304,13 @@ class DifferentialTests extends TacticTestBase {
     result.subgoals.head.succ should contain theSameElementsAs List("\\forall t_ (t_>=0 -> 2*t_+x>b)".asFormula)
   }
 
+  it should "disregard other modalities" in withMathematica { _ =>
+    val result = proveBy("x>b, [y:=3;]y>=3 ==> <z:=3;>z=3, [{x'=2}]x>b".asSequent, solve(2))
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain theSameElementsAs List("x>b".asFormula, "[y:=3;]y>=3".asFormula)
+    result.subgoals.head.succ should contain theSameElementsAs List("<z:=3;>z=3".asFormula, "\\forall t_ (t_>=0 -> 2*t_+x>b)".asFormula)
+  }
+
   it should "add time" in withMathematica { tool =>
     val result = proveBy(Sequent(IndexedSeq("x>b".asFormula), IndexedSeq("[{x'=2}]x>b".asFormula)),
       solve(1))
@@ -1295,14 +1354,6 @@ class DifferentialTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante shouldBe empty
     result.subgoals.head.succ should contain theSameElementsAs List("\\forall t_ (t_>=0 -> \\forall x (x=2*t_+x_1 -> [{x'=3}]x>0))".asFormula)
-  }
-
-  it should "open diff ind x>b() |- [{x'=2}]x>b()" in withMathematica { tool =>
-    proveBy(Sequent(IndexedSeq("x>b()".asFormula), IndexedSeq("[{x'=2}]x>b()".asFormula)), openDiffInd(1)) shouldBe 'proved
-  }
-
-  it should "open diff ind x>b |- [{x'=2}]x>b" in withMathematica { tool =>
-    proveBy(Sequent(IndexedSeq("x>b".asFormula), IndexedSeq("[{x'=2}]x>b".asFormula)), openDiffInd(1)) shouldBe 'proved
   }
 
   it should "find solution for x'=v" in withMathematica { tool =>
@@ -1478,7 +1529,7 @@ class DifferentialTests extends TacticTestBase {
     result.subgoals.head.succ should contain theSameElementsAs List("\\forall t_ (t_>=0 -> t_+x>0)".asFormula)
   }
 
-  it should "solve diamond explicit-form ODE" in withMathematica { tool =>
+  it should "solve diamond explicit-form ODE" ignore withMathematica { tool =>
     val result = proveBy(Sequent(IndexedSeq("x>0".asFormula), IndexedSeq("<{x'=0*x+1}>x>0".asFormula)), solve(1))
     result.subgoals should have size 1
     result.subgoals.head.ante should contain theSameElementsAs List("x>0".asFormula)
@@ -1539,6 +1590,13 @@ class DifferentialTests extends TacticTestBase {
     result.subgoals should have size 1
     result.subgoals.head.ante should contain theSameElementsAs "x>=0&v>=0&a>=0&s>=0&g()>0".asFormula::Nil
     result.subgoals.head.succ should contain theSameElementsAs "\\forall t_ (t_>=0->(s/2/3*t_^3+a/2*t_^2)/g()+v*t_+x>=0)".asFormula::Nil
+  }
+
+  it should "solve double integrator with sum of constants" in withMathematica { _ =>
+    val result = proveBy("y<b, x<=0, Y()>=0, Z()<Y() ==> [{y'=x, x'=-Y()+Z()}]y<b".asSequent, solve(1))
+    result.subgoals should have size 1
+    result.subgoals.head.ante should contain theSameElementsAs List("y<b".asFormula, "x<=0".asFormula, "Y()>=0".asFormula, "Z()<Y()".asFormula)
+    result.subgoals.head.succ should contain theSameElementsAs List("\\forall t_ (t_>=0 -> (-Y()+Z())/2*t_^2+x*t_+y<b)".asFormula)
   }
 
   "diffUnpackEvolutionDomainInitially" should "unpack the evolution domain of an ODE as fact at time zero" in {
@@ -1640,6 +1698,18 @@ class DifferentialTests extends TacticTestBase {
 
   it should "prove 5<=x^3 -> [{x'=7*x^3+x^8}]5<=x^3" in withMathematica { qeTool =>
     proveBy("5<=x^3 -> [{x'=7*x^3+x^8}]5<=x^3".asFormula, implyR(1) & openDiffInd(1)) shouldBe 'proved
+  }
+
+  it should "open diff ind x>b() |- [{x'=2}]x>b()" in withMathematica { _ =>
+    proveBy(Sequent(IndexedSeq("x>b()".asFormula), IndexedSeq("[{x'=2}]x>b()".asFormula)), openDiffInd(1)) shouldBe 'proved
+  }
+
+  it should "open diff ind x>b |- [{x'=2}]x>b" in withMathematica { _ =>
+    proveBy(Sequent(IndexedSeq("x>b".asFormula), IndexedSeq("[{x'=2}]x>b".asFormula)), openDiffInd(1)) shouldBe 'proved
+  }
+
+  it should "disregard other modalities" in withMathematica { _ =>
+    proveBy("x>b, [y:=3;]y<=3 ==> <z:=2;>z=2, [{x'=2}]x>b".asSequent, openDiffInd(2)) shouldBe 'proved
   }
 
   "Differential Variant" should "diff var a()>0 |- <{x'=a()}>x>=b()" in withMathematica { tool =>

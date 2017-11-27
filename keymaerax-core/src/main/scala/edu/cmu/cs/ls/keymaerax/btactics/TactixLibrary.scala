@@ -4,14 +4,17 @@
  */
 package edu.cmu.cs.ls.keymaerax.btactics
 
+import java.io.File
+
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.Idioms.?
 import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 import edu.cmu.cs.ls.keymaerax.core._
 import Augmentors._
 import edu.cmu.cs.ls.keymaerax.btactics.TacticIndex.TacticRecursors
+import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
-import edu.cmu.cs.ls.keymaerax.tools.CounterExampleTool
+import edu.cmu.cs.ls.keymaerax.tools.ToolOperationManagement
 
 import scala.List
 import scala.collection.immutable._
@@ -42,7 +45,7 @@ import scala.language.postfixOps
   *
   * @author Andre Platzer
   * @author Stefan Mitsch
-  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 2016.
+  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 59(2), pp. 219-266, 2017.
   * @see Andre Platzer. [[http://dx.doi.org/10.1007/978-3-319-21401-6_32 A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015.
   * @see [[HilbertCalculus]]
   * @see [[SequentCalculus]]
@@ -558,7 +561,25 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
     * @param order the order of variables to use during quantifier elimination
     * @see [[QE]]
     * @see [[RCF]] */
-  def QE(order: List[NamedSymbol] = Nil): BelleExpr = ToolTactics.fullQE(order)(ToolProvider.qeTool().getOrElse(throw new BelleThrowable("QE requires a QETool, but got None")))
+  def QE(order: List[NamedSymbol] = Nil, requiresTool: Option[String] = None, timeout: Option[Int] = None): BelleExpr = {
+    //@todo implement as part of tools?
+    lazy val tool = ToolProvider.qeTool(requiresTool).getOrElse(
+      throw new BelleThrowable(s"QE requires ${requiresTool.getOrElse("a QETool")}, but got None"))
+    lazy val timeoutTool: QETool = timeout match {
+      case Some(t) => tool match {
+        case tom: ToolOperationManagement => tom.setOperationTimeout(t); tool
+        case _ => throw BelleUnsupportedFailure("Tool " + tool + " does not support timeouts")
+      }
+      case None => tool
+    }
+    val tactic = ToolTactics.fullQE(order)(timeoutTool)
+    (requiresTool, timeout) match {
+      case (Some(toolName), Some(t)) => "QE" byWithInputs (Variable(toolName)::Number(t)::Nil, tactic)
+      case (Some(toolName), None) => "QE" byWithInputs (Variable(toolName)::Nil, tactic)
+      case (None, Some(t)) => "QE" byWithInputs (Number(t)::Nil, tactic)
+      case _ => tactic
+    }
+  }
   def QE: BelleExpr = QE()
 
   /** Quantifier elimination returning equivalent result, irrespective of result being valid or not.
@@ -577,6 +598,7 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
   def atomicQE: BelleExpr = atomicQE()
 
   def heuQE: BelleExpr = ToolTactics.heuristicQE(ToolProvider.qeTool().getOrElse(throw new BelleThrowable("QE requires a QETool, but got None")))
+  def heuQEPO (po:Ordering[Variable]): BelleExpr = ToolTactics.heuristicQE(ToolProvider.qeTool().getOrElse(throw new BelleThrowable("QE requires a QETool, but got None")),po)
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Bigger Tactics.
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -661,6 +683,10 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
     * @param to The transformed formula or term that is desired as the result of this transformation.
     */
   def transform(to: Expression): DependentPositionTactic = ToolTactics.transform(to)
+
+  /** Determines difference between expression at position and expression `to` and turns diff.
+    * into transformations and abbreviations. */
+  def edit(to: Expression): DependentPositionTactic = ToolTactics.edit(to)
 
   //
   /** OnAll(e) == <(e, ..., e) runs tactic `e` on all current branches. */
@@ -768,8 +794,7 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
     */
   def proveBy(goal: ProvableSig, tactic: BelleExpr): ProvableSig = {
     val v = BelleProvable(goal)
-    //@todo fetch from some factory
-    SequentialInterpreter()(tactic, v) match {
+    BelleInterpreter(tactic, v) match {
       case BelleProvable(provable, _) => provable
 //      //@note there is no other case at the moment
 //      case r => throw BelleIllFormedError("Error in proveBy, goal\n" + goal + " was not provable but instead resulted in\n" + r)
@@ -800,6 +825,33 @@ object TactixLibrary extends HilbertCalculus with SequentCalculus {
    * }}}
    */
   def proveBy(goal: Formula, tactic: BelleExpr): ProvableSig = proveBy(Sequent(IndexedSeq(), IndexedSeq(goal)), tactic)
+
+  /** useLemma(lemmaName, tactic) applies the lemma identified by `lemmaName`, optionally adapting the lemma formula to
+    * the current subgoal using the tactic `adapt`. Literal lemma application if `adapt` is None. */
+  def useLemma(lemmaName: String, adapt: Option[BelleExpr]): BelleExpr = "useLemma" byWithInputs(
+    if (adapt.isDefined) lemmaName::adapt.get.prettyString::Nil else lemmaName::Nil,
+    anon { _ =>
+      val userLemmaName = "user" + File.separator + lemmaName //@todo FileLemmaDB + multi-user environment
+      if (LemmaDBFactory.lemmaDB.contains(userLemmaName)) {
+        val lemma = LemmaDBFactory.lemmaDB.get(userLemmaName).get
+        adapt match {
+          case Some(t) => cut(lemma.fact.conclusion.succ.head) <(t, cohideR('Rlast) & by(lemma))
+          case None => by(lemma)
+        }
+      } else throw new BelleAbort("Missing lemma " + lemmaName, "Please prove lemma " + lemmaName + " first")
+    }
+  )
+
+  /** Applies the lemma by matching `key` in the lemma with the tactic position. */
+  def useLemmaAt(lemmaName: String, key: Option[PosInExpr]): DependentPositionWithAppliedInputTactic = "useLemmaAt" byWithInputs(
+    if (key.isDefined) lemmaName::key.get.prettyString::Nil else lemmaName::Nil,
+    (pos: Position, _: Sequent) => {
+      val userLemmaName = "user" + File.separator + lemmaName //@todo FileLemmaDB + multi-user environment
+      if (LemmaDBFactory.lemmaDB.contains(userLemmaName)) {
+        val lemma = LemmaDBFactory.lemmaDB.get(userLemmaName).get
+        useAt(lemma, key.getOrElse(PosInExpr(0::Nil)))(pos)
+      } else throw new BelleAbort("Missing lemma " + lemmaName, "Please prove lemma " + lemmaName + " first")
+    })
 
   /** Finds a counter example, indicating that the specified formula is not valid. */
   def findCounterExample(formula: Formula) = ToolProvider.cexTool().getOrElse(throw new BelleThrowable("findCounterExample requires a CounterExampleTool, but got None")).findCounterExample(formula)

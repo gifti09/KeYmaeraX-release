@@ -1,3 +1,25 @@
+/** Makes a node that fetches its sequent lazily */
+makeLazyNode = function(http, userId, proofId, node) {
+  node.getSequent = function() {
+    var theNode = node;
+    if (theNode.sequent) return theNode.sequent;
+    else {
+      theNode.sequent = {};
+      http.get('proofs/user/' + userId + '/' + proofId + '/' + theNode.id + '/sequent').then(function(response) {
+        if (response.data.sequent != undefined) {
+          theNode.sequent.ante = response.data.sequent.ante;
+          theNode.sequent.succ = response.data.sequent.succ;
+        } else {
+          theNode.sequent.ante = [];
+          theNode.sequent.succ = [];
+        }
+      });
+      return theNode.sequent;
+    }
+  };
+  return node;
+}
+
 angular.module('keymaerax.services').factory('Agenda', function() {
   var agenda = function() {
     return {
@@ -40,14 +62,7 @@ angular.module('keymaerax.services').factory('Agenda', function() {
          return { sectionIdx: -1, pathStepIdx: -1 };
        },
        /** Returns the index of the section where any proofTreeNode's child is last (child is unique). */
-       childSectionIndex: function(itemId, proofTreeNode) {
-         var agendaItem = this.itemsMap[itemId];
-         for (var i = 0; i < agendaItem.deduction.sections.length; i++) {
-           var section = agendaItem.deduction.sections[i];
-           if (proofTreeNode.children.indexOf(section.path[section.path.length - 1]) >= 0) return i;
-         }
-         return -1;
-       },
+       childSectionIndex: function(itemId, proofTreeNode) { return 0; },
 
        /**
         * Updates the specified section by adding the proof tree node. If the node has more than 1 child, a new section
@@ -56,42 +71,10 @@ angular.module('keymaerax.services').factory('Agenda', function() {
         * @param sectionIdx The section where to add the proof node.
         */
        updateSection: function(proofTree, proofTreeNode, agendaItem, sectionIdx) {
-         // only update if node not added previously
-         if (sectionIdx+1 >= agendaItem.deduction.sections.length || agendaItem.deduction.sections[sectionIdx+1].path.indexOf(proofTreeNode.id) < 0) {
-           var section = agendaItem.deduction.sections[sectionIdx];
-           var sectionEnd = section.path[section.path.length-1];
-           if (proofTreeNode.children != null && proofTreeNode.children.length > 1) {
-             if (sectionIdx+1 >= agendaItem.deduction.sections.length || agendaItem.deduction.sections[sectionIdx+1].path[0] !== null) {
-               // start new section with parent, parent section is complete if parent is root
-               agendaItem.deduction.sections.splice(sectionIdx+1, 0, {path: [proofTreeNode.id], isCollapsed: false, isComplete: proofTreeNode.parent === null});
-             } // else: parent already has its own section, see fetchBranchRoot
-             // in any case: child's section is loaded completely if it's ending in one of the children of the proof tree node
-             section.isComplete = proofTreeNode.children.indexOf(sectionEnd) >= 0;
-           } else {
-             // parent has exactly 1 child, append parent to child's section
-             if (sectionIdx === -1) {
-               //@todo client error message
-//               showClientErrorMessage($uibModal, 'Expected a unique path section ending in a child of ' + proofTreeNode.id + ', but agenda item ' + agendaItem.id +
-//                 ' has ' + agendaItem.sections + ' as path sections');
-             } else if (proofTreeNode.parent !== null) {
-               section.path.push(proofTreeNode.id);
-               var parentCandidate =
-                 (sectionIdx+1 < agendaItem.deduction.sections.length
-                 ? proofTree.nodesMap[agendaItem.deduction.sections[sectionIdx+1].path[0]]
-                 : undefined);
-               section.isComplete =
-                 parentCandidate !== undefined && parentCandidate.children != null && parentCandidate.children.indexOf(proofTreeNode.id) >= 0;
-             } else {
-               if (sectionIdx+1 < agendaItem.deduction.sections.length) {
-                //@todo client error message
-//                 showClientErrorMessage($uibModal, 'Received proof tree root, which can only be added to last section, but ' + sectionIdx +
-//                   ' is not last section in ' + agendaItem.deduction.sections);
-               } else {
-                 agendaItem.deduction.sections.splice(sectionIdx+1, 0, {path: [proofTreeNode.id], isCollapsed: false, isComplete: true});
-                 section.isComplete = proofTreeNode.children != null && proofTreeNode.children.indexOf(sectionEnd) >= 0;
-               }
-             }
-           }
+         var section = agendaItem.deduction.sections[sectionIdx];
+         if (section.path.indexOf(proofTreeNode.id) < 0) {
+           proofTreeNode.getSequent = function() { return proofTreeNode.sequent; };
+           section.path.push(proofTreeNode.id);
          }
        }
      }
@@ -128,8 +111,26 @@ angular.module('keymaerax.services').factory('ProofTree', function() {
             this.nodesMap[node.id].rule = node.rule;
           }
         },
+        /** Returns the proof tree root. */
         rootNode: function() { return this.nodesMap[this.root]; },
+        /** Returns the node `nodeId`. */
         node: function(nodeId) { return this.nodesMap[nodeId]; },
+        /** Converts the server-issued `nodeId` into an ID suitable for HTML id=... */
+        htmlNodeId: function(nodeId) { return nodeId.replace(/\(|\)/g, "").replace(/,/g, "-"); },
+        /** Highlights the operator where the step that created sequent/node `nodeId` was applied. */
+        highlightNodeStep: function(nodeId, highlight) {
+          var node = this.node(nodeId);
+          var pos = node.rule.pos.replace(/\./g, "\\,");
+          var element = $("#seq_"+this.htmlNodeId(node.parent) + " #fml_"+pos);
+          if (highlight) {
+            if (node.rule.asciiName == "WL" || node.rule.asciiName == "WR") element.addClass("k4-highlight-steppos-full");
+            else element.addClass("k4-highlight-steppos");
+            if (element.text().startsWith("[") || element.text().startsWith("<")) {
+              if (node.rule.asciiName == "[]^" || node.rule.asciiName == "<>|") element.addClass("k4-highlight-steppos-modality-post");
+              else element.addClass("k4-highlight-steppos-modality-prg");
+            }
+          } else element.removeClass("k4-highlight-steppos k4-highlight-steppos-full k4-highlight-steppos-modality-prg k4-highlight-steppos-modality-post");
+        },
 
         paths: function(node) {
           //@todo what if we have a branching tree?
@@ -237,15 +238,27 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
       }).then(onPruned);
     },
 
-    /** Fetches the agenda from the server */
-    fetchAgenda: function(scope, userId, proofId) {
+    /** Clears all proof data (at proof start). */
+    clear: function() {
+      this.proofTree = new ProofTree();
+      this.agenda = new Agenda();
+    },
+
+    /** Fetches the agenda from the server for the purpose of continuing a proof */
+    fetchAgenda: function(scope, userId, proofId) { this.doFetchAgenda(scope, userId, proofId, 'agendaawesome'); },
+
+    /** Fetches the agenda from the server for the purpose of browsing a proof from root to leaves */
+    fetchBrowseAgenda: function(scope, userId, proofId) { this.doFetchAgenda(scope, userId, proofId, 'browseagenda'); },
+
+    /** Fetches a proof's agenda of kind `agendaKind` from the server */
+    doFetchAgenda: function(scope, userId, proofId, agendaKind) {
       var theProofTree = this.proofTree;
       var theAgenda = this.agenda;
-      spinnerService.show('proofLoadingSpinner');
       this.tactic.fetch(userId, proofId);
-      $http.get('proofs/user/' + userId + "/" + proofId + '/agendaawesome')
+      $http.get('proofs/user/' + userId + '/' + proofId + '/' + agendaKind)
         .then(function(response) {
           theAgenda.itemsMap = response.data.agendaItems;
+          $.each(response.data.proofTree.nodes, function(i, v) { makeLazyNode($http, userId, proofId, v); });
           theProofTree.nodesMap = response.data.proofTree.nodes;
           theProofTree.root = response.data.proofTree.root;
           if (theAgenda.items().length > 0) {
@@ -266,27 +279,26 @@ angular.module('keymaerax.services').factory('sequentProofData', ['$http', '$roo
         })
         .catch(function(data) {
           $rootScope.$broadcast('agenda.loadError'); // TODO somewhere: open modal dialog and ask if proof should be loaded
-
         })
-        .finally(function() { spinnerService.hide('proofLoadingSpinner'); });
+        .finally(function() { spinnerService.hideAll(); });
     },
 
     /** Updates the agenda and the proof tree with new items resulting from a tactic */
-    updateAgendaAndTree: function(proofId, proofUpdate) {
+    updateAgendaAndTree: function(userId, proofId, proofUpdate) {
       if (proofUpdate.progress) {
         var theProofTree = this.proofTree;
         var theAgenda = this.agenda;
         var oldAgendaItem = theAgenda.itemsMap[proofUpdate.parent.id];
         $.each(proofUpdate.newNodes, function(i, node) {
           // update tree
-          theProofTree.nodesMap[node.id] = node;
+          theProofTree.nodesMap[node.id] = makeLazyNode($http, userId, proofId, node);
           var parent = theProofTree.nodesMap[node.parent]
           if (parent.children === undefined || parent.children === null) parent.children = [node.id];
           else parent.children.push(node.id);
           // update agenda: prepend new open goal to deduction path
           var newAgendaItem = {
             id: node.id,
-            name: oldAgendaItem.name,                               // inherit name from old
+            name: 'Goal: ' + node.rule.name,                        // see AgendaAwesomeRequest
             isSelected: i === 0 ? oldAgendaItem.isSelected : false, // first new item inherits selection from old
             deduction: $.extend(true, {}, oldAgendaItem.deduction)  // object deep copy
           }

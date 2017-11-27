@@ -109,6 +109,8 @@ private object RDIA    extends OPERATOR(">") {
   override def regexp = """\>""".r
 }
 
+private object PRG_DEF  extends OPERATOR("::=")
+
 private object COMMA   extends OPERATOR(",")
 
 private object PRIME   extends OPERATOR("'")
@@ -132,9 +134,13 @@ private object OR      extends OPERATOR("|") {
   override def regexp = """\|""".r
 }
 private object EQUIV   extends OPERATOR("<->")
+private object EQUIV_UNICODE extends OPERATOR("↔")
 private object IMPLY   extends OPERATOR("->")
+private object IMPLY_UNICODE extends OPERATOR("→")
+
 //@todo maybe could change to <-- to disambiguate poor lexer's x<-7 REVIMPLY from LDIA MINUS
 private object REVIMPLY extends OPERATOR("<-")
+private object REVIMPLY_UNICODE extends OPERATOR("←")
 
 private object FORALL  extends OPERATOR("\\forall") {
   override def regexp = """\\forall""".r
@@ -149,6 +155,15 @@ private object NOTEQ   extends OPERATOR("!=") {
 }
 private object GREATEREQ extends OPERATOR(">=")
 private object LESSEQ  extends OPERATOR("<=")
+
+//Unicode versions of operators:
+private object LESSEQ_UNICODE extends OPERATOR("≤")
+private object GREATEREQ_UNICODE extends OPERATOR("≥")
+private object AND_UNICODE extends OPERATOR("∧")
+private object OR_UNICODE extends OPERATOR("∨")
+private object UNEQUAL_UNICODE extends OPERATOR("≠")
+private object FORALL_UNICODE extends OPERATOR("∀")
+private object EXISTS_UNICODE extends OPERATOR("∃")
 
 private object TRUE    extends OPERATOR("true")
 private object FALSE   extends OPERATOR("false")
@@ -180,7 +195,19 @@ private object DCHOICE  extends OPERATOR("--") {
 
 // pseudos: could probably demote so that some are not OPERATOR
 private object NOTHING extends Terminal("")
-private object DOT     extends OPERATOR("•") //(".")
+
+private case class DOT(index: Option[Int] = None) extends Terminal("•" + (index match {case Some(x) => "_"+x case None => ""})) {
+  override def toString: String = "DOT(\"" + (index match {
+    case None => ""
+    case Some(idx) => idx
+  }) + "\")"
+  override def regexp: Regex = DOT.regexp
+}
+private object DOT {
+  def regexp: Regex = """((?:•(?:\_[0-9]+)?)|(?:\.\_[0-9]+))""".r
+  val startPattern: Regex = ("^" + regexp.pattern.pattern + "[\\s\\S]*").r
+}
+
 private object PLACE   extends OPERATOR("⎵") //("_")
 private object ANYTHING extends OPERATOR("??") {
   override def regexp = """\?\?""".r
@@ -193,7 +220,6 @@ private object PSEUDO  extends Terminal("<pseudo>")
 private object INVARIANT extends Terminal("@invariant") {
   override def regexp = """\@invariant""".r
 }
-
 
 // axiom and problem file
 
@@ -215,6 +241,7 @@ private object FUNCTIONS_BLOCK extends Terminal("Functions.") {
   //not totally necessary -- you'll still get the right behavior because . matches \. But also allows stuff like Functions: which maybe isn't terrible.
 //  override def regexp = """Functions\.""".r
 }
+private object DEFINITIONS_BLOCK extends Terminal("Definitions.")
 private object PROGRAM_VARIABLES_BLOCK extends Terminal("ProgramVariables.")
 private object VARIABLES_BLOCK extends Terminal("Variables.") //used in axioms file...
 private object PROBLEM_BLOCK extends Terminal("Problem.")
@@ -388,6 +415,15 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
     def consumeTerminalLength(terminal: Terminal, location: Location): Option[(String, Token, Location)] =
       consumeColumns(terminal.img.length, terminal, location)
 
+    def consumeUnicodeTerminalLength(terminal: Terminal, location: Location, replacementTerminal: Terminal): Option[(String, Token, Location)] = {
+      val result: Option[(String, Token, Location)] = consumeColumns(terminal.img.length, terminal, location)
+
+      result match {
+        case None => None
+        case Some((s,t,l)) => Some((s, Token(replacementTerminal, t.loc), l))
+      }
+    }
+
     def swapOutFor(found: Option[(String, Token, Location)], repl: Terminal): Option[(String, Token, Location)] = found match {
       case None => None
       case Some((s,tok,cur)) => Some((s,Token(repl,tok.loc),cur))
@@ -446,6 +482,8 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
         case _ => throw new Exception("Encountered a formula begin symbol (Formula:) in a non-lemma file.")
       }
 
+      case DOT.startPattern(dot) => val (_, idx) = splitName(dot); consumeTerminalLength(DOT(idx), loc)
+
       // File cases
       case PERIOD.startPattern(_*) => consumeTerminalLength(PERIOD, loc) //swapOutFor(consumeTerminalLength(PERIOD, loc), DOT)
         /*mode match {
@@ -455,6 +493,10 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
       case FUNCTIONS_BLOCK.startPattern(_*) => mode match {
         case AxiomFileMode | ProblemFileMode | LemmaFileMode => consumeTerminalLength(FUNCTIONS_BLOCK, loc)
         case _ => throw new Exception("Functions. should only occur when processing files.")
+      }
+      case DEFINITIONS_BLOCK.startPattern(_*) => mode match {
+        case AxiomFileMode | ProblemFileMode | LemmaFileMode => consumeTerminalLength(DEFINITIONS_BLOCK, loc)
+        case _ => throw new Exception("Definitions. should only occur when processing files.")
       }
       case PROGRAM_VARIABLES_BLOCK.startPattern(_*) => mode match {
         case AxiomFileMode | ProblemFileMode | LemmaFileMode => consumeTerminalLength(PROGRAM_VARIABLES_BLOCK, loc)
@@ -520,7 +562,9 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
 
       //These have to come before LBOX,RBOX because otherwise <= becopmes LDIA, EQUALS
       case GREATEREQ.startPattern(_*) => consumeTerminalLength(GREATEREQ, loc)
+      case GREATEREQ_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(GREATEREQ_UNICODE, loc, GREATEREQ)
       case LESSEQ.startPattern(_*) => consumeTerminalLength(LESSEQ, loc)
+      case LESSEQ_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(LESSEQ_UNICODE, loc, LESSEQ)
       case NOTEQ.startPattern(_*) => consumeTerminalLength(NOTEQ, loc)
 
       case LBANANA.startPattern(_*) => consumeTerminalLength(LBANANA, loc)
@@ -553,16 +597,24 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
 
 
       case AMP.startPattern(_*) => consumeTerminalLength(AMP, loc)
+      case AND_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(AND_UNICODE, loc, AMP)
       case NOT.startPattern(_*) => consumeTerminalLength(NOT, loc)
       case OR.startPattern(_*) => consumeTerminalLength(OR, loc)
+      case OR_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(OR_UNICODE, loc, OR)
       case EQUIV.startPattern(_*) => consumeTerminalLength(EQUIV, loc)
+      case EQUIV_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(EQUIV_UNICODE, loc, EQUIV)
       case IMPLY.startPattern(_*) => consumeTerminalLength(IMPLY, loc)
+      case IMPLY_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(IMPLY_UNICODE, loc, IMPLY)
       case REVIMPLY.startPattern(_*) => consumeTerminalLength(REVIMPLY, loc)
+      case REVIMPLY_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(REVIMPLY_UNICODE, loc, REVIMPLY)
 
       case FORALL.startPattern(_*) => consumeTerminalLength(FORALL, loc)
+      case FORALL_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(FORALL_UNICODE, loc, FORALL)
       case EXISTS.startPattern(_*) => consumeTerminalLength(EXISTS, loc)
+      case EXISTS_UNICODE.startPattern(_*) => consumeUnicodeTerminalLength(EXISTS_UNICODE, loc, EXISTS)
 
       case EQ.startPattern(_*) => consumeTerminalLength(EQ, loc)
+      case UNEQUAL_UNICODE.startPattern(_*) => ???
       case TRUE.startPattern(_*) => consumeTerminalLength(TRUE, loc)
       case FALSE.startPattern(_*) => consumeTerminalLength(FALSE, loc)
 
@@ -574,7 +626,6 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
       case SEMI.startPattern(_*) => consumeTerminalLength(SEMI, loc)
 
 
-      case DOT.startPattern(_*) => consumeTerminalLength(DOT, loc)
       case PLACE.startPattern(_*) => consumeTerminalLength(PLACE, loc)
       case PSEUDO.startPattern(_*) => consumeTerminalLength(PSEUDO, loc)
 
@@ -591,6 +642,8 @@ object KeYmaeraXLexer extends ((String) => List[Token]) {
 
       case LDIA.startPattern(_*) => consumeTerminalLength(LDIA, loc)
       case RDIA.startPattern(_*) => consumeTerminalLength(RDIA, loc)
+
+      case PRG_DEF.startPattern(_*) => consumeTerminalLength(PRG_DEF, loc)
 
       case _ if s.isEmpty => None
         //@todo should be LexException inheriting

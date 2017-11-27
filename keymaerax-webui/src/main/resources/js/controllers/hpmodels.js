@@ -1,6 +1,6 @@
 angular.module('keymaerax.controllers').controller('FormulaUploadCtrl',
-  function ($scope, $http, $cookies, $cookieStore, $route, $uibModal, Models, spinnerService) {
-    $scope.userId = $cookies.get('userId');
+  function ($scope, $http, $route, $uibModal, Models, sessionService, spinnerService) {
+    $scope.userId = sessionService.getUser();
 
     $scope.addModelFromFormula = function(modelName, formula) {
       $http.post('/user/' + $scope.userId + '/modelFromFormula/' + modelName, formula)
@@ -18,102 +18,91 @@ angular.module('keymaerax.controllers').controller('FormulaUploadCtrl',
 );
 
 angular.module('keymaerax.controllers').controller('ModelUploadCtrl',
-  function ($scope, $http, $cookies, $cookieStore, $route, $uibModal, $location, Models, spinnerService) {
-
-     $scope.runPreloadedProof = function(model) {
-        $http.post("/models/users/" + $scope.userId + "/model/" + model.id + "/initialize")
-            .success(function(data) {
-                if(data.errorThrown) {
-                    showCaughtErrorMessage($uibModal, data, "Proof Preloader")
-                } else {
-                    console.log("yay! Take the user to the proof load page?")
-                }
-            })
+  function ($scope, $http, $route, $uibModalInstance, $uibModal, $location, Models, sessionService, spinnerService) {
+     /** Model data */
+     $scope.model = {
+       uri: undefined,
+       modelName: undefined,
+       content: undefined,
+       kind: 'kyx'
      };
 
-      $scope.deleteModel = function(modelId) {
-          $http.post("/user/" + $cookies.get('userId') + "/model/" + modelId + "/delete").success(function(data) {
-              if(data.errorThrown) {
-                  showCaughtErrorMessage($uibModal, data, "Model Deleter")
-              } else {
-                  console.log("Model " + modelId + " was deleted. Getting a new model list and reloading the route.")
-                  $http.get("models/users/" + $cookies.get('userId')).success(function(data) {
-                      Models.addModels(data);
-                      $route.reload();
-                  });
-              }
-          })
-      };
-
-     $(".fileinput").on("change.bs.fileinput", function(e) {
-       e.stopPropagation();
-       $scope.fileExt = keyFile == undefined || keyFile.files == undefined ? '' : keyFile.files[0].name.substr(keyFile.files[0].name.lastIndexOf('.'), 4);
-       $scope.$apply(); //notify angular, otherwise it won't recognize that fileExt changed
-     });
-
-     $scope.addModel = function(modelName) {
-          var file = keyFile.files[0];
-
-          var fr = new FileReader();
-          fr.onerror = function(e) { alert("Could not even open your file: " + e.getMessage()); };
-          fr.onload = function(e) {
-
-            var fileContent = e.target.result;
-            var url = "user/" + $cookies.get('userId');
-            if (file.name.endsWith('.kyx')) url = url + "/modeltextupload/" + modelName;
-            else if (file.name.endsWith('.kya')) url = url + "/archiveupload/";
-
-            spinnerService.show('caseStudyImportSpinner');
-
-            $http.post(url, fileContent)
-              .then(function(response) {
-                if(!response.data.success) {
-                  if(response.data.errorText) {
-                    showMessage($uibModal, "Error Uploading File", response.data.errorText, "md")
-                  }
-                  else {
-                    showMessage($uibModal, "Unknown Error Uploading File", "An unknown error that did not raise an uncaught exception occurred while trying to insert a model into the database. Perhaps see the server console output for more information.", "md")
-                  }
-                }
-                else { //Successfully uploaded model!
-                  //Update the models list -- this should result in the view being updated?
-                  while (Models.getModels().length != 0) {
-                    Models.getModels().shift()
-                  }
-                  $http.get("models/users/" + $cookies.get('userId')).success(function(data) {
-                    Models.addModels(data);
-                    $route.reload();
-                  });
-                }
-              })
-              .catch(function(err) {
-                $uibModal.open({
-                  templateUrl: 'templates/parseError.html',
-                  controller: 'ParseErrorCtrl',
-                  size: 'lg',
-                  resolve: {
-                    model: function () { return fileContent; },
-                    error: function () { return err.data; }
-                }});
-              })
-              .finally(function() { spinnerService.hide('caseStudyImportSpinner'); });
-          };
-
-          fr.readAsText(file);
+     $scope.updateModelContentFromFile = function(fileName, fileContent) {
+       if (!(fileName.endsWith('.kyx') || fileName.endsWith('.kyx.txt') ||
+             fileName.endsWith('.kya') || fileName.endsWith('.kya.txt'))) {
+         showMessage($uibModal, "Unknown file extension",
+                                "Expected file extension: .kyx / .kya / .kyx.txt / .kya.txt", "md");
+       } else {
+         var isKyx = fileName.endsWith('.kyx') || fileName.endsWith('.kyx.txt');
+         $scope.model.kind = isKyx ? 'kyx' : 'kya';
+         $scope.model.content = fileContent;
+         $scope.model.uri = "file://" + fileName;
+       }
      };
 
-     $scope.importRepo = function(repoUrl) {
-      spinnerService.show('caseStudyImportSpinner');
-      $http.post("models/users/" + $cookies.get('userId') + "/importRepo", repoUrl).success(function(data) {
-        $http.get("models/users/" + $cookies.get('userId')).success(function(data) {
-          Models.addModels(data);
-          if($location.path() == "/models") {
-            $route.reload();
-          } else {
-            $location.path( "/models" );
-          }
-        }).finally(function() { spinnerService.hide('caseStudyImportSpinner'); });
-      })
+     $scope.updateModelContentFromURL = function() {
+       if ($scope.model.uri && !$scope.model.uri.startsWith('file://') &&
+            ($scope.model.uri.endsWith('.kyx') || $scope.model.uri.endsWith('.kyx.txt')
+            || $scope.model.uri.endsWith('.kya') || $scope.model.uri.endsWith('.kya.txt'))) {
+         $http.get($scope.model.uri).then(function(response) {
+            var isKyx = $scope.model.uri.endsWith('.kyx') || $scope.model.uri.endsWith('.kyx.txt');
+            $scope.model.kind = isKyx ? 'kyx' : 'kya';
+            $scope.model.content = response.data;
+         })
+       }
+     }
+
+     $scope.uploadContent = function(startProof) {
+       var url =  "user/" + sessionService.getUser() +
+         ($scope.model.kind == 'kya' ? "/archiveupload/" : "/modeltextupload/" + $scope.model.modelName);
+       upload(url, $scope.model.content, startProof && $scope.model.kind == 'kyx');
+     }
+
+     $scope.close = function() { $uibModalInstance.close(); };
+
+     var upload = function(url, content, startProof) {
+       spinnerService.show('caseStudyImportSpinner');
+       $http.post(url, content)
+         .then(function(response) {
+           if (!response.data.success) {
+             if (response.data.errorText) {
+               showMessage($uibModal, "Error Uploading Model", response.data.errorText, "md")
+             } else {
+               showMessage($uibModal, "Unknown Error Uploading Model", "An unknown error that did not raise an uncaught exception occurred while trying to insert a model into the database. Perhaps see the server console output for more information.", "md")
+             }
+           } else { //Successfully uploaded model!
+             $scope.close();
+             var modelId = response.data.modelId;
+             if (startProof) {
+               var uri = 'models/users/' + sessionService.getUser() + '/model/' + modelId + '/createProof'
+               $http.post(uri, {proofName: '', proofDescription: ''}).
+                 success(function(data) { $location.path('proofs/' + data.id); }).
+                 error(function(data, status, headers, config) {
+                   console.log('Error starting new proof for model ' + modelId)
+                 });
+             } else {
+               //Update the models list -- this should result in the view being updated?
+               while (Models.getModels().length != 0) {
+                 Models.getModels().shift()
+               }
+               $http.get("models/users/" + sessionService.getUser()).success(function(data) {
+                 Models.addModels(data);
+                 $route.reload();
+               });
+             }
+           }
+         })
+         .catch(function(err) {
+           $uibModal.open({
+             templateUrl: 'templates/parseError.html',
+             controller: 'ParseErrorCtrl',
+             size: 'lg',
+             resolve: {
+               model: function () { return content; },
+               error: function () { return err.data; }
+           }});
+         })
+         .finally(function() { spinnerService.hide('caseStudyImportSpinner'); });
      }
 
      $scope.$watch('models',
@@ -123,10 +112,10 @@ angular.module('keymaerax.controllers').controller('ModelUploadCtrl',
      $scope.$emit('routeLoaded', {theview: 'models'});
 });
 
-angular.module('keymaerax.controllers').controller('ModelListCtrl', function ($scope, $http, $cookies, $uibModal,
-    $location, FileSaver, Blob, Models, spinnerService, firstTime) {
+angular.module('keymaerax.controllers').controller('ModelListCtrl', function ($scope, $http, $uibModal, $route,
+    $location, FileSaver, Blob, Models, spinnerService, sessionService, firstTime) {
   $scope.models = [];
-  $scope.userId = $cookies.get('userId');
+  $scope.userId = sessionService.getUser();
   $scope.intro.firstTime = firstTime;
 
   $scope.intro.introOptions = {
@@ -176,16 +165,54 @@ angular.module('keymaerax.controllers').controller('ModelListCtrl', function ($s
       $scope.examples = response.data;
   });
 
-  $scope.open = function (modelid) {
-      var modalInstance = $uibModal.open({
-        templateUrl: 'partials/modeldialog.html',
-        controller: 'ModelDialogCtrl',
-        size: 'lg',
-        resolve: {
-          userid: function() { return $scope.userId; },
-          modelid: function () { return modelid; }
+  $scope.open = function (modelId) {
+    var modalInstance = $uibModal.open({
+      templateUrl: 'partials/modeldialog.html',
+      controller: 'ModelDialogCtrl',
+      size: 'fullscreen',
+      resolve: {
+        userid: function() { return $scope.userId; },
+        modelid: function() { return modelId; },
+        mode: function() { return Models.getModel(modelId).isExercise ? 'exercise' : 'edit'; }
+      }
+    });
+  };
+
+  $scope.openNewModelDialog = function() {
+    $uibModal.open({
+      templateUrl: 'templates/modeluploaddialog.html',
+      controller: 'ModelUploadCtrl',
+      size: 'fullscreen'
+    });
+  };
+
+  $scope.importRepo = function(repoUrl) {
+    spinnerService.show('caseStudyImportSpinner');
+    var userId = sessionService.getUser();
+    $http.post("models/users/" + userId + "/importRepo", repoUrl).success(function(data) {
+      $http.get("models/users/" + userId).success(function(data) {
+        Models.addModels(data);
+        if($location.path() == "/models") {
+          $route.reload();
+        } else {
+          $location.path( "/models" );
         }
-      });
+      }).finally(function() { spinnerService.hide('caseStudyImportSpinner'); });
+    })
+  };
+
+  $scope.deleteModel = function(modelId) {
+    $http.post("/user/" + sessionService.getUser() + "/model/" + modelId + "/delete").success(function(data) {
+      if(data.errorThrown) {
+        showCaughtErrorMessage($uibModal, data, "Model Deleter")
+      } else {
+        console.log("Model " + modelId + " was deleted. Getting a new model list and reloading the route.")
+        $http.get("models/users/" + sessionService.getUser()).success(function(data) {
+          Models.addModels(data);
+          $route.reload();
+        });
+      }
+    })
   };
 
   $scope.downloadModel = function(modelid) {
@@ -249,7 +276,7 @@ angular.module('keymaerax.controllers').controller('ModelListCtrl', function ($s
       var modalInstance = $uibModal.open({
         templateUrl: 'partials/modeltacticdialog.html',
         controller: 'ModelTacticDialogCtrl',
-        size: 'lg',
+        size: 'fullscreen',
         resolve: {
           userid: function() { return $scope.userId; },
           modelid: function () { return modelid; }
@@ -268,7 +295,7 @@ angular.module('keymaerax.controllers').controller('ModelListCtrl', function ($s
     var modalInstance = $uibModal.open({
       templateUrl: 'templates/modelplex.html',
       controller: 'ModelPlexCtrl',
-      size: 'lg',
+      size: 'fullscreen',
       resolve: {
         userid: function() { return $scope.userId; },
         modelid: function() { return modelid; }
@@ -292,26 +319,90 @@ angular.module('keymaerax.controllers').controller('ModelListCtrl', function ($s
       function (newModels) { if (newModels) Models.setModels(newModels); }
   );
   $scope.$emit('routeLoaded', {theview: 'models'});
-})
+});
 
-angular.module('keymaerax.controllers').controller('ModelDialogCtrl', function ($scope, $http, $uibModalInstance, Models, userid, modelid) {
+angular.module('keymaerax.controllers').controller('ModelDialogCtrl',
+    function ($scope, $http, $uibModal, $uibModalInstance, $location, Models, userid, modelid, mode) {
+  $scope.mode = mode;
+
   $http.get("user/" + userid + "/model/" + modelid).then(function(response) {
       $scope.model = response.data;
+      $scope.origModel = JSON.parse(JSON.stringify(response.data)); // deep copy
   });
 
-  $scope.saveModelData = function() {
-    var data = {
-      name: $scope.model.name,
-      title: $scope.model.title,
-      description: $scope.model.description
-    };
-    $http.post("user/" + userid + "/model/" + modelid + "/update", data).then(function(response) {
-      var model = $.grep(Models.getModels(), function(m) { return m.id === modelid; })[0];
-      model.name = $scope.model.name;
-      model.title = $scope.model.title;
-      model.description = $scope.model.description;
-    })
+  /** Deletes all proofs of the model */
+  $scope.deleteModelProofs = function() {
+    $http.post('user/' + userid + "/model/" + modelid + "/deleteProofs").success(function(data) {
+      if (data.success) {
+        $scope.model.numProofs = 0;
+      }
+    });
   }
+
+  $scope.saveModelData = function() {
+    if ($scope.origModel.name !== $scope.model.name || $scope.origModel.title !== $scope.model.title
+     || $scope.origModel.description !== $scope.model.description
+     || $scope.origModel.keyFile !== $scope.model.keyFile) {
+      if ($scope.model.numProofs > 0) {
+        var modelCopyName = $scope.model.name + ' (Copy ';
+        var i = 1;
+        while ($scope.checkName(modelCopyName + i + ')') !== true) { ++i; }
+        var url = "user/" + userid + "/modeltextupload/" + modelCopyName + i + ')';
+        $http.post(url, $scope.model.keyFile).then(function(response) {
+          $scope.model.id = response.data.modelId;
+          $scope.model.name = modelCopyName + i + ')';
+          $scope.origModel = JSON.parse(JSON.stringify($scope.model)); // deep copy
+        })
+        .catch(function(err) {
+          $uibModal.open({
+            templateUrl: 'templates/parseError.html',
+            controller: 'ParseErrorCtrl',
+            size: 'lg',
+            resolve: {
+              model: function () { return $scope.model.keyFile; },
+              error: function () { return err.data; }
+          }});
+        });
+      } else {
+        var data = {
+          name: $scope.model.name,
+          title: $scope.model.title,
+          description: $scope.model.description,
+          content: $scope.model.keyFile
+        };
+        $http.post("user/" + userid + "/model/" + modelid + "/update", data).then(function(response) {
+          var model = Models.getModel(modelid);
+          model.name = $scope.model.name;
+          model.title = $scope.model.title;
+          model.description = $scope.model.description;
+          model.keyFile = $scope.model.keyFile;
+          $scope.origModel = JSON.parse(JSON.stringify($scope.model)); // deep copy
+        })
+        .catch(function(err) {
+          $uibModal.open({
+            templateUrl: 'templates/parseError.html',
+            controller: 'ParseErrorCtrl',
+            size: 'lg',
+            resolve: {
+              model: function () { return $scope.model.keyFile; },
+              error: function () { return err.data; }
+          }});
+        });
+      }
+    }
+  }
+
+  $scope.startProof = function() {
+    $uibModalInstance.close();
+    var uri = 'models/users/' + userid + '/model/' + $scope.model.id + '/createProof'
+    $http.post(uri, {proofName: '', proofDescription: ''}).
+      success(function(data) { $location.path('proofs/' + data.id); }).
+      error(function(data, status, headers, config) {
+        console.log('Error starting new proof for model ' + modelid)
+      });
+  }
+
+  $scope.modelIsComplete = function() { return $scope.model && $scope.model.keyFile.indexOf('__________') < 0; }
 
   $scope.checkName = function(name) {
     var nameIsUnique = $.grep(Models.getModels(), function(m) { return m.name === name && m.id !== modelid; }).length == 0;
@@ -320,7 +411,14 @@ angular.module('keymaerax.controllers').controller('ModelDialogCtrl', function (
     else return true;
   }
 
-  $scope.ok = function() { $uibModalInstance.close(); };
+  $scope.ok = function() {
+    $uibModalInstance.close();
+    // Update the models list
+    while (Models.getModels().length != 0) { Models.getModels().shift(); }
+    $http.get("models/users/" + userid).success(function(data) {
+      Models.addModels(data);
+    });
+  };
 });
 
 angular.module('keymaerax.controllers').controller('ModelTacticDialogCtrl', function ($scope, $http, $uibModalInstance, userid, modelid) {

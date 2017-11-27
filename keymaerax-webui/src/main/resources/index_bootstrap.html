@@ -32,10 +32,10 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </button>
-            <a class="navbar-brand" href="#">KeYmaera X</a>
+            <a class="navbar-brand" href="/">KeYmaera X</a>
         </div>
         <div class="navbar-collapse collapse">
-            <form class="navbar-form navbar-right" role="form" ng-submit="processLogin()">
+            <form name="loginForm" class="navbar-form navbar-right">
                 <div class="form-group">
                     <input type="text" placeholder="Email" id="username" ng-model="username" class="form-control"
                            tabindex="1" required autofocus>
@@ -44,8 +44,10 @@
                     <input type="password" placeholder="Password" id="password" ng-model="password" class="form-control"
                            tabindex="2" required>
                 </div>
-                <button type="submit" class="btn btn-success">Sign in</button>
-                <button type="button" class="btn btn-info" ng-click="processRegistration()">Register</button>
+                <button class="btn btn-success"
+                        ng-click="loginForm.$valid && processLogin()">Sign in</button>
+                <button class="btn btn-info"
+                        ng-click="loginForm.$valid && processRegistration()">Register</button>
             </form>
         </div><!--/.navbar-collapse -->
     </div>
@@ -56,7 +58,7 @@
     <div class="container">
         <h1>KeYmaera X
             <a ng-if="!isLocal" ng-cloak type="button" class="btn btn-info btn-lg"
-               href="http://www.keymaerax.org"><i class="fa fa-download"></i> Download</a></h1>
+               href="http://keymaerax.org/keymaerax.jar"><i class="fa fa-download"></i> Download</a></h1>
         <p>An aXiomatic Tactical Theorem Prover for Hybrid Systems</p>
     </div>
 </div>
@@ -75,7 +77,7 @@
             automated proof search.
             </p>
             <p ng-if="!isLocal" ng-cloak>
-              Sign in at the top of this page to get started online, or click 'Download' to install locally.
+              Sign in at the top of this page to get started online, or click 'Download' to install locally for improved speed.
             </p>
             <p ng-if="isLocal" ng-cloak>
                 Sign in at the top of this page.
@@ -83,7 +85,7 @@
             <p>
             </p>
             <p style="color: red;" ng-if="!isLocal" ng-cloak>
-                This publicly hosted instance of KeYmaera X is for <b>demonstration purposes only</b>.
+                This publicly hosted instance of KeYmaera X offers <b>limited speed</b> and is for <b>demonstration purposes only</b>.
                 Use a fresh password when creating an account and do not upload anything to this server that is sensitive in nature.
             </p>
             </blockquote>

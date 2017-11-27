@@ -22,8 +22,102 @@ import scala.collection.immutable.IndexedSeq
  */
 @UsualTest
 class ODETests extends TacticTestBase {
+
+  /**
+    * Temporary test cases for Darboux
+    */
+
+  "ODE" should "prove equational darboux" in withMathematica { qeTool =>
+    //(x+z)' = (x*A+B)(x+z)
+    val fml = "x+z=0 -> [{x'=(A*y+B()*x), z' = A*z*x+B()*z & y = x^2}] x+z=0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbx("x*A+B()".asTerm)(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "prove fractional darboux" in withMathematica { qeTool =>
+    //(x+z)' = ((x*A+B)/z^2)(x+z), where z^2 > 0
+    //assumes z^2 already in evol domain, or the ghost will report a singularity
+    val fml = "x+z=0 -> [{x'=(A*y+B()*x)/z^2, z' = (A*x+B())/z & y = x^2 & z^2 > 0}] x+z=0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbx("(x*A+B())/z^2".asTerm)(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "prove >= darboux" in withMathematica { qeTool =>
+    //(x+z)' =  x^2 + z*x + x^2 >= x*(x+z)
+    //Maybe this should leave open that the remainder is >= 0?
+    val fml = "x+z>=0 -> [{x'=x^2, z' = z*x+y & y = x^2}] x+z>=0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbx("x".asTerm)(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "prove >= fractional darboux" in withMathematica { qeTool =>
+    //(x+z)' =  (1/z^2)(x+z) + x^2 >= (1/z^2)(x+z)
+    //Maybe this should leave open that the remainder is >= 0?
+    val fml = "x+z>=0 -> [{x'=1/z, z' = x/z^2 + y & z^2 > 0 & y = x^2}] x+z>=0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbx("1/z^2".asTerm)(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "prove < darboux" in withMathematica { qeTool =>
+    //(x+z)' =  x^2 + z*x - x^2 <= x*(x+z)
+    val fml = "x+z<0 -> [{x'=x^2, z' = z*x+y & y = -x^2}] x+z<0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbx("x".asTerm)(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "prove < fractional darboux" in withMathematica { qeTool =>
+    //(x+z)' =  (1/z^2)(x+z) - x^2 <= (1/z^2)(x+z)
+    //Maybe this should leave open that the remainder is >= 0?
+    val fml = "x+z<0 -> [{x'=1/z, z' = x/z^2 + y & z^2 > 0 & y = -x^2}] x+z<0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbx("1/z^2".asTerm)(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "automatically find equational darboux" in withMathematica { qeTool =>
+    //(x+z)' = (x*A+B)(x+z)
+    val fml = "x+z=0 -> [{x'=(A*x^2+B()*x), z' = A*z*x+B()*z}] 0=-x-z".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbxAuto(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "automatically find fractional darboux" in withMathematica { qeTool =>
+    //(x+z)' = ((x*A+B)/z^2)(x+z), where z^2 > 0
+    val fml = "x+z=0 -> [{x'=(A*x^2+B()*x)/z^2, z' = (A*x+B())/z & z^2 > 0}] x+z=0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbxAuto(1))
+    pr shouldBe 'proved
+  }
+
+  "ODE" should "fail with evolution domain constraints" in withMathematica { qeTool =>
+    //(x+z)' = (x*A+B)(x+z)
+    val fml = "x+z=0 -> [{x'=(A*y+B()*x), z' = A*z*x+B()*z & y = x^2}] x+z=0".asFormula
+    val pr = TactixLibrary.proveBy(fml,implyR(1) & DifferentialTactics.dgDbxAuto(1))
+    println(pr)
+  }
+
+  /** End temporary tests */
+
   "ODE" should "prove x=0 -> [{x'=-x}]x=0" in withMathematica { qeTool =>
     TactixLibrary.proveBy("x=0 -> [{x'=-x}]x=0".asFormula, implyR(1) & ODE(1)) shouldBe 'proved
+  }
+
+  it should "do a ghost with Z3" in withZ3(qetool =>
+    TactixLibrary.proveBy("x>0 -> [{x'=-x}]x>0".asFormula, implyR(1) & ODE(1)) shouldBe 'proved
+  )
+
+  "Z3" should "prove what's needed by ODE for the Z3 ghost" in withZ3(_=> {
+    //    Mathematica QE result from input \forall x_0 (x_0>0&true->\forall x (x>0->-x>=0)): false
+    //    Mathematica QE result from input \forall y__0 \forall x_0 (x_0*y__0^2>0->x_0>0): true
+    //    Mathematica QE result from input true->2!=0: true
+    //    Mathematica QE result from input \forall x_0 (x_0>0->\exists y_ (true->x_0*y_^2>0&\forall x \forall y_ (-x)*y_^2+x*(2*y_^(2-1)*(1/2*y_+0))>=0)): true
+    TactixLibrary.proveBy("\\forall y__0 \\forall x_0 (x_0*y__0^2>0->x_0>0)".asFormula, QE) shouldBe 'proved
+    TactixLibrary.proveBy("true->2!=0".asFormula,QE) shouldBe 'proved
+    TactixLibrary.proveBy("\\forall x_0 (x_0>0->\\exists y_ (true->x_0*y_^2>0&\\forall x \\forall y_ (-x)*y_^2+x*(2*y_^(2-1)*(1/2*y_+0))>=0))".asFormula, QE) shouldBe 'proved
+  })
+
+
+  "QE" should "be able to prove the arithmetic subgoal from x'=-x case" in withZ3 { qeTool =>
+    val f = "x>0->(\\exists y_ (true->x*y_^2>0&\\forall x \\forall y_ (-x)*y_^2+x*(2*y_^(2-1)*(1/2*y_+0))>=0))".asFormula
+    TactixLibrary.proveBy(f, QE) shouldBe 'proved
   }
 
   "Pretest" should "PDEify x^2+y^2=1&e=x -> [{x'=-y,y'=e,e'=-y}](x^2+y^2=1&e=x)" in withMathematica { qeTool =>
@@ -313,14 +407,18 @@ class ODETests extends TacticTestBase {
       "x^2+y^2=1&e=x -> [{x'=-y,y'=e,e'=-y}](x^2+y^2=1&e=x)" ::
       "d1^2+d2^2=w()^2*p^2&d1=-w()*x2&d2=w()*x1 -> [{x1'=d1,x2'=d2,d1'=-w()*d2,d2'=w()*d1}](d1^2+d2^2=w()^2*p^2&d1=-w()*x2&d2=w()*x1)" ::
       "d1^2+d2^2=w^2*p^2&d1=-w*x2&d2=w*x1 -> [{x1'=d1,x2'=d2,d1'=-w*d2,d2'=w*d1}](d1^2+d2^2=w^2*p^2&d1=-w*x2&d2=w*x1)" ::
+      // more
+      "x>-1->[{x'=-x-1}]x>-1" ::
+      // improved
+      "x=1&y=2&z>=8->[{x'=x^2,y'=4*x,z'=5*y}]z>=8" ::
+      "x>=1->[{x'=x^2+2*x^4}]x^3>=x^2" :: // @generalize(x>=1)&dI
       Nil
 
   val nops: List[String] =
       "x=-1&y>=0->[{x'=6*x*y-2*y^3,y'=-6*x^2+6*x*y^2}]-2*x*y^3+6*x^2*y>=0" ::
       "x=-1&y=1->[{x'=6*x*y-2*y^3,y'=-6*x^2+6*x*y^2}]-2*x*y^3+6*x^2*y>=0" ::
       "x-x^2*y>=2&y!=5->[{x'=-x^3,y'=-1+2*x*y}]x-x^2*y>=2" ::
-      "x=1&y=2&z>=8->[{x'=x^2,y'=4*x,z'=5*y}]z>=8" ::
-        "x>=1->[{x'=x^2+2*x^4}]x^3>=x^2" :: // @generalize(x>=1)&dI
+        "x^3>-1->[{x'=-x-1}]x^3>-1" :: // @generalize(x>=-1)&ode
         Nil
 
 
@@ -366,5 +464,58 @@ class ODETests extends TacticTestBase {
   it should "prove x>=0->[{x'=x}]x>=0 via ODE" in withMathematica(_ => {
     val f = "x>=0->[{x'=x}]x>=0".asFormula
     proveBy(f, implyR(1) & ODE(1) & onAll(QE)) shouldBe 'proved
+  })
+
+  "1D Saddle Node" should "prove with a bifurcation" in withMathematica(_ => {
+    val formula = """r <= 0 -> \exists f (x=f -> [{x'=r+x^2}]x=f)""".asFormula
+    val tactic = """implyR(1);
+              |cut({`r=0|r < 0`}) <(hideL(-1), hideR(1) ; QE); orL(-1) <(
+              |  existsR({`0`}, 1) ;
+              |  implyR(1) ;
+              |  dG({`{y'=-x*y}`}, {`y*x=0&y>0`}, 1) ; existsR({`1`}, 1) ;
+              |  boxAnd(1) ; andR(1) ; <(
+              |    dI(1),
+              |    dG({`{z'=x/2*z}`}, {`z^2*y=1`}, 1) ; existsR({`1`}, 1) ; dI(1)
+              |  )
+              |  ,
+              |  cut({`\exists s r=-s*s`}) ; <(
+              |    existsL(-2) ; existsR({`-s`}, 1) ; implyR(1) ; dG({`{y'=(-(x-s))*y}`}, {`y*(x+s)=0&y>0`}, 1) ; existsR({`1`}, 1) ; boxAnd(1) ; andR(1) ; <(
+              |      dI(1),
+              |      dG({`{z'=(x-s)/2*z}`}, {`z^2*y=1`}, 1) ; existsR({`1`}, 1) ; dI(1)
+              |    ),
+              |    hideR(1) ; QE
+              |  )
+              |)""".stripMargin.asTactic
+
+    proveBy(formula, tactic) shouldBe 'proved
+  })
+
+  it should "prove with tree-shaped proof" in withMathematica(_ => {
+    val formula = """r <= 0 -> \exists f (x=f -> [{x'=r+x^2}]x=f)""".asFormula
+
+    val tactic = """implyR(1);
+                   |cut({`r=0|r < 0`}) <(
+                   |  hideL(-1); orL(-1) <(
+                   |    existsR({`0`}, 1) ;
+                   |    implyR(1) ;
+                   |    dG({`{y'=-x*y}`}, {`y*x=0&y>0`}, 1) ; existsR({`1`}, 1) ;
+                   |    boxAnd(1) ; andR(1) ; <(
+                   |      dI(1),
+                   |      dG({`{z'=x/2*z}`}, {`z^2*y=1`}, 1) ; existsR({`1`}, 1) ; dI(1)
+                   |    )
+                   |    ,
+                   |    cut({`\exists s r=-s*s`}) ; <(
+                   |      existsL(-2) ; existsR({`-s`}, 1) ; implyR(1) ; dG({`{y'=(-(x-s))*y}`}, {`y*(x+s)=0&y>0`}, 1) ; existsR({`1`}, 1) ; boxAnd(1) ; andR(1) ; <(
+                   |        dI(1),
+                   |        dG({`{z'=(x-s)/2*z}`}, {`z^2*y=1`}, 1) ; existsR({`1`}, 1) ; dI(1)
+                   |      ),
+                   |      hideR(1) ; QE
+                   |    )
+                   |  )
+                   |  ,
+                   |  hideR(1) ; QE
+                   |)""".stripMargin.asTactic
+
+    proveBy(formula, tactic) shouldBe 'proved
   })
 }
