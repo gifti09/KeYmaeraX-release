@@ -76,14 +76,14 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   "Derived Axioms" should "prove <-> reflexive" in {check(equivReflexiveAxiom)}
   it should "prove !!" in {check(doubleNegationAxiom)}
   it should "prove exists dual" in {check(existsDualAxiom)}
-  ignore should "prove all eliminate" taggedAs OptimisticTest in {check(allEliminateAxiom)}
-  ignore should "prove exists eliminate" taggedAs OptimisticTest in {check(existsEliminate)}
+  it should "prove all eliminate" taggedAs OptimisticTest ignore {check(allEliminateAxiom)}
+  it should "prove exists eliminate" taggedAs OptimisticTest ignore {check(existsEliminate)}
   it should "prove !exists" in {check(notExists)}
   it should "prove !all" in {check(notAll)}
 //  it should "prove !all2" in {check(notAll2)}
   it should "prove ![]" in {check(notBox)}
   it should "prove !<>" in {check(notDiamond)}
-  ignore should "prove all distribute" in {check(allDistributeAxiom)}
+  it should "prove all distribute" ignore {check(allDistributeAxiom)}
   it should "prove box dual" in {check(boxAxiom)}
   it should "prove V vacuous" in {check(vacuousAxiom)}
 //  it should "prove K1" in {check(K1)}
@@ -117,6 +117,9 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "prove <*> iterate" in {check(iteratedAxiom)}
   it should "prove <*> approx" in {check(loopApproxd)}
   it should "prove [*] approx" in {check(loopApproxb)}
+  it should "prove II induction" in {check(iiinduction)}
+  it should "prove [*] merge" in {check(loopMergeb)}
+  it should "prove <*> merge" in {check(loopMerged)}
   it should "prove [d] dual" in {check(dualbAxiom)}
   it should "prove [d] dual direct" in {check(dualbDirectAxiom)}
   it should "prove <d> dual direct" in {check(dualdDirectAxiom)}
@@ -220,13 +223,11 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "prove *<= up" in withMathematica { qeTool => check(intervalUpTimes)}
   it should "prove pow<= up" in withMathematica { qeTool => check(intervalUpPower)}
   it should "prove 1Div<= up" in withMathematica { qeTool => check(intervalUp1Divide)}
-  it should "prove Div<= up" in withMathematica { qeTool => check(intervalUpDivide)}
   it should "prove <=+ down" in withMathematica { qeTool => check(intervalDownPlus)}
   it should "prove <=- down" in withMathematica { qeTool => check(intervalDownMinus)}
   it should "prove <=* down" in withMathematica { qeTool => check(intervalDownTimes)}
   it should "prove <=pow down" in withMathematica { qeTool => check(intervalDownPower)}
   it should "prove <=1Div down" in withMathematica { qeTool => check(intervalDown1Divide)}
-  it should "prove <=Div down" in withMathematica { qeTool => check(intervalDownDivide)}
   it should "prove K& down" in withMathematica { qeTool => check(Kand)}
   it should "prove &-> down" in withMathematica { qeTool => check(andImplies)}
   it should "prove <= & <=" in withMathematica { qeTool => check(metricAndLe)}
@@ -237,7 +238,7 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   "Derived Axiom Tactics" should "tactically prove <-> reflexive" in {check(equivReflexiveAxiom)}
   it should "tactically prove !!" in {check(doubleNegationAxiom)}
   it should "tactically prove exists dual" in {check(existsDualAxiom)}
-  ignore should "tactically prove all eliminate" taggedAs OptimisticTest in {check(allEliminateAxiom)}
+  it should "tactically prove all eliminate" taggedAs OptimisticTest ignore {check(allEliminateAxiom)}
   it should "tactically prove exists eliminate" in {check(existsEliminate)}
   it should "tactically prove all distribute" in {check(allDistributeAxiom)}
   it should "tactically prove box dual" in {check(boxAxiom)}
@@ -285,4 +286,24 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
     ) shouldBe 'proved
   }
 
+  "SimplifierV3" should "prove * identity neg" in {check{timesIdentityNeg}}
+  "it" should "prove -0" in {check{minusZero}}
+  "it" should "prove 0-" in {check{zeroMinus}}
+  "it" should "prove >0 -> !=0"  in {check{gtzImpNez}}
+  "it" should "prove <0 -> !=0"  in {check{ltzImpNez}}
+  "it" should "prove !=0 -> 0/F" in {check{zeroDivNez}}
+  "it" should "prove F^0" in {check{powZero}}
+  "it" should "prove F^1"        in {check{powOne}}
+
+  "it" should "prove < irrefl" in {check{lessNotRefl}}
+  "it" should "prove > irrefl" in {check{greaterNotRefl}}
+  "it" should "prove != irrefl" in {check{notEqualNotRefl}}
+  "it" should "prove = refl"  in {check{equalRefl}}
+  "it" should "prove <= refl"  in {check{lessEqualRefl}}
+  "it" should "prove >= refl"  in {check{greaterEqualRefl}}
+
+  "it" should "prove = sym"  in {check{equalSym}}
+  "it" should "prove != sym"  in {check{equalSym}}
+  "it" should "prove > antisym"  in {check{greaterNotSym}}
+  "it" should "prove < antisym"  in {check{lessNotSym}}
 }

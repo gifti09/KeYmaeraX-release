@@ -196,9 +196,11 @@ private object DLBySubst {
     "MR" byWithInput(c, (pos: Position, sequent: Sequent) => sequent.at(pos) match {
       case (ctx, Box(a, p)) =>
         val (q, useCleanup, showCleanup) = {
+          val aBVs = StaticSemantics.boundVars(a)
           val constConjuncts =
-            sequent.ante.flatMap(FormulaTools.conjuncts).
-              filter(StaticSemantics.symbols(_).intersect(StaticSemantics.boundVars(a).toSet).isEmpty).toList
+            if (aBVs.isInfinite) Nil
+            else sequent.ante.flatMap(FormulaTools.conjuncts).
+              filter(StaticSemantics.symbols(_).intersect(aBVs.toSet).isEmpty).toList
           (constConjuncts, isGame) match {
             case ((Nil, _) | (_, true)) => (c, skip, implyR(pos.top))
             case (consts, false) => (And(consts.reduceRight(And), c),
@@ -224,7 +226,7 @@ private object DLBySubst {
   def postCut(C: Formula): DependentPositionTactic = useAt("K modal modus ponens &", PosInExpr(1::Nil),
     (us: Option[Subst]) => us.getOrElse(throw BelleUserGeneratedError("Unexpected missing substitution in postCut")) ++ RenUSubst(("p_(||)".asFormula, C)::Nil))
 
-  private def constAnteConditions(sequent: Sequent, taboo: Set[Variable]): IndexedSeq[Formula] = {
+  private def constAnteConditions(sequent: Sequent, taboo: SetLattice[Variable]): IndexedSeq[Formula] = {
     sequent.ante.filter(f => StaticSemantics.freeVars(f).intersect(taboo).isEmpty)
   }
 
@@ -236,7 +238,7 @@ private object DLBySubst {
           case Some(b@Box(Loop(a), p)) =>
             if (!FormulaTools.dualFree(a)) loopRule(invariant)(pos)
             else {
-              val consts = constAnteConditions(sequent, StaticSemantics(a).bv.toSet)
+              val consts = constAnteConditions(sequent, StaticSemantics(a).bv)
               val q =
                 if (consts.size > 1) And(invariant, consts.reduceRight(And))
                 else if (consts.size == 1) And(invariant, consts.head)
@@ -267,7 +269,7 @@ private object DLBySubst {
     * @param invariant The invariant.
     */
 
-  def loopRule(invariant: Formula) = "loopRule" byWithInput(invariant, (pos, sequent) => {
+  def loopRule(invariant: Formula): DependentPositionWithAppliedInputTactic = "loopRule" byWithInput(invariant, (pos, sequent) => {
     //@todo maybe augment with constant conditions?
     require(pos.isTopLevel && pos.isSucc, "loopRule only at top-level in succedent, but got " + pos)
     require(sequent(pos) match { case Box(Loop(_),_)=>true case _=>false}, "only applicable for [a*]p(||)")
@@ -286,8 +288,8 @@ private object DLBySubst {
     * Loop convergence wiping all context.
     * {{{
     *   init:                     step:                      use:
-    *   G |- exists v. J(v), D    v>= 0,J(v) -> <a>J(v-1)    v<0, J(v) |- p
-    *   ------------------------------------------------------------------
+    *   G |- exists v. J(v), D    v>0,J(v) -> <a>J(v-1)      v<=0, J(v) |- p
+    *   --------------------------------------------------------------------
     *   G |- <{a}*>p, D
     * }}}
     * @param variantArg Which variable is treated as the argument of the variant property
@@ -297,15 +299,17 @@ private object DLBySubst {
   def conRule(variantArg:Variable, variantDef:Formula) = "con" byWithInput(variantDef, (pos, sequent) => {
     require(pos.isTopLevel && pos.isSucc, "conRule only at top-level in succedent, but got " + pos)
     require(sequent(pos) match { case Diamond(Loop(_), _) => true case _ => false }, "only applicable for <a*>p(||)")
-    require(variantArg == Variable("v"))
+
+    val v = "v_".asVariable
     val pre = Exists(IndexedSeq(variantArg), variantDef)
+
     cutR(pre)(pos.checkSucc.top) < (
-      ident partial (BelleLabels.initCase),
+      ident partial(BelleLabels.initCase),
       cohide(pos) & implyR(1)
-      & existsL(-1)
-      & byUS("con convergence") < (
-        assignd(1, 1 :: Nil) partial
-      , Idioms.nil) partial
+      & ProofRuleTactics.boundRenaming(variantArg, v)(-1) & existsL(-1)
+      & byUS("con convergence") & OnAll(ProofRuleTactics.uniformRenaming(v, variantArg)) < (
+        assignd(1, 1 :: Nil)
+      , Idioms.nil)
     ) partial(BelleLabels.indStep)
   })
 
@@ -320,15 +324,21 @@ private object DLBySubst {
           case Some(gv) => require(gv == t || (!StaticSemantics.symbols(f).contains(gv))); gv
           case None => t match {
             case v: Variable => TacticHelper.freshNamedSymbol(v, f)
-            case _ => throw new IllegalArgumentException("Only variables allowed when ghost name should be auto-provided")
+            case _ => TacticHelper.freshNamedSymbol(Variable("ghost"), seq)
           }
         }
         val theGhost = ghostV(f)
+        val theF = t match {
+          //@note first two cases: backwards compatibility with diffSolve and others
+          case _: Variable => f.replaceFree(t, DotTerm())
+          case _ if StaticSemantics.boundVars(f).intersect(StaticSemantics.freeVars(t)).isEmpty => f.replaceFree(t, DotTerm())
+          case _ => f //@note new: arbitrary term ghosts
+        }
 
         val subst = (us: Option[Subst]) => RenUSubst(
           ("x_".asVariable, theGhost) ::
           ("f()".asTerm, t) ::
-          ("p(.)".asFormula, f.replaceFree(t, DotTerm())) ::
+          ("p(.)".asFormula, theF) ::
           Nil
         )
 

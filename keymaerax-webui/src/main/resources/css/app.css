@@ -7,7 +7,139 @@
   --lslightgreen:#54B9DF;       /* Blue (bright 2) */
   --lsmain:black;
   --lsmainback:white;
+  --lslightred:thistle;
+  --lsfontsize:14px;
+  --lsoutlineshadow: 1px 0px white, -1px 0px white, 0px 1px white, 0px -1px white;
 }
+
+body {
+  font-size: var(--lsfontsize);
+}
+
+/* Convert Bootstrap absolute font sizes into relative font sizes */
+pre {
+  font-size: 100%;
+}
+
+output {
+  font-size: var(--lsfontsize);
+}
+
+.form-control {
+  font-size: var(--lsfontsize);
+  height: inherit;
+}
+
+.form-group-sm {
+  font-size: 85%;
+}
+
+.form-group-lg {
+  font-size: 130%;
+}
+
+.btn {
+  font-size: var(--lsfontsize);
+}
+
+.btn-lg,
+.btn-group-lg > .btn {
+  font-size: 130%;
+}
+
+.btn-sm,
+.btn-group-sm > .btn {
+  font-size: 85%;
+}
+
+.btn-xs,
+.btn-group-xs > .btn {
+  font-size: 85%;
+}
+
+.dropdown-menu {
+  font-size: var(--lsfontsize);
+}
+
+.dropdown-header {
+  font-size: 85%;
+}
+
+.input-group-lg > .form-control,
+.input-group-lg > .input-group-addon,
+.input-group-lg > .input-group-btn > .btn {
+  font-size: 130%;
+}
+
+.input-group-sm > .form-control,
+.input-group-sm > .input-group-addon,
+.input-group-sm > .input-group-btn > .btn {
+  font-size: 85%;
+}
+
+.input-group-addon {
+  font-size: var(--lsfontsize);
+}
+
+.input-group-addon.input-sm {
+  font-size: 85%;
+}
+
+.input-group-addon.input-lg {
+  font-size: 130%;
+}
+
+.navbar-brand {
+  font-size: 130%;
+}
+
+.pagination-lg > li > a,
+.pagination-lg > li > span {
+  font-size: 130%;
+}
+
+.pagination-sm > li > a,
+.pagination-sm > li > span {
+  font-size: 85%;
+}
+
+.badge {
+  font-size: 85%;
+}
+
+.jumbotron p {
+  font-size: 150%;
+}
+
+.progress-bar {
+  font-size: 85%;
+}
+
+.panel-title {
+  font-size: 115%;
+}
+
+.close {
+  font-size: 150%;
+}
+
+.tooltip {
+  font-size: 85%;
+}
+
+.popover {
+  font-size: var(--lsfontsize);
+}
+
+.popover-title {
+  font-size: var(--lsfontsize);
+}
+
+.carousel-control {
+  font-size: 150%;
+}
+
+/* End Bootstrap font size conversion */
 
 .btn-file {
   position: relative;
@@ -63,7 +195,7 @@ del {
 
 .hl {background: transparent; }
 .hlhover {
-  color: white;
+  color: var(--lsmainback);
   background-color:var(--lslightblue);
   position: relative;
 }
@@ -132,8 +264,178 @@ del {
   display: none !important;
 }
 
+.k4-table-fixed {
+  table-layout: fixed;
+}
+
+.k4-formula {background: transparent; }
+.k4-term {background: transparent; }
+.k4-nullary-fn { font-style: italic; }
+
+.k4-has-step.k4-prove-hover {
+  color: var(--lsmainback);
+  background-color:var(--lslightblue);
+  position: relative;
+}
+.k4-has-step.k4-chase-hover {
+  color: var(--lsmainback);
+  background-color:var(--lslightblue);
+  position: relative;
+}
+
+.k4-editable.k4-edit-hover {
+  border-bottom: 1px dashed;
+  position: relative;
+}
+.k4-editable.k4-edit-hover:after {
+  content: "\f040"; /* fontawesome pencil */
+  font-family: FontAwesome;
+  right: -15px;
+  position: absolute;
+  top: 0;
+}
+
+.edithover {
+  border-bottom: 1px dashed;
+  position: relative;
+}
+.edithover:after {
+  content: "\f040"; /* fontawesome pencil */
+  font-family: FontAwesome;
+  right: -15px;
+  position: absolute;
+  top: 0;
+}
+
+.k4-sequent-caret-inline {
+  float: left;
+}
+
+.k4-sequent-caret-left {
+  margin-left: -2em;
+  float: left;
+}
+
+.k4-menu-icon.ng-hide {
+  display: inline-block!important;
+  visibility: hidden;
+}
+
+.k4-sequent-hint {
+  font-size: xx-small;
+}
+
+/* Mark top-level operator */
+.k4-has-step.k4-prove-hover > span > .k4-op:after {
+  content: "\f063"; /* fontawesome downarrow */
+  font-family: FontAwesome;
+  font-size: smaller;
+  -webkit-text-stroke: 1px black;
+  position: relative;
+  right: 1em;
+  top: -1.5ex;
+  width: 1em;
+  margin-right: -1em;
+}
+.k4-has-step.k4-chase-hover > span > .k4-op:after {
+  content: "\f013"; /* fontawesome cog */
+  font-family: FontAwesome;
+  font-size: smaller;
+  -webkit-text-stroke: 1px black;
+  position: relative;
+  right: 1em;
+  top: -1.5ex;
+  width: 1em;
+  margin-right: -1em;
+}
+/* Mark top-level operator in programs */
+.k4-has-step.k4-prove-hover > span > span.k4-mod-open ~ span.k4-program > span > span.k4-topop.k4-prg-op:after {
+  content: "\f063"; /* fontawesome downarrow */
+  font-family: FontAwesome;
+  font-size: smaller;
+  -webkit-text-stroke: 1px black;
+  position: relative;
+  right: 1em;
+  top: -1.5ex;
+  width: 1em;
+  margin-right: -1em;
+}
+.k4-has-step.k4-chase-hover > span > span.k4-mod-open ~ span.k4-program > span > span.k4-topop.k4-prg-op:after {
+  content: "\f013"; /* fontawesome cog */
+  font-family: FontAwesome;
+  font-size: smaller;
+  -webkit-text-stroke: 1px black;
+  position: relative;
+  right: 1em;
+  top: -1.5ex;
+  width: 1em;
+  margin-right: -1em;
+}
+
+.k4-term-op {
+
+}
+
+.k4-propfml-op {
+  font-family: "Lucida Grande", tahoma, arial, sans serif; /* some boldface math symbols, unfortunately not all */
+  font-weight: bold;
+  color: darkblue;
+}
+
+.k4-cmpfml-op {
+
+}
+
+.k4-fml-op {
+  font-style: italic;
+}
+
+.k4-prg-op {
+  font-weight: bold;
+}
+
+.k4-prg-open {
+  font-weight: bold;
+}
+
+.k4-prg-close {
+  font-weight: bold;
+}
+
+.k4-mod-open {
+  font-weight: bold;
+  font-size: larger;
+}
+
+.k4-mod-close {
+  color: var(--lsmain);
+  font-weight: bold;
+  font-size: larger;
+}
+
+/* Everything inside a box/diamond */
+.k4-mod-open ~ span:not(.k4-mod-close) {
+  color: green;
+}
+.k4-mod-close ~ span:not(.k4-mod-open) {
+  color: var(--lsmain);
+}
+/* Unless a parent is highlighted */
+.k4-has-step.k4-prove-hover span {
+  color: white;
+}
+.k4-has-step.k4-chase-hover span {
+  color: white;
+}
+
+.k4-axiom-cond {
+  font-style: italic;
+}
 .k4-axiom-key {
   font-weight: bold;
+}
+.k4-axiom-repl {
+  border-bottom: 1px dashed var(--lsmain);
 }
 
 .k4-tacticeditor, .k4-tacticeditor:focus {
@@ -141,6 +443,20 @@ del {
   display: block;
   width: 100%;
   color: gray;
+  box-sizing: border-box;
+  outline: 0px solid transparent;
+  white-space: pre-wrap;       /* css-3 */
+  white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
+  white-space: -pre-wrap;      /* Opera 4-6 */
+  white-space: -o-pre-wrap;    /* Opera 7 */
+  word-wrap: break-word;
+}
+
+.k4-modeleditor, .k4-modeleditor:focus {
+  font-family:monospace;
+  display: block;
+  width: 100%;
+  color: black;
   box-sizing: border-box;
   outline: 0px solid transparent;
   white-space: pre-wrap;       /* css-3 */
@@ -291,6 +607,10 @@ del {
   outline: none;
 }
 
+.k4-server-info {
+  font-size: 14px;
+}
+
 .k4-carousel-caption {
   position: absolute;
   right: 0%;
@@ -328,12 +648,62 @@ del {
   display: inline-block;
 }
 
-.tooltip .k4-sequentRule {
-  width: 350px; /* @todo solve tactic popover layout problem for real */
+.k4-stepexplanation-tooltip {
+  width: 80%;
+  font-size: 100%;
 }
 
-.popover .k4-tactic-popover-entry {
-  width: 700px; /* @todo solve tactic popover layout problem for real */
+.increase-popover-width {
+   width: 180px;
+}
+
+.modal-fullscreen {
+  width: 98%;
+  height: 95%;
+}
+
+.modal-fullscreen .modal-content {
+  height: 100%;
+}
+
+.modal-fullscreen .modal-body {
+  height: calc(100% - 65px);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-fullscreen .modal-header~.modal-body {
+  height: calc(100% - 130px);
+}
+
+.k4-vertical-fill-flex {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.k4-vertical-fill {
+  height: 100%;
+}
+/* first uib-tabset div */
+.k4-vertical-fill > div {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.k4-vertical-fill .tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.k4-vertical-fill .tab-content>.active {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.tacticalert-popover {
+   width: 90%;
+   left: 5% !important;
 }
 
 .increase-popover-width {
@@ -352,6 +722,25 @@ del {
 
 .k4-narrowinput {
   max-width: 40px;
+}
+
+.k4-cex-fml {
+  display: inline-block;
+}
+.k4-cex-highlight {
+  display: inline-block;
+  font-weight: bold;
+}
+.k4-cex-fml > ul:first-child {
+  margin: 0;
+  padding: 0;
+}
+.k4-cex-fml > ul:first-child li {
+  font-size: smaller;
+  border: none;
+  color: var(--lsmain);
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .k4-sequentRulePremise {
@@ -376,6 +765,18 @@ del {
 
 .k4-sequentRuleSucc {
   text-align: left;
+}
+
+.k4-axiomtactic-popover {
+  width: 80%;
+}
+
+.k4-axiomtactic-input {
+  display: inline-block;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: -6px;
 }
 
 .k4-tacticPopoverRow {
@@ -427,7 +828,7 @@ del {
 }
 .k4-proofrow-annotation > ul:last-child li {
   height: 3ex;
-  font-size: x-small;
+  font-size: smaller;
   border: none;
   color: var(--lsmain);
   display: block;
@@ -443,7 +844,7 @@ del {
   border-top: none;
   border-right: none;
   border-bottom: thin solid var(--lsmain);
-  margin: 0 0 0 6em;
+  margin: 0 0 0 3em;
 }
 
 /* must be after k4-proofrow: overrides border styling */
@@ -458,25 +859,25 @@ del {
 .k4-proofrow > ul:first-child {
   list-style-type: none;
   padding: 0 0 0 0;
-  margin: -1.4ex 0 0 0.5em;
+  margin: -1.4ex 0 0 -0.5em;
   text-align: right;
-  width: 6em;
+  width: 3em;
   display: block;
   position: absolute;
   left: 0;
 }
 .k4-proofrow > ul:first-child li {
   height: 3ex;
-  font-size: x-small;
+  font-size: smaller;
   border: none;
   color: var(--lsmain);
   display: inline-block;
   white-space: nowrap;
-  width: 6.5em;
+  width: 3.5em;
 }
 
 .k4-proofrow .k4-proofrule {
-  width: 3em;
+  width: 2em;
   display: inline-block;
   white-space: nowrap;
   overflow-x: hidden;
@@ -487,7 +888,7 @@ del {
 .k4-proofrow .k4-prooficon {
   display: inline-block;
   text-align: center;
-  width: 1.5em;
+  width: 1em;
 }
 
 .k4-flexrow {
@@ -566,29 +967,50 @@ del {
   white-space: pre-wrap;
 }
 
-.k4-highlight-steppos {
-  border-bottom: var(--lsmain) solid;
+.k4-highlight-steppos > .k4-op {
+  border-bottom: solid var(--lsmain);
+  background-color: var(--lslightred);
+  color: var(--lsmain);
+  text-shadow: var(--lsoutlineshadow);
+  padding: 3px;
+  margin: -3px;
+  position: relative; /* required for z-index */
+  z-index: -1;        /* don't overwrite siblings (negative margin) */
 }
-.k4-highlight-steppos > span {
-  border-bottom: var(--lsmainback) dotted;
+.k4-highlight-steppos-full {
+  border-bottom: solid var(--lsmain);
+  background-color: var(--lslightred);
+  color: var(--lsmain);
+  text-shadow: var(--lsoutlineshadow);
+  padding: 3px;
+  margin: -3px;
+  position: relative; /* required for z-index */
+  z-index: -1;        /* don't overwrite siblings (negative margin) */
 }
-.k4-highlight-steppos-modality {
-  border-bottom: var(--lsmain) solid;
+.k4-highlight-steppos-modality-prg > .k4-mod-open ~ span > .k4-prg-op {
+  border-bottom: solid var(--lsmain);
+  background-color: var(--lslightred);
+  color: var(--lsmain);
+  text-shadow: var(--lsoutlineshadow);
+  padding: 3px;
+  margin: -3px;
+  position: relative; /* required for z-index */
+  z-index: -1;        /* don't overwrite siblings (negative margin) */
 }
-.k4-highlight-steppos-modality > span:first-child {
-  border-bottom: var(--lsmain) solid;
-}
-.k4-highlight-steppos-modality > span:first-child > span {
-  border-bottom: var(--lsmainback) dotted;
-}
-.k4-highlight-steppos-modality > span {
-  border-bottom: var(--lsmainback) dotted;
+.k4-highlight-steppos-modality-post > .k4-mod-close ~ span > .k4-op {
+  border-bottom: solid var(--lsmain);
+  background-color: var(--lslightred);
+  color: var(--lsmain);
+  text-shadow: var(--lsoutlineshadow);
+  padding: 3px;
+  margin: -3px;
+  position: relative; /* required for z-index */
+  z-index: -1;        /* don't overwrite siblings (negative margin) */
 }
 
 .k4-formula.hover > ul:first-child, .k4-formula:hover > ul:first-child {
   opacity: 1;
   position: absolute;
-  left: 0px; /* -79px with text */
   top: 0px;
   z-index: 100;
 }
@@ -604,11 +1026,10 @@ del {
   list-style-type: none;
   padding: 0px 0px 0px 0px;
   margin-top: -1ex;
-  text-align: center;
-  width: 2em;
+  text-align: right;
   display: block;
   position: absolute;
-  left: -0.5em;
+  left: -1em;
   top: 50%;
 }
 .k4-formula-content > ul:first-child li {
@@ -631,25 +1052,24 @@ del {
 .k4-formula > ul:first-child {
   list-style-type: none;
   padding: 0;
-  margin: 0 0 0 -4px; /* margin: 0 8px 0 -4px */
+  margin: 0 0 0 -0.97em;
   text-align: left;
-  width: 20px; /* 100 px with text */
+  width: 1em;
   opacity: 0;
   display: block;
   position: absolute;
-  left: 0px; /* -79px with text */
   top: 0px;
   z-index: 1;
 }
 .k4-formula > ul:first-child li {
-  height: 15px;
+  height: 2ex;
   border: 1px solid var(--lsblue);
   display: list-item;
   margin: 0 -1px;
   background: var(--lssuperlightblue);
   border-top-left-radius: 3px;
   border-bottom-left-radius: 3px;
-  width: 20px; /* 100px with text */
+  width: 1em; /* 100px with text */
   text-align: center;
 }
 .k4-formula > ul:first-child li.show {
@@ -664,8 +1084,7 @@ del {
   color: var(--lsblue);
   padding: 0 0 0 0px; /* padding: 0 5px 0 10px; */
   display: block;
-  line-height: 13px;
-  font-size: 10px;
+  font-size: 70%;
 }
 .k4-formula > ul:first-child li:hover {
   background: var(--lslightblue);
@@ -685,7 +1104,7 @@ del {
   border-bottom-right-radius: 3px;
 }
 .k4-formula-container {
-  max-width: 90%;
+  max-width: 100%;
 }
 
 /*

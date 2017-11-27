@@ -6,10 +6,11 @@ package edu.cmu.cs.ls.keymaerax.bellerophon
 
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
-import edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
+import edu.cmu.cs.ls.keymaerax.btactics.{Idioms, TacticTestBase}
 import edu.cmu.cs.ls.keymaerax.tags.{SummaryTest, UsualTest}
 
 import scala.collection.immutable._
+import org.scalatest.Inside._
 
 import org.scalatest.Inside._
 
@@ -341,6 +342,47 @@ class TacticDiffTest extends TacticTestBase {
         c1 shouldBe BelleParser("andL(-2)")
         diff._2 should contain theSameElementsAs (c2, BelleParser("nil"))::Nil
         diff._3 should contain theSameElementsAs (c2, BelleParser("andL(-3)"))::Nil
+    }
+  }
+
+  it should "match tactic definitions" in {
+    val t1 = BelleParser("tactic t as (implyR(1))")
+    val t2 = BelleParser("tactic t as (implyR(1))")
+    TacticDiff.diff(t1, t2)._1.t shouldBe DefTactic("t", BelleParser("implyR(1)"))
+  }
+
+  it should "match inside tactic definitions" in {
+    val t1 = BelleParser("tactic t as (implyR(1))")
+    val t2 = BelleParser("tactic t as (andR(1))")
+    val diff = TacticDiff.diff(t1, t2)
+    inside (diff._1.t) {
+      case DefTactic(n, c: BelleDot) =>
+        diff._2 should contain theSameElementsAs (c, BelleParser("implyR(1)"))::Nil
+        diff._3 should contain theSameElementsAs (c, BelleParser("andR(1)"))::Nil
+    }
+  }
+
+  it should "match applied tactic defs" in {
+    val t1 = BelleParser("tactic t as (implyR(1)); t")
+    val t2 = BelleParser("tactic t as (implyR(1)); t")
+    val t = DefTactic("t", BelleParser("implyR(1)"))
+    val diff = TacticDiff.diff(t1, t2)
+    inside (diff._1.t) {
+      case SeqTactic(_, _) =>
+        diff._2 shouldBe empty
+        diff._3 shouldBe empty
+    }
+  }
+
+  it should "find diff after applied tactic defs" in {
+    val t1 = BelleParser("tactic t as (implyR(1)); t; andL(1)")
+    val t2 = BelleParser("tactic t as (implyR(1)); t; (andL(1) | andL(2))")
+    val t = DefTactic("t", BelleParser("implyR(1)"))
+    val diff = TacticDiff.diff(t1, t2)
+    inside (diff._1.t) {
+      case SeqTactic(_, SeqTactic(_, c: BelleDot)) =>
+        diff._2 should contain theSameElementsAs (c, BelleParser("andL(1)"))::Nil
+        diff._3 should contain theSameElementsAs (c, BelleParser("(andL(1) | andL(2))"))::Nil
     }
   }
 

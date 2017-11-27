@@ -34,7 +34,7 @@ object ModelPlex extends ModelPlexTrait {
   /**
    * Synthesize the ModelPlex (Controller) Monitor for the given formula for monitoring the given variable.
    */
-  def apply(formula: Formula, kind: Symbol, checkProvable: Boolean = true): Formula = formula match {
+  def apply(formula: Formula, kind: Symbol, checkProvable: Option[(ProvableSig => Unit)] = Some({case _ => ()})): Formula = formula match {
     case Imply(assumptions, Box(prg, _)) =>
       val vars = StaticSemantics.boundVars(prg).symbols.filter(v => v.isInstanceOf[Variable] && !v.isInstanceOf[DifferentialSymbol]).map((x:NamedSymbol)=>x.asInstanceOf[Variable]).toList
       val sortedVars = vars.sortWith((x,y)=>x<y)
@@ -45,7 +45,7 @@ object ModelPlex extends ModelPlexTrait {
   /**
    * Synthesize the ModelPlex (Controller) Monitor for the given formula for monitoring the given variable.
    */
-  def apply(vars: List[Variable], kind: Symbol): (Formula => Formula) = apply(vars, kind, checkProvable=true)
+  def apply(vars: List[Variable], kind: Symbol): (Formula => Formula) = apply(vars, kind, checkProvable=Some({case _ => ()}))
 
   /**
    * Synthesize the ModelPlex (Controller) Monitor for the given formula for monitoring the given variable.
@@ -53,13 +53,16 @@ object ModelPlex extends ModelPlexTrait {
     *
     * @param checkProvable true to check the Provable proof certificates (recommended).
    */
-  def apply(vars: List[Variable], kind: Symbol, checkProvable: Boolean): (Formula => Formula) = formula => {
+  def apply(vars: List[Variable], kind: Symbol, checkProvable: Option[(ProvableSig => Unit)]): (Formula => Formula) = formula => {
     require(kind == 'ctrl || kind == 'model, "Unknown monitor kind " + kind + ", expected one of 'ctrl or 'model")
     val (mxInputFml, assumptions) = createMonitorSpecificationConjecture(formula, vars:_*)
     val mxInputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(mxInputFml))
+    //@note SimplifierV2 disabled as precaution in case Z3 cannot prove one of its lemmas
     val tactic = (kind, ToolProvider.simplifierTool()) match {
-      case ('ctrl, Some(tool)) => controllerMonitorByChase(1) & (optimizationOneWithSearch(tool, assumptions)(1)*) & SimplifierV2.simpTac(1)
-      case ('model, Some(tool)) => modelMonitorByChase(1) & (optimizationOneWithSearch(tool, assumptions)(1)*) & SimplifierV2.simpTac(1)
+      case ('ctrl, tool) => controllerMonitorByChase(1) & (optimizationOneWithSearch(tool, assumptions)(1)*) &
+        (if (tool.isDefined) SimplifierV2.simpTac(1) else skip)
+      case ('model, tool) => modelMonitorByChase(1) & (optimizationOneWithSearch(tool, assumptions)(1)*) &
+        (if (tool.isDefined) SimplifierV2.simpTac(1) else skip)
       case _ => throw new IllegalArgumentException("Unknown monitor kind " + kind + ", expected one of 'ctrl or 'model; both require a simplification tool")
     }
 
@@ -73,46 +76,47 @@ object ModelPlex extends ModelPlexTrait {
     assert(result.conclusion == mxInputSequent, "Proof was a proof of the ModelPlex specification")
     // @todo conjunction with phi|_cnst when monitor should also check the conditions on constants
     val mxOutputProofTree = result.subgoals.head.succ.head
-    if (checkProvable) {
-      //@todo probably doesn't make much sense anymore in new version
-      val witnessStart= Platform.currentTime
-      val provable = result.proved
-      assert(provable.ante.size == 1 && provable.succ.size == 1, "ModelPlex tactic expected to provide a single formula (in place version)")
-      assert(provable == mxInputSequent, "Provable is a proof of the ModelPlex specification")
-      assert(provable.ante.head == True)
-      val mxOutput = provable.succ.head
-      assert(mxOutput == mxOutputProofTree, "ModelPlex output from Provable and from ProofNode agree (if ProofNode is correct)")
-      val witnessDuration = Platform.currentTime - witnessStart
-      Console.println("[proof time       " + proofDuration + "ms]")
-      Console.println("[certificate time " + witnessDuration + "ms]")
-      println("ModelPlex Proof certificate: Passed")
-      mxOutput
-    } else {
-      println("ModelPlex Proof certificate: Skipped")
-      mxOutputProofTree
+    checkProvable match {
+      case Some(report) =>
+        //@todo probably doesn't make much sense anymore in new version
+        val witnessStart= Platform.currentTime
+        val provable = result.proved
+        assert(provable.ante.size == 1 && provable.succ.size == 1, "ModelPlex tactic expected to provide a single formula (in place version)")
+        assert(provable == mxInputSequent, "Provable is a proof of the ModelPlex specification")
+        assert(provable.ante.head == True)
+        val mxOutput = provable.succ.head
+        assert(mxOutput == mxOutputProofTree, "ModelPlex output from Provable and from ProofNode agree (if ProofNode is correct)")
+        val witnessDuration = Platform.currentTime - witnessStart
+        Console.println("[proof time       " + proofDuration + "ms]")
+        Console.println("[certificate time " + witnessDuration + "ms]")
+        println("ModelPlex Proof certificate: Passed")
+        report(result)
+        mxOutput
+      case None =>
+        println("ModelPlex Proof certificate: Skipped")
+        mxOutputProofTree
     }
   }
 
   /**
-   * Construct ModelPlex monitor specification conjecture corresponding to given formula.
+    * Construct ModelPlex monitor specification conjecture corresponding to given formula.
     *
     * @param fml A formula of the form p -> [a]q, which was proven correct.
-   * @param vars A list of variables V, superset of BV(a).
-   * @see Mitsch, Platzer: ModelPlex (Definition 3, Lemma 4, Corollary 1).
-   */
+    * @param vars A list of variables V, superset of BV(a).
+    * @return A tuple of monitor conjecture and assumptions
+    * @see Mitsch, Platzer: ModelPlex (Definition 3, Lemma 4, Corollary 1).
+    */
   def createMonitorSpecificationConjecture(fml: Formula, vars: Variable*): (Formula, List[Formula]) = {
     require(vars.nonEmpty, "ModelPlex expects non-empty list of variables to monitor")
-    require(StaticSemantics.symbols(fml).intersect(
-      vars.toSet[Variable].map(v=>Function(v.name + "pre", v.index, Unit, v.sort).asInstanceOf[NamedSymbol]) ++
-        vars.toSet[Variable].map(v=>Function(v.name + "post", v.index, Unit, v.sort))
-    ).isEmpty, "ModelPlex pre and post function symbols do not occur in original formula")
+    require(StaticSemantics.symbols(fml).intersect(vars.map(v => BaseVariable(v.name + "post", v.index)).toSet).isEmpty,
+      "ModelPlex post symbols must not occur in original formula")
 
     def conjectureOf(assumptions: Formula, prg: Program): (Formula, List[Formula]) = {
       val boundVars = StaticSemantics.boundVars(prg).symbols
       assert(boundVars.forall(v => !v.isInstanceOf[Variable] || v.isInstanceOf[DifferentialSymbol] || vars.contains(v)),
-        "all bound variables " + StaticSemantics.boundVars(prg).prettyString + " must occur in monitor list " + vars.mkString(", ") +
+        "All bound variables " + StaticSemantics.boundVars(prg).prettyString + " must occur in monitor list " + vars.mkString(", ") +
           "\nMissing: " + (StaticSemantics.boundVars(prg).symbols.toSet diff vars.toSet).mkString(", "))
-      val posteqs = vars.map(v => Equal(FuncOf(Function(v.name + "post", v.index, Unit, v.sort), Nothing), v)).reduceRight(And)
+      val posteqs = vars.map(v => Equal(BaseVariable(v.name + "post", v.index), v)).reduceRight(And)
       //@note suppress assumptions mentioning bound variables
       val nonboundAssumptions = FormulaTools.conjuncts(assumptions).filter(a => boundVars.intersect(StaticSemantics.freeVars(a).symbols).isEmpty)
       (Diamond(prg, posteqs), nonboundAssumptions)
@@ -130,21 +134,21 @@ object ModelPlex extends ModelPlexTrait {
     *
     * @see [[createMonitorSpecificationConjecture]]
    * @example{{{
-   *        |- xpost()=1
+   *        |- xpost=1
    *        ------------------------------controllerMonitorByChase(1)
-   *        |- <{x:=1; {x'=2}}*>xpost()=x
+   *        |- <{x:=1; {x'=2}}*>xpost=x
    * }}}
    * In order to produce the result above, the tactic performs intermediate steps as follows.
    * @example{{{
-   *        |- xpost()=1
+   *        |- xpost=1
    *        ------------------------------true&
-   *        |- (true & xpost()=1)
+   *        |- (true & xpost=1)
    *        ------------------------------<:=> assign
-   *        |- <x:=1;>(true & xpost()=x)
+   *        |- <x:=1;>(true & xpost=x)
    *        ------------------------------DX diamond differential skip
-   *        |- <x:=1; {x'=2}>xpost()=x
+   *        |- <x:=1; {x'=2}>xpost=x
    *        ------------------------------<*> approx
-   *        |- <{x:=1; {x'=2}}*>xpost()=x
+   *        |- <{x:=1; {x'=2}}*>xpost=x
    * }}}
    * @return The tactic.
    */
@@ -165,12 +169,21 @@ object ModelPlex extends ModelPlexTrait {
     */
   lazy val modelMonitorByChase: DependentPositionTactic = modelMonitorByChase()
   def modelMonitorByChase(ode: DependentPositionTactic = AxiomaticODESolver.axiomaticSolve()): DependentPositionTactic = "modelMonitor" by ((pos: Position, seq: Sequent) => chase(3,3, (e:Expression) => e match {
+    // remove loops and split compositions to isolate differential equations before splitting choices
+    case Diamond(Loop(_), _) => "<*> approx" :: Nil
+    case Diamond(Compose(_, _), _) => AxiomIndex.axiomsFor(e)
+    case _ => Nil
+  })(pos) &
+    applyAtAllODEs(ode)(pos) & // solve isolated ODEs once before splitting choices
+    // chase and solve remaining
+    chase(3,3, (e:Expression) => e match {
     // remove loops
     case Diamond(Loop(_), _) => "<*> approx" :: Nil
     // keep ODEs, solve later
     case Diamond(ODESystem(_, _), _) => Nil
     case _ => println("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
-  })(pos) & applyAtAllODEs(ode)(pos))
+  })(pos) &
+    applyAtAllODEs(ode)(pos))
 
   /** Applies tatic `t` at all ODEs underneath this tactic's position. */
   def applyAtAllODEs(t: DependentPositionTactic): DependentPositionTactic = TacticFactory.anon((pos: Position, sequent: Sequent) => {
@@ -386,28 +399,33 @@ object ModelPlex extends ModelPlexTrait {
     * somewhere in the quantified formula.
     *
     * @example{{{
-    *           |- xpost()>0 & xpost()=xpost()
+    *           |- xpost>0 & xpost=xpost
     *           ------------------------------optimizationOneWithSearch
-    *           |- \exists x x>0 & xpost()=x
+    *           |- \exists x x>0 & xpost=x
     * }}}
     * @see[[optimizationOneWithSearchAt]]
     */
-  def optimizationOneWithSearch(tool: SimplificationTool, assumptions: List[Formula]): DependentPositionTactic = "Optimization 1 with instance search" by ((pos: Position, sequent: Sequent) => {
+  def optimizationOneWithSearch(tool: Option[SimplificationTool], assumptions: List[Formula]): DependentPositionTactic = "Optimization 1 with instance search" by ((pos: Position, sequent: Sequent) => {
     val simplForall1 = proveBy("p(f()) -> \\forall x_ (x_=f() -> p(x_))".asFormula, implyR(1) & allR(1) & implyR(1) & eqL2R(-2)(1) & close)
     val simplForall2 = proveBy("p(f()) -> \\forall x_ (f()=x_ -> p(x_))".asFormula, implyR(1) & allR(1) & implyR(1) & eqR2L(-2)(1) & close)
 
     def solutionQE(existsFml: Formula, qeFml: Formula, signature: Set[Function], assumptions: List[Formula]) = "ANON" by ((pp: Position, seq: Sequent) => {
-      val simplified = tool.simplify(qeFml, assumptions)
-      val backSubst = signature.foldLeft[Formula](simplified)((fml, t) => fml.replaceAll(Variable(t.name, t.index), FuncOf(t, Nothing)))
-      val pqe = proveBy(Imply(backSubst, existsFml), QE & done)
-      cutAt(backSubst)(pp) < (skip, (if (pp.isSucc) cohideR(pp.topLevel) else cohideR('Rlast)) & CMon(pp.inExpr) & by(pqe))
+      tool match {
+        case None => skip
+        case Some(t) =>
+          val simplified = t.simplify(qeFml, assumptions)
+          val backSubst = signature.foldLeft[Formula](simplified)((fml, t) => fml.replaceAll(Variable(t.name, t.index), FuncOf(t, Nothing)))
+          val pqe = proveBy(Imply(backSubst, existsFml), QE & done)
+          cutAt(backSubst)(pp) < (skip, (if (pp.isSucc) cohideR(pp.topLevel) else cohideR('Rlast)) & CMon(pp.inExpr) & by(pqe))
+      }
     })
 
     val positions: List[BelleExpr] = mapSubpositions(pos, sequent, {
         case (Forall(xs, Imply(Equal(x, _), _)), pp) if pp.isSucc && xs.contains(x) => Some(useAt(simplForall1, PosInExpr(1::Nil))(pp))
         case (Forall(xs, Imply(Equal(_, x), _)), pp) if pp.isSucc && xs.contains(x) => Some(useAt(simplForall2, PosInExpr(1::Nil))(pp))
         // @note shape of ode solution
-        case (ode@Exists(ts, And(GreaterEqual(_, _), And(Forall(ss, Imply(And(_, _), _)), _))), pp) if pp.isSucc && ts.contains("t_".asVariable) && ss.contains("s_".asVariable)=>
+        case (ode@Exists(ts, And(GreaterEqual(_, _), And(Forall(ss, Imply(And(_, _), _)), _))), pp)
+            if tool.isDefined && pp.isSucc && ts.contains("t_".asVariable) && ss.contains("s_".asVariable)=>
           val signature = StaticSemantics.signature(ode).filter({
             case Function(_, _, Unit, _, false) => true case _ => false }).map(_.asInstanceOf[Function])
           val edo = signature.foldLeft[Formula](ode)((fml, t) => fml.replaceAll(FuncOf(t, Nothing), Variable(t.name, t.index)))
@@ -426,16 +444,44 @@ object ModelPlex extends ModelPlexTrait {
     * somewhere in the quantified formula. */
   private def optimizationOneWithSearchAt: DependentPositionTactic = "Optimization 1 with instance search at" by ((pos: Position, sequent: Sequent) => {
     sequent.sub(pos) match {
+      case Some(Exists(vars, And(Equal(l, r), _))) if pos.isSucc && vars.contains(l) =>
+        // case from deterministic assignments
+        val equality: Option[(Variable, Term)] = Some(l.asInstanceOf[BaseVariable] -> r)
+        debug("Running optimization 1 at " + pos + " using equality " + equality) & optimizationOneAt(equality)(pos)
       case Some(Exists(vars, phi)) if pos.isSucc =>
-          var equality: Option[(Variable, Term)] = None
-          ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
-            override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] = e match {
-              case Equal(l, r) if vars.contains(l) => equality = Some(l.asInstanceOf[Variable], r); Left(Some(ExpressionTraversal.stop))
-              case Equal(l, r) if vars.contains(r) => equality = Some(r.asInstanceOf[Variable], l); Left(Some(ExpressionTraversal.stop))
-              case _ => Left(None)
-            }
-          }, phi)
-          debug("Running optimization 1 at " + pos + " using equality " + equality) & optimizationOneAt(equality)(pos)
+        // case from nondeterministic assignments
+
+        class SynonymFinder(v: NamedSymbol) extends ExpressionTraversalFunction {
+          var synonyms: Set[Term] = Set()
+          override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] = e match {
+            case Equal(l, r) if v==l => synonyms = synonyms + r; Left(None)
+            case Equal(l, r) if v==r => synonyms = synonyms + l; Left(None)
+            case Or(l, r) =>
+              val lFinder = new SynonymFinder(v)
+              val rFinder = new SynonymFinder(v)
+              ExpressionTraversal.traverse(lFinder, l)
+              ExpressionTraversal.traverse(rFinder, r)
+              synonyms = synonyms ++
+                (if (lFinder.synonyms.nonEmpty && rFinder.synonyms.nonEmpty) lFinder.synonyms & rFinder.synonyms
+                 else lFinder.synonyms | rFinder.synonyms)
+              Right(e)
+            case _ => Left(None)
+          }
+        }
+
+        val v = vars.head
+        val vFinder = new SynonymFinder(v)
+        ExpressionTraversal.traverse(vFinder, phi)
+
+        //@note use synonym if all equalities (except x=xpost) agree across branches, otherwise instantiate with "xpost"
+        val postEquality = vFinder.synonyms.find({
+          case r: Variable => v.name + "post" == r.name
+          case _ => false})
+        val remainingEqs = vFinder.synonyms.filter(Some(_) != postEquality)
+        val equality: Option[Term] =
+          if (remainingEqs.size == 1) Some(remainingEqs.head)
+          else postEquality
+        optimizationOneAt(equality.map(v -> _))(pos)
     }
   })
 
@@ -446,14 +492,14 @@ object ModelPlex extends ModelPlexTrait {
    * instantiation, if asked to automatically instantiate.
     *
     * @example{{{
-   *           |- z>0 & xpost()=z
+   *           |- z>0 & xpost=z
    *           -----------------------------------optimizationOne(Some(Variable("x"), Variable("z")))
-   *           |- \exists x (x>0 & xpost()=x)
+   *           |- \exists x (x>0 & xpost=x)
    * }}}
    * @example{{{
-   *           |- xpost_0()>0 & xpost()=xpost_0()
+   *           |- xpost_0>0 & xpost=xpost_0
    *           -----------------------------------optimizationOne(None)
-   *           |- \exists x (x>0 & xpost()=x)
+   *           |- \exists x (x>0 & xpost=x)
    * }}}
    * @param inst The instance for a quantified variable. If None, the tactic will use a fresh variant of the
    *             corresponding post-variable.
@@ -468,17 +514,15 @@ object ModelPlex extends ModelPlexTrait {
           case Some(i) => existsR(i._1, i._2)(pos)
           case None =>
             require(vars.size == 1)
-            val (v, post) = vars.map(v => (v, Function(s"${v.name.replaceAllLiterally("_", "")}post", Some(0), Unit, v.sort))).head
-            val postFn = FuncOf(post, Nothing)
-            existsR(v, postFn)(pos)
+            val (v, post) = vars.map(v => (v, BaseVariable(s"${v.name.replaceAllLiterally("_", "")}post", Some(0)))).head
+            existsR(v, post)(pos)
         }
         case Some(Forall(vars, phi)) if pos.isAnte => inst match {
           case Some(i) => allL(i._1, i._2)(pos)
           case None =>
             require(vars.size == 1)
-            val (v, post) = vars.map(v => (v, Function(s"${v.name.replaceAllLiterally("_", "")}post", Some(0), Unit, v.sort))).head
-            val postFn = FuncOf(post, Nothing)
-            allL(v, postFn)(pos)
+            val (v, post) = vars.map(v => (v, BaseVariable(s"${v.name.replaceAllLiterally("_", "")}post", Some(0)))).head
+            allL(v, post)(pos)
         }
     }
   })
@@ -492,6 +536,7 @@ object ModelPlex extends ModelPlexTrait {
   /** Turns the formula `fml` into a single inequality. */
   def toMetric(fml: Formula): Formula = {
     val cmpNF = chase(3, 3, (e: Expression) => e match {
+      case NotEqual(_, _) => "!= expand"::Nil
       case Equal(_, _) => "= expand"::Nil
       case And(_, _) => "& recursor"::Nil
       case Or(_, _) => "| recursor"::Nil

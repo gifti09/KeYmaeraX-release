@@ -36,8 +36,8 @@ object DebuggingTactics {
   }
 
   /** debug is a no-op tactic that prints a message and the current provable, if doPrint (defaults to the system property DEBUG) is true. */
-  def debug(message: => String, doPrint: Boolean = DEBUG, printer: ProvableSig => String = _.toString): BuiltInTactic =
-      new BuiltInTactic("debug") {
+  def debug(message: => String, doPrint: Boolean = DEBUG, printer: ProvableSig => String = _.toString): StringInputTactic =
+      new StringInputTactic(if (doPrint) "print" else "debug", message::Nil) {
     override def result(provable: ProvableSig): ProvableSig = {
       if (doPrint) println("===== " + message + " ==== " + printer(provable) + " =====")
       provable
@@ -105,8 +105,9 @@ object DebuggingTactics {
   def assert(cond: Sequent=>Boolean, message: => String): BuiltInTactic = new BuiltInTactic("assert") {
     override def result(provable: ProvableSig): ProvableSig = {
       if (provable.subgoals.size != 1 || !cond(provable.subgoals.head)) {
-        throw new BelleUserGeneratedError(message + "\nExpected 1 subgoal whose sequent matches condition " + cond + ",\n\t but got " +
-          provable.subgoals.size + " subgoals, or sole subgoal does not match")
+        throw BelleUserGeneratedError(message + "\nExpected 1 subgoal whose sequent matches condition " + cond + ",\n\t but got " +
+          (if (provable.subgoals.size != 1) provable.subgoals.size + " subgoals"
+          else provable.subgoals.head.prettyString))
       }
       provable
     }
@@ -145,9 +146,10 @@ object DebuggingTactics {
   /** @see [[TactixLibrary.done]] */
   lazy val done: BelleExpr = done()
   def done(msg: String = ""): BelleExpr = new BuiltInTactic("done") {
-    override def result(provable : ProvableSig): ProvableSig =
-      if (provable.isProved) provable
-      else throw new BelleThrowable((if (msg.nonEmpty) msg+"\n" else "") + "Expected proved provable, but got " + provable)
+    override def result(provable : ProvableSig): ProvableSig = {
+      if (provable.isProved) { print(msg + {if (msg.nonEmpty) ": " else ""} + "checked done"); provable }
+      else throw new BelleThrowable((if (msg.nonEmpty) msg + "\n" else "") + "Expected proved provable, but got " + provable)
+    }
   }
 }
 
@@ -329,7 +331,8 @@ object TacticFactory {
       }
     }
 
-    def byWithInputs(inputs: List[Expression], t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic = new DependentPositionWithAppliedInputTactic(name, inputs) {
+    /** A position tactic with multiple inputs. */
+    def byWithInputs(inputs: List[Any], t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic = new DependentPositionWithAppliedInputTactic(name, inputs) {
       override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
         override def computeExpr(sequent: Sequent): BelleExpr = {
           require(pos.isIndexDefined(sequent), "Cannot apply at undefined position " + pos + " in sequent " + sequent)
@@ -338,8 +341,17 @@ object TacticFactory {
       }
     }
 
-    def byWithInput(input: Expression, t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic =
+    /** A named tactic with multiple inputs. */
+    def byWithInputs(inputs: List[Any], t: BelleExpr): InputTactic = new InputTactic(name, inputs) {
+      override def computeExpr(): BelleExpr = t
+    }
+
+    /** A position tactic with a single input. */
+    def byWithInput(input: Any, t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic =
       byWithInputs(List(input), t)
+
+    /** A named tactic with a single input. */
+    def byWithInput(input: Any, t: BelleExpr): InputTactic = byWithInputs(List(input), t)
 
     /** Creates a dependent tactic, which can inspect the sole sequent */
     def by(t: Sequent => BelleExpr): DependentTactic = new SingleGoalDependentTactic(name) {
@@ -383,8 +395,8 @@ object TacticFactory {
     }
   }
 
-  def anon(t: ((Position, Sequent) => BelleExpr)) = "ANON" by t
-  def anon(t: (Sequent => BelleExpr)) = "ANON" by t
+  def anon(t: ((Position, Sequent) => BelleExpr)): DependentPositionTactic = "ANON" by t
+  def anon(t: (Sequent => BelleExpr)): DependentTactic = "ANON" by t
 
 }
 

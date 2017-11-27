@@ -6,7 +6,7 @@
  * Differential Dynamic Logic parser for concrete KeYmaera X notation.
   *
   * @author Andre Platzer
-  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 2016.
+  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 59(2), pp. 219-266, 2017.
  */
 package edu.cmu.cs.ls.keymaerax.parser
 
@@ -105,7 +105,7 @@ object KeYmaeraXParser extends Parser {
   val parser = this
 
   /** Lax mode where the parser is a little flexible about accepting input. */
-  private[parser] val LAX = System.getProperty("LAX", "true")=="true"
+  private[keymaerax] val LAX_MODE = System.getProperty("LAX", "true")=="true"
 
   private[parser] val DEBUG = System.getProperty("DEBUG", "false")=="true"
 
@@ -178,7 +178,7 @@ object KeYmaeraXParser extends Parser {
     }
     semanticAnalysis(parse) match {
       case None => parse
-      case Some(error) => if (LAX) {if (false) println("WARNING: " + "Semantic analysis" + "\nin " + "parsed: " + printer.stringify(parse) + "\n" + error); parse}
+      case Some(error) => if (LAX_MODE) {if (false) println("WARNING: " + "Semantic analysis" + "\nin " + "parsed: " + printer.stringify(parse) + "\n" + error); parse}
       else throw ParseException("Semantic analysis error " + error, parse).inInput("<unknown>", Some(input))
     }
   }
@@ -434,18 +434,18 @@ object KeYmaeraXParser extends Parser {
         reduceFuncOrPredOf(st, 4, tok, elaborate(st, optok, OpSpec.sFuncOf, TermKind, t1).asInstanceOf[Term], r)
 
       // DOT arity=0
-      case r :+ Token(DOT, _) =>
+      case r :+ Token(DOT(index), _) =>
         assert(isNoQuantifier(r), "Quantifier stack items handled above\n" + st)
-        if (la == LPAREN) shift(st) else reduce(st, 1, DotTerm(), r)
+        if (la == LPAREN) shift(st) else reduce(st, 1, DotTerm(Real, index), r)
 
-      case r :+ Token(DOT, _) :+ (optok@Token(LPAREN, _)) :+ Token(RPAREN, _) =>
+      case r :+ Token(DOT(index), _) :+ (optok@Token(LPAREN, _)) :+ Token(RPAREN, _) =>
         assert(isNoQuantifier(r), "Quantifier stack items handled above\n" + st)
-        reduce(st, 3, DotTerm(), r)
+        reduce(st, 3, DotTerm(Real, index), r)
 
       // DOT arity>0
-      case r :+ Token(DOT, _) :+ (optok@Token(LPAREN, _)) :+ Expr(t1: Term) :+ Token(RPAREN, _) =>
+      case r :+ Token(DOT(index), _) :+ (optok@Token(LPAREN, _)) :+ Expr(t1: Term) :+ Token(RPAREN, _) =>
         assert(isNoQuantifier(r), "Quantifier stack items handled above\n" + st)
-        reduce(st, 4, DotTerm(t1.sort), r)
+        reduce(st, 4, DotTerm(t1.sort, index), r)
 
       // predicational symbols arity>0
       case r :+ Token(IDENT(name, idx), _) :+ Token(LBRACE, _) :+ Expr(f1: Formula) :+ Token(RBRACE, _) =>
@@ -796,7 +796,7 @@ object KeYmaeraXParser extends Parser {
 
       // Help lexer convert PERIOD to DOT for convenience
       case r :+ Token(PERIOD,loc) =>
-        reduce(st, 1, Bottom :+ Token(DOT,loc), r)
+        reduce(st, 1, Bottom :+ Token(DOT(),loc), r)
 
       // small stack cases
       case Bottom :+ Expr(t) =>
@@ -956,7 +956,7 @@ object KeYmaeraXParser extends Parser {
 
   /** First(Term): Is la the beginning of a new term? */
   private def firstTerm(la: Terminal): Boolean = la.isInstanceOf[IDENT] || la.isInstanceOf[NUMBER] ||
-    la==MINUS || la==LPAREN || la==DOT ||
+    la==MINUS || la==LPAREN || la.isInstanceOf[DOT] ||
     la==PERIOD      // from DotTerm
 
   /** First(Formula): Is la the beginning of a new formula? */

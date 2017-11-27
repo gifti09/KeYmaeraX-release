@@ -5,12 +5,12 @@
 
 package edu.cmu.cs.ls.keymaerax.btactics.acasxhstp.safeable
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
+import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleProvable, SequentialInterpreter, SpoonFeedingInterpreter}
 import edu.cmu.cs.ls.keymaerax.btactics.acasxhstp.safeable.CondCongruence._
 import edu.cmu.cs.ls.keymaerax.btactics.acasxhstp.safeable.SharedTactics._
 import edu.cmu.cs.ls.keymaerax.btactics.BelleLabels._
-import edu.cmu.cs.ls.keymaerax.btactics.{DifferentialTactics, EqualityTactics, Idioms, SimplifierV2}
+import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXProblemParser
@@ -60,7 +60,10 @@ class AcasXSafe extends AcasXBase {
       abs('R, "abs(h)".asTerm) &
       abs('L, "abs(r-0)".asTerm)
 
-  "ACAS X safe" should "prove use case lemma" in withMathematica { tool => withDatabase { db =>
+  // Logs all the QE calls, including internal ones
+  //private val logQE = QELogger.enableLogging((40,"ACAS X Safe"))
+
+  "ACAS X safe" should "prove use case lemma" in withMathematica { _ => withDatabase { db =>
     if (lemmaDB.contains("nodelay_ucLoLemma")) lemmaDB.remove("nodelay_ucLoLemma")
 
     val ucLoFormula = Imply(invariant, postcond)
@@ -81,7 +84,7 @@ class AcasXSafe extends AcasXBase {
 
     // reprove with spoon-feeding interpreter to create extractable tactic
     val proofId = db.createProof(createAcasXProblemFile(ucLoFormula))
-    val interpreter = SpoonFeedingInterpreter(proofId, db.db.createProof, listener(db.db), SequentialInterpreter)
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db), SequentialInterpreter))
     interpreter(ucLoTac, BelleProvable(ProvableSig.startProof(ucLoFormula)))
 
     val tactic = db.extractTactic(proofId)
@@ -89,7 +92,7 @@ class AcasXSafe extends AcasXBase {
     tactic shouldBe expectedTactic
   }}
 
-  it should "prove the use case lemma with a parsed Belle tactic" in withMathematica { tool =>
+  it should "prove the use case lemma with a parsed Belle tactic" in withMathematica { _ =>
     if (lemmaDB.contains("nodelay_ucLoLemma")) lemmaDB.remove("nodelay_ucLoLemma")
 
     val ucLoFormula = Imply(invariant, postcond)
@@ -100,7 +103,7 @@ class AcasXSafe extends AcasXBase {
     storeLemma(ucLoLemma, Some("nodelay_ucLoLemma"))
   }
 
-  it should "prove lower bound safe lemma" in withMathematica { tool =>
+  it should "prove lower bound safe lemma" in withMathematica { _ =>
     if (lemmaDB.contains("nodelay_safeLoLemma")) lemmaDB.remove("nodelay_safeLoLemma")
 
     // Formula from print in Theorem 1
@@ -108,7 +111,7 @@ class AcasXSafe extends AcasXBase {
 
     val safeLemmaTac = dT("lemma") & implyR('R) & (andL('L)*) & solveEnd('R) &
       dT("Before skolem") & ((allR('R) | implyR('R))*) & dT("After skolem") &
-      SimplifierV2.simpTac(1) & dT("Simplified using known facts") & (allR('R)*) &
+      SimplifierV3.simpTac()(1) & dT("Simplified using known facts") & (allR('R)*) &
       //here we'd want to access previously introduced skolem symbol and
       // time introduced by diffSolution;goal 90
       allL(Variable("t"), "t_+t".asTerm)('L) & // t_22+t_23: t_ == t_22, t == t_23
@@ -157,9 +160,8 @@ class AcasXSafe extends AcasXBase {
     runLemmaTest("nodelay_ucLoLemma", "ACAS X safe should prove use case lemma")
     runLemmaTest("nodelay_safeLoLemma", "ACAS X safe should prove lower bound safe lemma")
 
-    withMathematica { tool =>
-      beforeEach()
-
+    beforeEach()
+    withMathematica { _ =>
       /** * Main safe theorem and its tactic ***/
       val safeSeq = KeYmaeraXProblemParser(io.Source.fromInputStream(
         getClass.getResourceAsStream("/examples/casestudies/acasx/sttt/safe_implicit.kyx")).mkString)
@@ -173,13 +175,13 @@ class AcasXSafe extends AcasXBase {
         ) & done)
         ,
         (indStep, dT("Step") & composeb('R) & generalize(invariant)('R) & Idioms.<(
-          dT("Generalization Holds") & chase('R) & (andL('L)*) & SimplifierV2.simpTac('R) & close
+          dT("Generalization Holds") & chase('R) & (andL('L)*) & SimplifierV3.simpTac()('R) &  close
           ,
           dT("Generalization Strong Enough") &
             EqualityTactics.abbrv("max((0,w*(dhf-dhd)))".asTerm, Some(Variable("maxI"))) & dT("abbrv2") &
 
             DifferentialTactics.diffUnpackEvolutionDomainInitially(1) &
-            dT("Preparing for safeLoLemma") & (andLi *) & implyRi &
+            dT("Preparing for safeLoLemma") & hideL(-1) & (andLi *) & implyRi &
             by(lemmaDB.get("nodelay_safeLoLemma").getOrElse(throw new Exception("Lemma nodelay_safeLoLemma must be proved first"))) & done
           ) /* End indStepLbl */
         )
@@ -191,7 +193,7 @@ class AcasXSafe extends AcasXBase {
     }
   }
 
-  it should "prove Lemma 1: equivalence between implicit and explicit region formulation" in withMathematica { tool =>
+  it should "prove Lemma 1: equivalence between implicit and explicit region formulation" in withMathematica { _ =>
     if (lemmaDB.contains("safe_equivalence")) lemmaDB.remove("safe_equivalence")
 
     val s = KeYmaeraXProblemParser(io.Source.fromInputStream(
@@ -551,19 +553,13 @@ class AcasXSafe extends AcasXBase {
     runLemmaTest("safe_implicit", "ACAS X safe should prove Theorem 1: correctness of implicit safe regions")
     runLemmaTest("safe_equivalence", "ACAS X safe should prove Lemma 1: equivalence between implicit and explicit region formulation")
 
-    withMathematica { tool =>
-
-      // rerun initialization (runTest runs afterEach() at the end)
-      beforeEach()
-
+    beforeEach() // rerun initialization (runTest runs afterEach() at the end)
+    withMathematica {_ =>
       // load lemmas
-
       val acasximplicit = KeYmaeraXProblemParser( io.Source.fromInputStream(
         getClass.getResourceAsStream("/examples/casestudies/acasx/sttt/safe_implicit.kyx")).mkString)
       val acasxexplicit = KeYmaeraXProblemParser(io.Source.fromInputStream(
         getClass.getResourceAsStream("/examples/casestudies/acasx/sttt/safe_explicit.kyx")).mkString)
-      val implicitExplicit = KeYmaeraXProblemParser(io.Source.fromInputStream(
-        getClass.getResourceAsStream("/examples/casestudies/acasx/sttt/safe_equivalence.kyx")).mkString)
       val acasximplicitP = lemmaDB.get("safe_implicit").getOrElse(throw new Exception("Proof will be partial. Prove safe_implicit first"))
       val implicitExplicitP = lemmaDB.get("safe_equivalence").getOrElse(throw new Exception("Proof will be partial. Prove safe_equivalence first"))
 

@@ -7,11 +7,12 @@ package edu.cmu.cs.ls.keymaerax.launcher
 import java.io._
 import javax.swing.JOptionPane
 
-import edu.cmu.cs.ls.keymaerax.hydra.{DBAbstractionObj, SQLite, StringToVersion, UpdateChecker}
-import edu.cmu.cs.ls.keymaerax.hydra.{SQLite, StringToVersion, UpdateChecker}
+import edu.cmu.cs.ls.keymaerax.hydra._
 import spray.json.JsArray
 
 import scala.collection.JavaConversions._
+import spray.json._
+import spray.json.DefaultJsonProtocol._
 
 import spray.json._
 import spray.json.DefaultJsonProtocol._
@@ -40,15 +41,55 @@ object Main {
       val java : String = javaLocation
       val keymaeraxjar : String = jarLocation
       println("Restarting KeYmaera X with sufficient stack space")
-      runCmd((java :: "-Xss20M" :: "-jar" :: keymaeraxjar :: "-launch"  :: Nil) ++ args.toList ++ ("-ui" :: Nil))
-    }
-    else {
+      val cmd = (java :: "-Xss20M" :: "-jar" :: keymaeraxjar :: "-launch" :: Nil) ++ args ++
+        (if (args.isEmpty) "-ui" :: Nil else Nil)
+      runCmd(cmd)
+    } else if (args.contains("-ui")) {
+      if (!(System.getenv().containsKey("HyDRA_SSL") && System.getenv("HyDRA_SSL").equals("on"))) {
+        // Initialize the loading dialog splash screen.
+        LoadingDialogFactory()
+      }
+
+      LoadingDialogFactory().addToStatus(25, Some("Checking database version..."))
       exitIfDeprecated()
+
+      LoadingDialogFactory().addToStatus(15, Some("Checking lemma caches..."))
       clearCacheIfDeprecated()
+
       assert(args.head.equals("-launch"))
       startServer(args.tail)
       //@todo use command line argument -mathkernel and -jlink from KeYmaeraX.main
       //@todo use command line arguments as the file to load. And preferably a second argument as the tactic file to run.
+    } else {
+      KeYmaeraX.main(args)
+    }
+  }
+
+  def startServer(args: Array[String]) : Unit = {
+    LoadingDialogFactory().addToStatus(25, Some("Obtaining locks..."))
+    KeYmaeraXLock.obtainLockOrExit()
+
+    launcherLog("-launch -- starting KeYmaera X Web UI server HyDRA.")
+
+
+//    try {
+////      throw new LemmbaDatabaseInitializationException("")
+////      LemmaDatabaseInitializer.initializeFromJAR
+//    }
+//    catch {
+//      case e: LemmbaDatabaseInitializationException => {
+//        println("!!! ERROR: Could not initialize database !!!)")
+//        e.printStackTrace()
+//        println("!!! ERROR RECOVERY: Trying to generate the Lemma database by proving all derived axioms")
+//        edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms.prepopulateDerivedLemmaDatabase()
+////        edu.cmu.cs.ls.keymaerax.tactics.DerivedAxioms.prepopulateDerivedLemmaDatabase()
+//      }
+//    }
+
+    if(System.getenv().containsKey("HyDRA_SSL") && System.getenv("HyDRA_SSL").equals("on")) {
+      edu.cmu.cs.ls.keymaerax.hydra.SSLBoot.main(args)
+    } else {
+      edu.cmu.cs.ls.keymaerax.hydra.NonSSLBoot.main(args)
     }
   }
 
@@ -100,15 +141,19 @@ object Main {
       clearCache(new File(cacheLocation))
     }
     else {
-      val cacheVersion = scala.io.Source.fromFile(cacheVersionFile).mkString.replace("\n", "")
+      val source = scala.io.Source.fromFile(cacheVersionFile)
+      val cacheVersion = source.mkString.replace("\n", "")
+      source.reader().close() //Ensure that the associated reader is closed so that we can delete the file if need to.
       try {
         if (StringToVersion(cacheVersion) != StringToVersion(edu.cmu.cs.ls.keymaerax.core.VERSION)) {
+          assert(cacheVersionFile.delete(), s"Could not delete the cache version file in ${cacheVersionFile.getAbsolutePath }")
           clearCache(cacheDirectory)
         }
       }
       catch {
         case e: NumberFormatException => {
           println("Warning: Could not parse the cache version file, cache contained: " + cacheVersion)
+          cacheVersionFile.delete()
           clearCache(cacheDirectory)
         }
       }
@@ -131,6 +176,7 @@ object Main {
     assert(versionFile.exists())
     val fw = new FileWriter(versionFile)
     fw.write(edu.cmu.cs.ls.keymaerax.core.VERSION)
+    fw.flush()
     fw.close()
   }
 
@@ -143,7 +189,11 @@ object Main {
       }
       else true
     }
-    else if(f.list().length == 0) f.delete()
+    else if(f.list().length == 0) {
+      val result = f.delete()
+      assert(result, s"Could not delete file ${f.getName} in: ${f.getAbsolutePath}")
+      result
+    }
     else {
       val recSuccess = f.listFiles().forall(deleteDirectory)
       if(recSuccess) f.delete()
@@ -157,6 +207,7 @@ object Main {
   private def exitIfDeprecated() = {
     val databaseVersion = SQLite.ProdDB.getConfiguration("version").config("version")
     println("Current database version: " + databaseVersion)
+    cleanupGuestData()
     if (UpdateChecker.upToDate().getOrElse(false) &&
         UpdateChecker.needDatabaseUpgrade(databaseVersion).getOrElse(false)) {
       //Exit if KeYmaera X is up to date but the production database belongs to a deprecated version of KeYmaera X.
@@ -244,6 +295,59 @@ object Main {
       )
     }
     SQLite.ProdDB.getConfiguration("version").config("version")
+  }
+
+  /** Returns a list of outdated guest-user created models (literal model content comparison) */
+  private def listOutdatedModels(): List[ModelPOJO] = {
+    val db = DBAbstractionObj.defaultDatabase
+    val tempUsers = db.getTempUsers
+    val tempUrlsAndModels: List[(String, List[ModelPOJO])] = tempUsers.map(u => {
+      launcherLog("Updating guest " + u.userName + "...")
+      val models = db.getModelList(u.userName)
+      launcherLog("...with " + models.size + " guest models")
+      (u.userName, models)
+    })
+
+    tempUrlsAndModels.flatMap({ case (url, models) =>
+      try {
+        if (models.nonEmpty) {
+          launcherLog("Reading guest source " + url)
+          val content = DatabasePopulator.readKya(url)
+          launcherLog("Comparing cached and source content")
+          models.flatMap(m => content.find(_.name == m.name) match {
+            case Some(DatabasePopulator.TutorialEntry(_, model, _, _, _, _)) if model == m.keyFile => None
+            case Some(DatabasePopulator.TutorialEntry(_, model, _, _, _, _)) if model != m.keyFile => Some(m)
+            case _ => /*@note model was deleted/renamed in original file, so delete*/ Some(m)
+          })
+        } else List()
+      } catch {
+        case _: Throwable => List() //@note original file inaccessible, so keep temporary model
+      }
+    })
+  }
+
+  private def cleanupGuestData() = {
+    launcherLog("Cleaning up guest data...")
+    val deleteModels = listOutdatedModels()
+    val deleteModelsStatements = deleteModels.map("delete from models where _id = " + _.modelId)
+    launcherLog("...deleting " + deleteModels.size + " guest models")
+    if (deleteModels.nonEmpty) {
+      val conn = SQLite.ProdDB.sqldb.createConnection()
+      conn.createStatement().executeUpdate("PRAGMA journal_mode = WAL")
+      conn.createStatement().executeUpdate("PRAGMA foreign_keys = ON")
+      conn.createStatement().executeUpdate("PRAGMA synchronous = NORMAL")
+      conn.createStatement().executeUpdate("VACUUM")
+      try {
+        val stmt = conn.createStatement()
+        deleteModelsStatements.foreach(stmt.addBatch)
+        stmt.executeBatch()
+      } catch {
+        case e: Throwable => launcherLog("Error cleaning up guest data"); throw e
+      } finally {
+        conn.close()
+      }
+    }
+    launcherLog("done.")
   }
 
   def processIsAlive(proc : Process) = {
@@ -404,7 +508,8 @@ object Main {
           val msg = "WARNING: A lock file exists but nothing is bound to the KeYmaera X web server's port.\nDeleting the lock file and starting KeYmaera X. If you experience errors, try killing all instances of KeYmaera X from your system's task manager."
           forceDeleteLock()
           launcherLog(msg)
-          JOptionPane.showMessageDialog(null, msg)
+          if(!java.awt.GraphicsEnvironment.isHeadless)
+            JOptionPane.showMessageDialog(null, msg)
         }
         else {
           //lock file exists but port isn't bound, so another instance of KeYmaera X probably *just* started. Don't even bother with a GUI message -- the user probably double-launched on accident.

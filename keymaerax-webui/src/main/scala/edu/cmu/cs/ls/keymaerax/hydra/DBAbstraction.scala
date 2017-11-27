@@ -147,11 +147,16 @@ case class ExecutionStep(stepId: Int, prevStepId: Option[Int], executionId: Int,
 
 case class ExecutionTrace(proofId: String, executionId: String, steps: List[ExecutionStep]) {
   //@note expensive assert
-  assert(isTraceExecutable(steps), "Trace steps not ordered in descending branches")
+  private val orderViolationStep = findOutOfOrderBranchStep(steps)
+  assert(orderViolationStep.isEmpty, "Trace steps not ordered in descending branches:"
+    + " branch " + orderViolationStep.get.branch
+    + " of step " + orderViolationStep.get.stepId + " (" + orderViolationStep.get.rule + ")"
+    + " is higher than its predecessor's branch")
 
-  def isTraceExecutable(steps: List[ExecutionStep]): Boolean = steps match {
-    case Nil => true
-    case step::tail => tail.filter(_.prevStepId == step.prevStepId).forall(_.branch < step.branch) && isTraceExecutable(tail)
+  /** Finds the first step whose branch is out of order (higher than its predecessor's branch) */
+  def findOutOfOrderBranchStep(steps: List[ExecutionStep]): Option[ExecutionStep] = steps match {
+    case Nil => None
+    case step::tail => tail.filter(_.prevStepId == step.prevStepId).find(_.branch >= step.branch).orElse(findOutOfOrderBranchStep(tail))
   }
 
   def branch: Option[Int] = steps.lastOption.map(_.branch)
@@ -183,9 +188,14 @@ trait DBAbstraction {
   // Users
   def userExists(username: String): Boolean
 
-  def createUser(username: String, password: String, mode: String): Unit
+  /** Creates a new user, identified by the unique `username` with `password`. The user belongs to group `group`. */
+  def createUser(username: String, password: String, group: String): Unit
 
-  def getUser(username: String): UserPOJO
+  /** Returns the user identified by `username`, if any.  */
+  def getUser(username: String): Option[UserPOJO]
+
+  /** Returns all temporary users (group 3). */
+  def getTempUsers: List[UserPOJO]
 
   def checkPassword(username: String, password: String): Boolean
 
@@ -251,7 +261,7 @@ trait DBAbstraction {
 
   def updateProofName(proofId: String, name: String): Unit = updateProofName(proofId.toInt, name)
 
-  def updateModel(modelId: Int, name: String, title: Option[String], description: Option[String]): Unit
+  def updateModel(modelId: Int, name: String, title: Option[String], description: Option[String], content: Option[String]): Unit
 
   def addAgendaItem(proofId: Int, initialProofNode: ProofTreeNodeId, displayName:String): Int
 

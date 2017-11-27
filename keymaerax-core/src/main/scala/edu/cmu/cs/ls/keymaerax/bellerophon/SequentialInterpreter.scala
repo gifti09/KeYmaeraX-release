@@ -22,6 +22,7 @@ import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
 case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends Interpreter {
   override def apply(expr: BelleExpr, v: BelleValue): BelleValue = {
     if (Thread.currentThread().isInterrupted) {
+      //@todo kill the running tactic (cancel QE), here or in kill
       //@note end executing the interpreter when its thread gets interrupted
       //@todo throw an error that is easier to identify (for now: irrelevant, since Hydra Future already gone when we throw here)
       throw new BelleThrowable("Execution Stopped by interrupting the interpreter thread")
@@ -102,6 +103,7 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
           val valueDependentTactic = d.computeExpr(v)
           apply(valueDependentTactic, v)
         } catch {
+          case e: BelleFriendlyUserMessage => throw e
           case e: BelleThrowable => throw e.inContext(d, v.prettyString)
             //@todo unable to create is a serious error in the tactic not just an "oops whatever try something else exception"
           case e: Throwable => throw new BelleThrowable("Unable to create dependent tactic: " + e.getMessage, e).inContext(d, "")
@@ -279,7 +281,7 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
           } catch {
             case e: Throwable => throw new BelleThrowable("Unable to start inner proof in let: " + e.getMessage, e)
           }
-          println("INFO: " + expr + " considers\n" + in + "\nfor outer\n" + provable)
+          if (BelleExpr.DEBUG) println("INFO: " + expr + " considers\n" + in + "\nfor outer\n" + provable)
           //assert(us(in.conclusion) == provable.subgoals.head, "backsubstitution will ultimately succeed from\n" + in + "\nvia " + us + " to outer\n" + provable)
           apply(inner, BelleProvable(in)) match {
             case BelleProvable(derivation, _) =>
@@ -333,7 +335,7 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
                 // in contrast to .unifiable, this suppresses "Sequent un-unifiable Un-Unifiable" message, which clutter STDIO.
                 // fall back to user-provided substitution
                 case e: UnificationException =>
-                  //if (DEBUG) println("USubst Pattern Incomplete -- could not find a unifier for any option" + t)
+                  //if (BelleExpr.DEBUG) println("USubst Pattern Incomplete -- could not find a unifier for any option" + t)
                   (RenUSubst(Nil), expr)
               }
               case _ => throw new BelleThrowable("Cannot unify non-sequent types.").inContext(t, "")
@@ -368,7 +370,10 @@ case class SequentialInterpreter(listeners : Seq[IOListener] = Seq()) extends In
     }
   }
 
-  override def kill(): Unit = listeners.foreach(_.kill())
+  override def kill(): Unit = {
+    //@todo kill the running tactic (cancel QE)
+    listeners.foreach(_.kill())
+  }
 
   /** Maps sequents to BelleProvables. */
   private def bval(s: Sequent) = BelleProvable(ProvableSig.startProof(s))

@@ -1,11 +1,12 @@
 package btactics
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.{AntePosition, PosInExpr, RenUSubst, SuccPosition}
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics._
 import edu.cmu.cs.ls.keymaerax.btactics.UnifyUSCalculus
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 
 import scala.collection.immutable._
 
@@ -25,6 +26,53 @@ class UnifyUSCalculusTests extends TacticTestBase {
     //Both of the following fail because of unification
     proveBy(fml,useAt("ANON", minusCancel,PosInExpr(0::Nil))(SuccPosition(1, 0 :: Nil)))
     useFor(minusCancel, PosInExpr(0 :: Nil))(SuccPosition(1, 0 :: Nil))(minusReflex)
+  }
+
+  "Unifier" should "unify DG key with universal postcondition" in {
+    val y = Variable("y_", None, Real)
+    val fact = AxiomInfo("DGd diamond differential ghost constant").formula match {case Equiv(l,_) => l}
+    val goal = "<{t'=1}>\\forall x x^2>=0".asFormula
+    UnificationMatch(fact, goal) shouldBe RenUSubst(
+      (DifferentialProgramConst("c", Except(y)), AtomicODE(DifferentialSymbol(Variable("t")), Number(1))) ::
+        (UnitPredicational("q", Except(y)), True) ::
+        (UnitPredicational("p", Except(y)), Forall(Seq(Variable("x")), GreaterEqual(Power(Variable("x"),Number(2)), Number(0)))) :: Nil
+    )
+  }
+
+  it should "unify DG with universal postcondition" ignore {
+    val y = Variable("y_", None, Real)
+    val fact = AxiomInfo("DGd diamond differential ghost constant").formula
+    val goal = "<{t'=1}>\\forall x x^2>=0<->\\forall x <{t'=1,x'=1&true}>\\forall x x^2>=0".asFormula
+    // renaming transposes forall y_ to forall x, should keep forall y_
+    UnificationMatch(fact, goal) shouldBe RenUSubst(
+      (DifferentialProgramConst("c", Except(y)), AtomicODE(DifferentialSymbol(Variable("t")), Number(1))) ::
+        (UnitPredicational("q", Except(y)), True) ::
+        (UnitPredicational("p", Except(y)), Forall(Seq(y), GreaterEqual(Power(y,Number(2)), Number(0)))) ::
+        (UnitFunctional("b", Except(y), Real), Number(1)) ::
+        (y, Variable("x")) :: Nil
+    )
+  }
+
+  it should "prove unify DG with universal postcondition" ignore withMathematica { qeTool =>
+    val pv:ProvableSig = AxiomInfo("DGd diamond differential ghost constant").provable
+    val fact:Sequent = Sequent(IndexedSeq[Formula](), IndexedSeq[Formula]("<{c{|y_|}&q(|y_|)}>p(|y_|)<->\\forall y_ <{c{|y_|},y_'=b(|y_|)&q(|y_|)}>p(|y_|)".asFormula))
+    pv.conclusion shouldBe fact
+    val sequent:Sequent = Sequent(IndexedSeq[Formula](), IndexedSeq[Formula]("<{t'=1}>\\forall x x^2>=0<->\\forall x <{t'=1,x'=1&true}>\\forall x x^2>=0".asFormula))
+    val tac = HilbertCalculus.US(pv)
+    // raises exception "unification computed an incorrect unifier", should not raise exception but instead prove the axiom instance
+    val res = proveBy(sequent,tac)
+    res shouldBe 'proved
+  }
+
+  it should "prove unify DG with universal postcondition (excerpt from elsewhere)" ignore withMathematica { qeTool =>
+    val pv:ProvableSig = AxiomInfo("DGd diamond differential ghost constant").provable
+    val fact:Sequent = Sequent(IndexedSeq[Formula](), IndexedSeq[Formula]("<{c{|y_|}&q(|y_|)}>p(|y_|)<->\\forall y_ <{c{|y_|},y_'=b(|y_|)&q(|y_|)}>p(|y_|)".asFormula))
+    pv.conclusion shouldBe fact
+    val sequent:Sequent = Sequent(IndexedSeq[Formula](), IndexedSeq[Formula]("<{kyxtime'=1&true}>\\forall x x^2>=0<->\\forall x <{kyxtime'=1,x'=1&true}>\\forall x x^2>=0".asFormula))
+    val tac = HilbertCalculus.US(pv)
+    // raises exception "unification computed an incorrect unifier", should not raise exception but instead prove the axiom instance
+    val res = proveBy(sequent,tac)
+    res shouldBe 'proved
   }
 
   //Various kinds of CEating

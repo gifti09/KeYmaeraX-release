@@ -28,7 +28,8 @@ private object EqualityTactics {
     sequent.sub(pos) match {
       case Some(eq@Equal(lhs, rhs)) =>
         // prevent endless self rewriting (e.g., 0=0) -> compute dependencies first to figure out what to rewrite when
-        require(!lhs.isInstanceOf[Number] && lhs != rhs, "LHS and RHS are not allowed to overlap")
+        require(!lhs.isInstanceOf[Number], "Rewriting numbers not supported")
+        require(lhs != rhs, "LHS and RHS are not allowed to overlap")
 
         val occurrences = positionsOf(lhs, sequent).filter(p => p.isAnte != pos.isAnte || p.index0 != pos.index0).
           filter(p => boundAt(sequent(p.top), p.inExpr).intersect(StaticSemantics.freeVars(lhs)).isEmpty).map(_.top).toList
@@ -106,6 +107,12 @@ private object EqualityTactics {
    * @return The tactic.
    */
   lazy val exhaustiveEqL2R: DependentPositionTactic = exhaustiveEq("allL2R")
+
+  /* Rewrites equalities exhaustively with hiding, but only if left-hand side is an atom (variable or function) */
+  def atomExhaustiveEqL2R: DependentPositionTactic = "atomAllL2R" by ((pos: Position, sequent: Sequent) => sequent.sub(pos) match {
+    case Some(fml@Equal(_: Variable, _)) => EqualityTactics.exhaustiveEqL2R(pos) & hideL(pos, fml)
+    case Some(fml@Equal(_: FuncOf, _)) => EqualityTactics.exhaustiveEqL2R(pos) & hideL(pos, fml)
+  })
 
   /**
    * Rewrites free occurrences of the right-hand side of an equality into the left-hand side exhaustively.

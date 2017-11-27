@@ -18,7 +18,7 @@ import edu.cmu.cs.ls.keymaerax.lemma._
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXDeclarationsParser, KeYmaeraXParser, KeYmaeraXProblemParser}
 import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
 import edu.cmu.cs.ls.keymaerax.core.{Formula, Sequent}
-import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+import edu.cmu.cs.ls.keymaerax.pt.{NoProof, NoProofTermProvable, PTProvable, ProvableSig}
 
 import scala.collection.immutable.Nil
 import scala.slick.driver.SQLiteDriver
@@ -44,6 +44,17 @@ object SQLite {
     def readLemmas(ids: List[LemmaID]):Option[List[String]] = {
       db.getLemmas(ids.map(_.toInt))
     }
+
+    override def get(ids: List[LemmaID]): Option[List[Lemma]] = {
+      readLemmas(ids).map(_.map(Lemma.fromString)).map(_.map((lemma:Lemma) =>
+        if (ProvableSig.PROOF_TERMS_ENABLED) {
+          Lemma(PTProvable(NoProofTermProvable(lemma.fact.underlyingProvable), NoProof()), lemma.evidence, lemma.name)
+        } else {
+          lemma
+        }
+      ))
+    }
+
 
     def writeLemma(id: LemmaID, lemma:String): Unit = {
       if(db.getLemma(id.toInt).nonEmpty)
@@ -225,15 +236,19 @@ object SQLite {
         nInserts = nInserts + 1
       })}
 
-    override def getUser(username: String): UserPOJO = synchronizedTransaction({
+    override def getUser(username: String): Option[UserPOJO] = synchronizedTransaction({
       nSelects = nSelects + 1
       val users =
         Users.filter(_.email === username)
           .list
           .map(m => new UserPOJO(m.email.get, m.level.get))
-      if (users.length < 1) throw new Exception("getUser type should be an Option")
-      else if (users.length == 1) users.head
+      if (users.length <= 1) users.headOption
       else throw new Exception("Primary keys aren't unique in models table.")
+    })
+
+    override def getTempUsers: List[UserPOJO] = synchronizedTransaction({
+      nSelects = nSelects + 1
+      Users.filter(_.level === 3).list.map(m => new UserPOJO(m.email.get, m.level.get))
     })
 
     /**
@@ -263,7 +278,7 @@ object SQLite {
         })
       })
 
-    val proofClosedQuery = Compiled((proofId: Column[Int]) =>
+    private lazy val proofClosedQuery = Compiled((proofId: Column[Int]) =>
       Proofs.filter(p => p._Id === proofId && p.closed.getOrElse(0) === 1).exists)
     override def isProofClosed(proofId: Int): Boolean = synchronizedTransaction({
       proofClosedQuery(proofId).run
@@ -307,7 +322,7 @@ object SQLite {
         })
       })
 
-    private val userOwnsProofQuery = Compiled((userId: Column[String], proofId: Column[Int]) => {
+    private lazy val userOwnsProofQuery = Compiled((userId: Column[String], proofId: Column[Int]) => {
       (for {
         p <- Proofs.filter(_._Id === proofId)
         m <- Models.filter(_.userid === userId) if m._Id === p.modelid
@@ -392,10 +407,11 @@ object SQLite {
         else None
       })
 
-    override def updateModel(modelId: Int, name: String, title: Option[String], description: Option[String]): Unit = synchronizedTransaction({
-      Models.filter(_._Id === modelId).map(m => (m.name, m.title, m.description)).update(Some(name), title, description)
+    override def updateModel(modelId: Int, name: String, title: Option[String], description: Option[String], content: Option[String]): Unit = synchronizedTransaction({
+      assert(Models.filter(m => m._Id === modelId && m.filecontents === content).exists.run
+        || !Proofs.filter(_.modelid === modelId).exists.run, "Updating model content only possible for models without proofs")
+      Models.filter(_._Id === modelId).map(m => (m.name, m.title, m.description, m.filecontents)).update(Some(name), title, description, content)
       nUpdates = nUpdates + 1
-
     })
 
     override def addModelTactic(modelId: String, fileContents: String): Option[Int] =
@@ -412,15 +428,20 @@ object SQLite {
       synchronizedTransaction({
         nInserts = nInserts + 2
         val model = getModel(modelId)
-        val (decls, problem) = KeYmaeraXProblemParser.parseProblem(model.keyFile)
-        val substs = decls.filter(_._2._3.isDefined).map((KeYmaeraXDeclarationsParser.declAsSubstitutionPair _).tupled).toList
-        val provable = ProvableSig.startProof(USubst(substs)(problem))
+        val (d, problem) = KeYmaeraXProblemParser.parseProblem(model.keyFile)
+
+        val substTactic = tactic match {
+          case None => None
+          case Some(t) => Some(BelleParser.parseWithInvGen(t, None, d).prettyString)
+        }
+
+        val provable = ProvableSig.startProof(problem)
         val provableId = createProvable(provable)
         val proofId =
           (Proofs.map(p => ( p.modelid.get, p.name.get, p.description.get, p.date.get, p.closed.get, p.lemmaid.get,
                              p.istemporary.get, p.tactic))
             returning Proofs.map(_._Id.get))
-            .insert(modelId, name, description, date, 0, provableId, 0, tactic)
+            .insert(modelId, name, description, date, 0, provableId, 0, substTactic)
 
         proofId
       })
@@ -662,10 +683,10 @@ object SQLite {
       })
     }
 
-    private val stepQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+    private lazy val stepQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
       Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId).map(_.numsubgoals))
 
-    private val succStepCountQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+    private lazy val succStepCountQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
       Executionsteps.filter(row =>
         row.proofid === proofId &&
         row.previousstep === stepId &&
@@ -683,7 +704,7 @@ object SQLite {
       }
     }
 
-    private val stepParentQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+    private lazy val stepParentQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
       Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId).map(_.previousstep))
 
     /** Deletes execution steps. */
@@ -698,7 +719,7 @@ object SQLite {
       println("Updates: " + nUpdates + " Inserts: " + nInserts + " Selects: " + nSelects)
     }
 
-    val executionStepsQuery = Compiled((proofId: Column[Int]) =>
+    private lazy val executionStepsQuery = Compiled((proofId: Column[Int]) =>
       Executionsteps.filter(row => row.proofid === proofId &&
         row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)).
         sortBy(e => (e.previousstep.asc, e.branchorder.desc)))
@@ -733,7 +754,7 @@ object SQLite {
       })
     }
 
-    private val executionStepsUnorderedQuery = (proofId: Int, stepIds: Set[Int]) =>
+    private lazy val executionStepsUnorderedQuery = (proofId: Int, stepIds: Set[Int]) =>
       Executionsteps.filter(row =>
         row.proofid === proofId &&
         (row._Id inSet stepIds) &&
@@ -804,7 +825,7 @@ object SQLite {
 
     override def getExecutionSteps(executionId: Int): List[ExecutionStepPOJO] = proofSteps(executionId)
 
-    private val firstExecutionStepQuery = Compiled((proofId: Column[Int]) =>
+    private lazy val firstExecutionStepQuery = Compiled((proofId: Column[Int]) =>
       Executionsteps.filter(
         row => row.proofid === proofId &&
         row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished) &&
@@ -844,7 +865,7 @@ object SQLite {
 //    })
 
 
-    private val openStepsQuery = Compiled((proofId: Column[Int]) =>
+    private lazy val openStepsQuery = Compiled((proofId: Column[Int]) =>
       Executionsteps.filter(row =>
         row.proofid === proofId &&
         row.numopensubgoals > 0 &&
@@ -878,7 +899,7 @@ object SQLite {
       openSteps.map(s => (s, parseClosedBranches(closedBranches.get(s.stepId.get))))
     })
 
-    val executionStepQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
+    private lazy val executionStepQuery = Compiled((proofId: Column[Int], stepId: Column[Int]) =>
       Executionsteps.filter(row => row.proofid === proofId && row._Id === stepId &&
         row.status === ExecutionStepStatus.toString(ExecutionStepStatus.Finished)))
 
@@ -892,7 +913,7 @@ object SQLite {
       }
     }
 
-    val stepSuccessorsQuery = Compiled((proofId: Column[Int], prevStepId: Column[Int], branchOrder: Column[Int]) =>
+    private lazy val stepSuccessorsQuery = Compiled((proofId: Column[Int], prevStepId: Column[Int], branchOrder: Column[Int]) =>
       Executionsteps.filter(row =>
         row.proofid === proofId &&
         row.previousstep === prevStepId &&

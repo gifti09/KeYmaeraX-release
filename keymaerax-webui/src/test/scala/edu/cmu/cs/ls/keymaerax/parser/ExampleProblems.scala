@@ -4,7 +4,9 @@
 */
 package edu.cmu.cs.ls.keymaerax.parser
 
-import edu.cmu.cs.ls.keymaerax.core.{DotTerm, Number, Plus, Real, Times, Unit}
+import edu.cmu.cs.ls.keymaerax.core.{DotTerm, Formula, FuncOf, Function, Number, Pair, Plus, PrettyPrinter, Program,
+Real, Times, Trafo, Tuple, Unit}
+import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import org.scalatest.{FlatSpec, Matchers}
 
 /**
@@ -127,10 +129,10 @@ class ExampleProblems extends FlatSpec with Matchers {
         |End.
       """.stripMargin
 
-    val (decls, formula) = KeYmaeraXProblemParser.parseProblem(problem)
-    decls should have size 1
-    decls should contain key ("f", None)
-    decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
       domain shouldBe Unit
       codomain shouldBe Real
       interpretation shouldBe Number(5)
@@ -150,14 +152,320 @@ class ExampleProblems extends FlatSpec with Matchers {
         |End.
       """.stripMargin
 
-    val (decls, formula) = KeYmaeraXProblemParser.parseProblem(problem)
-    decls should have size 1
-    decls should contain key ("f", None)
-    decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
       domain shouldBe Real
       codomain shouldBe Real
       interpretation shouldBe Plus(Number(5), Times(DotTerm(Real), DotTerm(Real)))
     }
     formula shouldBe KeYmaeraXParser("5+4*4>3")
+  }
+
+  it should "parse n-ary function declarations" in {
+    val problem =
+      """
+        |Functions.
+        |  R f(R,R,R) = (._0 + ._1*._2).
+        |End.
+        |
+        |Problem.
+        |  f(2,3,4)>3
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Tuple(Real, Tuple(Real, Real))
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real, Some(0)), Times(DotTerm(Real, Some(1)), DotTerm(Real, Some(2))))
+    }
+    formula shouldBe KeYmaeraXParser("2+3*4>3")
+  }
+
+  it should "detect undeclared dots" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """
+        |Functions.
+        |  R f(R,R,R) = (._1 + ._2*._3).
+        |End.
+        |
+        |Problem.
+        |  f(2,3,4)>3
+        |End.
+      """.stripMargin
+
+    val thrown = the [ParseException] thrownBy KeYmaeraXProblemParser.parseProblem(problem)
+    thrown.getMessage should include ("Function/predicate f((•_0,(•_1,•_2))) defined using undeclared •_3")
+  }
+
+  it should "replace names with the appropriate dots" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """Functions.
+        |  R f(R x, R y, R z) = (x + y*z).
+        |End.
+        |
+        |Problem.
+        |  f(2,3,4)>3
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Tuple(Real, Tuple(Real, Real))
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real, Some(0)), Times(DotTerm(Real, Some(1)), DotTerm(Real, Some(2))))
+    }
+    formula shouldBe KeYmaeraXParser("2+3*4>3")
+  }
+
+  it should "not confuse arguments of same name across definitions" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """Definitions.
+        |  R f(R x, R y, R z) = (x+y*z).
+        |  R g(R a, R x, R y) = (f(x,y,a)).
+        |End.
+        |
+        |Problem.
+        |  f(1,2,3)>0 -> g(3,1,2)>0
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 2
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Tuple(Real, Tuple(Real, Real))
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real, Some(0)), Times(DotTerm(Real, Some(1)), DotTerm(Real, Some(2))))
+    }
+    d.decls should contain key ("g", None)
+    d.decls(("g", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Tuple(Real, Tuple(Real,Real))
+      codomain shouldBe Real
+      interpretation shouldBe FuncOf(Function("f", None, Tuple(Real, Tuple(Real, Real)), Real),
+        Pair(DotTerm(Real, Some(1)), Pair(DotTerm(Real, Some(2)), DotTerm(Real, Some(0)))))
+    }
+    formula shouldBe KeYmaeraXParser("1+2*3>0 -> 1+2*3>0")
+  }
+
+  it should "correctly dottify in the presence of unused arguments" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """Definitions.
+        |  R f(R x, R y) = (y+3).
+        |End.
+        |
+        |Problem.
+        |  f(1,2)>0
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Tuple(Real, Real)
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real, Some(1)), Number(3))
+    }
+    formula shouldBe KeYmaeraXParser("2+3>0")
+  }
+
+  it should "replace argument name of unary function with non-indexed dot (for backwards compatibility)" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """Functions.
+        |  R f(R x) = (x + 2).
+        |End.
+        |
+        |Problem.
+        |  f(2)>3
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Real
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real), Number(2))
+    }
+    formula shouldBe KeYmaeraXParser("2+2>3")
+  }
+
+  it should "allow both . and explicit ._0 in unary function definition" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    def problem(dot: String): String =
+      s"""Functions.
+        |  R f(R) = ($dot + 2).
+        |End.
+        |
+        |Problem.
+        |  f(2)>3
+        |End.
+      """.stripMargin
+
+    val (d, f) = KeYmaeraXProblemParser.parseProblem(problem("._0"))
+    d.decls should have size 1
+    d.decls should contain key ("f", None)
+    d.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Real
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real), Number(2))
+    }
+    f shouldBe KeYmaeraXParser("2+2>3")
+
+    val (e, g) = KeYmaeraXProblemParser.parseProblem(problem("."))
+    e.decls should have size 1
+    e.decls should contain key ("f", None)
+    e.decls(("f", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Real
+      codomain shouldBe Real
+      interpretation shouldBe Plus(DotTerm(Real), Number(2))
+    }
+    g shouldBe KeYmaeraXParser("2+2>3")
+  }
+
+  it should "parse program definitions" in {
+    val problem =
+      """
+        |Functions.
+        |  HP a ::= { x:=*; ?x<=5; ++ x:=y; }.
+        |End.
+        |
+        |ProgramVariables.
+        |  R x.
+        |  R y.
+        |End.
+        |
+        |Problem.
+        |  y<=5 -> [a;]x<=5
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should contain key ("a", None)
+    d.decls(("a", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Unit
+      codomain shouldBe Trafo
+      interpretation shouldBe "x:=*; ?x<=5; ++ x:=y;".asProgram
+    }
+    formula shouldBe "y<=5 -> [x:=*; ?x<=5; ++ x:=y;]x<=5".asFormula
+  }
+
+  it should "expand functions and predicates in program definitions" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """
+        |Functions.
+        |  R f(R) = (.+2).
+        |  B p(R,R) <-> (._0<=._1).
+        |  HP a ::= { x:=*; ?p(x,5); ++ x:=f(y); }.
+        |End.
+        |
+        |ProgramVariables.
+        |  R x.
+        |  R y.
+        |End.
+        |
+        |Problem.
+        |  y<=5 -> [a;]x<=5
+        |End.
+      """.stripMargin
+
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should contain key ("a", None)
+    d.decls(("a", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Unit
+      codomain shouldBe Trafo
+      interpretation shouldBe "x:=*; ?p(x,5); ++ x:=f(y);".asProgram
+    }
+    formula shouldBe "y<=5 -> [x:=*; ?x<=5; ++ x:=y+2;]x<=5".asFormula
+  }
+
+  it should "elaborate in annotations from declarations so far" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """
+        |Functions.
+        |  B p(R,R) <-> (._0>=._1).
+        |  HP loopBody ::= { x:=x+2; }.
+        |  HP a ::= { x:=1; {loopBody;}*@invariant(p(x,1)) }.
+        |End.
+        |
+        |ProgramVariables.
+        |  R x.
+        |End.
+        |
+        |Problem.
+        |  [a;]x>=1
+        |End.
+      """.stripMargin
+
+    var annotation: Option[(Program, Formula)] = None
+    KeYmaeraXParser.setAnnotationListener((prg, fml) => annotation = Some(prg -> fml))
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should contain key ("a", None)
+    d.decls(("a", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Unit
+      codomain shouldBe Trafo
+      interpretation shouldBe "x:=1; {loopBody;}*".asProgram
+    }
+    d.decls(("loopBody", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Unit
+      codomain shouldBe Trafo
+      interpretation shouldBe "x:=x+2;".asProgram
+    }
+    annotation shouldBe Some("{x:=x+2;}*".asProgram, "x>=1".asFormula)
+    formula shouldBe "[x:=1; {x:=x+2;}*]x>=1".asFormula
+  }
+
+  it should "be allowed to ignore later definitions when elaborating annotations" in {
+    PrettyPrinter.setPrinter(KeYmaeraXPrettyPrinter)
+    val problem =
+      """
+        |Functions.
+        |  HP a ::= { x:=1; {loopBody;}*@invariant(p(x,1)) }.
+        |  B p(R,R) <-> (._0>=._1).
+        |  HP loopBody ::= { x:=x+2; }.
+        |End.
+        |
+        |ProgramVariables.
+        |  R x.
+        |End.
+        |
+        |Problem.
+        |  [a;]x>=1
+        |End.
+      """.stripMargin
+
+    var annotation: Option[(Program, Formula)] = None
+    KeYmaeraXParser.setAnnotationListener((prg, fml) => annotation = Some(prg -> fml))
+    val (d, formula) = KeYmaeraXProblemParser.parseProblem(problem)
+    d.decls should contain key ("a", None)
+    d.decls(("a", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Unit
+      codomain shouldBe Trafo
+      interpretation shouldBe "x:=1; {loopBody;}*".asProgram
+    }
+    d.decls(("loopBody", None)) match { case (Some(domain), codomain, Some(interpretation), _) =>
+      domain shouldBe Unit
+      codomain shouldBe Trafo
+      interpretation shouldBe "x:=x+2;".asProgram
+    }
+    annotation shouldBe 'defined
+    annotation.get._1 should (be ("{x:=x+2;}*".asProgram) or be ("{loopBody;}*".asProgram))
+    annotation.get._2 should (be ("x>=1".asFormula) or be ("p(x,1)".asFormula))
+    formula shouldBe "[x:=1; {x:=x+2;}*]x>=1".asFormula
   }
 }

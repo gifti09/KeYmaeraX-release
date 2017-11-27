@@ -29,11 +29,23 @@ object DatabasePopulator {
     readTutorialEntries(url).foreach(importModel(db, user, prove))
   }
 
+  /** Imports an archive from URL. Optionally proves the models when tactics are present. */
+  def importKya(db: DBAbstraction, user: String, url: String, prove: Boolean, exclude: List[ModelPOJO]): Unit = {
+    //@note use tactic name as description if entry does not come with a description itself
+    readKya(url)
+      .map(e =>
+        if (e.description.isDefined) e
+        else TutorialEntry(e.name, e.model,
+          e.tactic match { case Some((tname, _, _)) => Some(tname) case None => None }, e.title, e.link, e.tactic))
+      .filterNot(e => exclude.exists(_.name == e.name))
+      .foreach(DatabasePopulator.importModel(db, user, prove = false))
+  }
+
   /** Reads a .kya archive from the URL `url` as tutorial entries (i.e., one tactic per entry). */
   def readKya(url: String): List[TutorialEntry] = {
     val kya = loadResource(url)
     val archiveEntries = KeYmaeraXArchiveParser.read(kya)
-    archiveEntries.flatMap({case (modelName, modelContent, tactics) =>
+    archiveEntries.flatMap({case (modelName, modelContent, _, tactics) =>
       tactics.map({case (tname, tactic) => TutorialEntry(modelName, modelContent, None, None, None, Some((tname, tactic, true)))})})
   }
 
@@ -67,11 +79,8 @@ object DatabasePopulator {
     } else {
       try {
         io.Source.fromURL(url).mkString
-      }
-      catch {
-        case e : java.net.MalformedURLException => {
-          throw new Exception(s"Problem with url $url");
-        }
+      } catch {
+        case _: java.net.MalformedURLException => throw new Exception(s"Malformed URL $url")
       }
     }
 
@@ -109,7 +118,7 @@ object DatabasePopulator {
       new TraceRecordingListener(db, proofId, parentStep,
         globalProvable, branch, recursive = false, tacticName) :: Nil
     }
-    SpoonFeedingInterpreter(proofId, db.createProof, listener, SequentialInterpreter)
+    SpoonFeedingInterpreter(proofId, -1, db.createProof, listener, SequentialInterpreter)
   }
 
   /** Executes the `tactic` on the `model` and records the tactic steps as proof in the database. */
@@ -117,6 +126,7 @@ object DatabasePopulator {
     val interpreter = prepareInterpreter(db, proofId)
     val parsedTactic = BelleParser(tactic)
     interpreter(parsedTactic, BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(model))))
+    interpreter.kill()
   }
 
 }

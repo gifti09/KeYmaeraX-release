@@ -18,9 +18,4 @@ class BelleParserRegressionTest extends TacticTestBase {
       case _ => fail("Expected EXPRESSION2 to match the current input")
     }
   }
-
-  "DG" should "parse" in {
-    BelleParser("dG({`t`}, {`0`}, {`1`}, 1)") shouldBe DifferentialTactics.dG("{t'=0*t+1}".asDifferentialProgram, None)(1)
-    BelleParser("dG({`t`}, {`0`}, {`1`}, {`x>0`}, 1)") shouldBe DifferentialTactics.dG("{t'=0*t+1}".asDifferentialProgram, Some("x>0".asFormula))(1)
-  }
 }

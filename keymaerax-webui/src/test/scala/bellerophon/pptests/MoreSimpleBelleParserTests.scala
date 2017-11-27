@@ -103,11 +103,25 @@ class MoreSimpleBelleParserTests extends TacticTestBase {
     parser("absExp('L~={`abs(x)`})") shouldBe TactixLibrary.abs('Llike, "abs(x)".asTerm)
   }
 
+  it should "parse fancy dG" in {
+    parser("dG({`y' = 0`})") shouldBe TactixLibrary.dG("y'=0".asDifferentialProgram, None)
+    parser("dG({`y' = 0`}, {`1=1`})") shouldBe TactixLibrary.dG("y'=0".asDifferentialProgram, Some("1=1".asFormula))
+    parser("dG({`y' = 0`}, {`1=1`},1)") shouldBe TactixLibrary.dG("y'=0".asDifferentialProgram, Some("1=1".asFormula))(1)
+  }
+
+  //@todo move this.
+  it should "print fancy dG and round trip" in {
+    val t = TactixLibrary.dG("y'=0".asDifferentialProgram, Some("1=1".asFormula))(1)
+    val result = t.prettyString
+    parser(result) shouldBe t
+    result shouldBe "dG({`{y'=0}`},{`1=1`},1)"
+  }
+
   "Propositional Examples" should "close p() -> p()" in {
     val tactic = parser("implyR(1) & closeId")
 //    val tactic = ExposedTacticsLibrary.tactics("implyR") & ExposedTacticsLibrary.tactics("TrivialCloser")
     val value = BelleProvable(ProvableSig.startProof("p() -> p()".asFormula))
-    val result = SequentialInterpreter()(tactic, value)
+    val result = BelleInterpreter(tactic, value)
     result match {
       case BelleProvable(resultingProvable, _) => resultingProvable.isProved shouldBe true
       case _ => throw new Exception("Expected a BelleProvable.")

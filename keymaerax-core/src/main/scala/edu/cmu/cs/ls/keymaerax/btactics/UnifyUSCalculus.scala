@@ -32,7 +32,7 @@ import scala.language.postfixOps
   * @author Andre Platzer
   * @see [[edu.cmu.cs.ls.keymaerax.bellerophon.UnificationMatch]]
   * @see [[AxiomIndex]]
-  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 2016. arXiv:1601.06183
+  * @see Andre Platzer. [[http://dx.doi.org/10.1007/s10817-016-9385-1 A complete uniform substitution calculus for differential dynamic logic]]. Journal of Automated Reasoning, 59(2), pp. 219-266, 2017. arXiv:1601.06183
   * @see Andre Platzer. [[http://dx.doi.org/10.1007/978-3-319-21401-6_32 A uniform substitution calculus for differential dynamic logic]].  In Amy P. Felty and Aart Middeldorp, editors, International Conference on Automated Deduction, CADE'15, Berlin, Germany, Proceedings, LNCS. Springer, 2015.
   */
 trait UnifyUSCalculus {
@@ -64,7 +64,7 @@ trait UnifyUSCalculus {
         if (sub.isEmpty) throw new BelleUserGeneratedError("ill-positioned " + pos + " in " + sequent + "\nin " + "stepAt(" + pos + ")\n(" + sequent + ")")
         axiomIndex(sub.get) match {
           case Some(axiom) =>
-            if (true || BelleExpr.DEBUG) println("stepAt " + axiom)
+            if (BelleExpr.DEBUG) println("stepAt " + axiom)
             DerivationInfo(axiom).belleExpr match {
               case ap:AtPosition[_] => ap(pos)
               case expr:BelleExpr => expr
@@ -190,20 +190,19 @@ trait UnifyUSCalculus {
   /** useAt(lem)(pos) uses the given lemma at the given position in the sequent (by unifying and equivalence rewriting).
     * @param key the optional position of the key in the axiom to unify with. Defaults to [[AxiomIndex]]
     * @param inst optional transformation augmenting or replacing the uniform substitutions after unification with additional information. */
-  def useAt(lem: Lemma, key:PosInExpr, inst: Option[Subst]=>Subst): DependentPositionTactic = {
-    if (lem.name.isDefined) {
-      val info = ProvableInfo.ofStoredName(lem.name.get)
-      if (info.provable == lem.fact)
-        useAt(info, key, inst)
+  def useAt(lem: Lemma, key:PosInExpr, inst: Option[Subst]=>Subst): DependentPositionTactic = lem.name match {
+    case Some(name) if ProvableInfo.existsStoredName(name) =>
+      val info = ProvableInfo.ofStoredName(name)
+      if (info.provable == lem.fact) useAt(info, key, inst)
       else {
-        println("INFO: useAt(" + lem.name.get + ") has an incompatible lemma name, which may disable tactic extraction")
+        println("INFO: useAt(" + name + ") has an incompatible lemma name, which may disable tactic extraction")
         useAt("useAt", lem.fact, key, inst)
       }
-    }
-    else {
+    case Some(name) if !ProvableInfo.existsStoredName(name) =>
+      useAt("useAt", lem.fact, key, inst)
+    case None =>
       println("INFO: useAt of an anonymous lemma may disable tactic extraction")
       useAt("useAt", lem.fact, key, inst)
-    }
   }
   def useAt(lem: Lemma, key:PosInExpr): DependentPositionTactic = useAt(lem, key, (us:Option[Subst])=>us.getOrElse(throw new BelleThrowable("No substitution found by unification, try to patch locally with own substitution")))
   /** useAt(lem)(pos) uses the given lemma at the given position in the sequent (by unifying and equivalence rewriting). */
@@ -454,10 +453,10 @@ trait UnifyUSCalculus {
 
         case Equiv(other, DotFormula) => equivStep(other, if (p.isAnte) commuteFact(fact) else fact)
 
-        case Equal(DotTerm(_), other) =>
+        case Equal(DotTerm(_, _), other) =>
           equivStep(other, if (p.isSucc) commuteFact(fact) else fact)
 
-        case Equal(other, DotTerm(_)) =>
+        case Equal(other, DotTerm(_, _)) =>
           equivStep(other, if (p.isAnte) commuteFact(fact) else fact)
 
         case Imply(other, DotFormula) => implyStep(other)
@@ -896,16 +895,11 @@ trait UnifyUSCalculus {
     *
     * @see [[UnifyUSCalculus.CEat(Provable)]]
     */
-  def cutAt(repl: Expression): DependentPositionTactic = new DependentPositionTactic("cutAt") {
-    override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
-      override def computeExpr(sequent: Sequent): BelleExpr = {
-        require(sequent.sub(pos).isDefined, "Position " + pos + " not defined in sequent " + sequent)
-        val (ctx, _) = sequent.at(pos)
-        cutLR(ctx(repl))(pos.top)
-      }
-    }
-  }
-
+  def cutAt(repl: Expression): DependentPositionTactic = "cutAt" byWithInput(repl, (pos, sequent) => {
+    require(sequent.sub(pos).isDefined, "Position " + pos + " not defined in sequent " + sequent)
+    val (ctx, _) = sequent.at(pos)
+    cutLR(ctx(repl))(pos.top)
+  })
 
   /*******************************************************************
     * unification and matching based auto-tactics (forward Hilbert)
@@ -1362,10 +1356,10 @@ trait UnifyUSCalculus {
 
         // in which context of the fact does the key occur
         K.ctx match {
-          case Equal(DotTerm(_), o) =>
+          case Equal(DotTerm(_, _), o) =>
             equivStep(o)
 
-          case Equal(o, DotTerm(_)) =>
+          case Equal(o, DotTerm(_, _)) =>
             equivStep(o)
 
           case Equiv(DotFormula, o) =>

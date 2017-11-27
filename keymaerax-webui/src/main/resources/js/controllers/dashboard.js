@@ -16,7 +16,7 @@ angular.module('keymaerax.controllers').controller('DashboardCtrl.ExtractDB', ['
     }
 }]);
 
-angular.module('keymaerax.controllers').controller('DashboardCtrl', ['$scope', '$uibModal', '$cookies', '$http', function ($scope, $uibModal, $cookies, $http) {
+angular.module('keymaerax.controllers').controller('DashboardCtrl', ['$scope', '$uibModal', '$http', 'sessionService', function ($scope, $uibModal, $http, sessionService) {
   $scope.intro = {
     introOptions: {},
     firstTime: false
@@ -35,18 +35,6 @@ angular.module('keymaerax.controllers').controller('DashboardCtrl', ['$scope', '
   $http.get("/config/toolStatus").then(function(response) {
     $scope.toolConfig = response.data;
   });
-
-
-  $http.get('/users/' + $cookies.get('userId') + '/dashinfo')
-      .success(function(data) {
-          if(data.errorThrown) showCaughtErrorMessage($uibModal, data, "Could not retrieve dashboard info for user " + $cookies.get('userId'))
-          else {
-              $scope.open_proof_count = data.open_proof_count;
-               $scope.all_models_count = data.all_models_count;
-              $scope.proved_models_count = data.proved_models_count;
-          }
-      });
-
 
   $scope.isLocal = false;
   $http.get('/isLocal')

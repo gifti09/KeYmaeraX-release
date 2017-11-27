@@ -20,15 +20,13 @@
     <!-- Custom styles for this template -->
     <link ng-href="css/{{theme.css}}.css" title="KeYmaera X" rel="stylesheet" type="text/css">
     <link href="css/app-print.css" title="KeYmaera X Print" rel="alternate stylesheet" type="text/css">
-    <link href="css/presentation_small.css" title="KeYmaera X Presentation Mode Small" rel="alternate stylesheet" type="text/css">
-    <link href="css/presentation.css" title="KeYmaera X Presentation Mode Medium" rel="alternate stylesheet" type="text/css">
-    <link href="css/presentation_large.css" title="KeYmaera X Presentation Mode Large" rel="alternate stylesheet" type="text/css">
+    <link href="css/presentation.css" title="KeYmaera X Presentation Mode" rel="alternate stylesheet" type="text/css">
 
     <!-- plugins -->
     <link href="/css/intro/introjs.css" rel="stylesheet" type="text/css">
     <link href="/css/chardin/chardinjs.css" rel="stylesheet" type="text/css">
     <link href="css/sticky-footer-navbar.css" rel="stylesheet" type="text/css">
-    <link rel="stylesheet" href="/js/highlight/styles/default.css">
+    <link rel="stylesheet" href="/js/highlight/styles/dl.css">
 
 </head>
 
@@ -49,7 +47,7 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </button>
-            <a class="navbar-brand" href="/dashboard.html">KeYmaera X</a>
+            <a class="navbar-brand" href="/">KeYmaera X</a>
         </div>
         <!-- Collect the nav links, forms, and other content for toggling -->
         <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
@@ -65,7 +63,9 @@
                 <li class="dropdown">
                     <a class="dropdown-toggle" data-toggle="dropdown">Theme <span class="caret"></span></a>
                     <ul class="dropdown-menu" role="menu">
-                        <li ng-repeat="t in themes"><a ng-click="selectTheme(t)"><i ng-if="theme.name === t.name" class="fa fa-check"></i> {{t.name}}</a></li>
+                        <li>Font size: <input type="number" name="fontsize" min="10" max="100" size="3" ng-model="theme.fontSize" ng-change="selectTheme(theme)">px</li>
+                        <li class="divider"></li>
+                        <li ng-repeat="t in themes"><a ng-click="selectTheme(t)"><i ng-show="theme.name === t.name" class="k4-menu-icon fa fa-check"></i> {{t.name}}</a></li>
                     </ul>
                 </li>
                 <li class="dropdown">
@@ -136,7 +136,7 @@
 
 <div class="footer" ng-controller="ServerInfoCtrl">
     <div class="container">
-        <p class="text-muted">KeYmaera X version {{keymaeraXVersion}}
+        <p class="text-muted k4-server-info">KeYmaera X version {{keymaeraXVersion}}
             <span class="text-danger" ng-if="!upToDate && versionInfoAvailable">(<b>version {{latestVersion}} is now available from <a class="text-danger" href="http://keymaerax.org">KeYmaeraX.org</a></b>).</span>
             <span ng-if="!versionInfoAvailable">(could not retrieve version information from KeYmaeraX.org).</span>
             <span ng-if="upToDate && versionInfoAvailable">(latest release).</span>
@@ -158,6 +158,9 @@
 <script src="/js/angular/angular-route.min.js"></script>
 <script src="/js/angular/angular-animate.min.js"></script>
 <script src="/js/angular-spinners/angular-spinners.min.js"></script>
+<script src="/js/angular-focus-if/focusIf.min.js"></script>
+<script src="/js/clipboard/clipboard.min.js"></script>
+<script src="/js/clipboard/ngclipboard.min.js"></script>
 <script src="/js/xeditable.min.js"></script> <!-- for inline editing -->
 <script src="/js/angular/bootstrap/ui-bootstrap-tpls-2.5.0.min.js" ></script>
 <script src="/js/angular-textcomplete/ng-textcomplete.js"></script>
@@ -211,6 +214,7 @@
 
 <!-- KeYmaera UI
 ================================================== -->
+<script src="/js/keymaera-ui/directives.js"></script>
 <script src="js/keymaera-ui/contenteditable.js"></script>
 <script src="js/keymaera-ui/keyevents.js"></script>
 <script src="js/keymaera-ui/mouseevents.js"></script>
@@ -220,8 +224,17 @@
 <script src="js/keymaera-ui/autohidealert.js"></script>
 <script src="js/keymaera-ui/tacticeditor.js"></script>
 <script src="js/keymaera-ui/replaceinclude.js"></script>
+<script src="js/keymaera-ui/frangRepeat.js"></script>
+<script src="js/keymaera-ui/kyxupload.js"></script>
 
 <script>hljs.initHighlightingOnLoad();</script>
+
+<!-- avoid closing the menu when an input is clicked -->
+<script type="text/javascript">
+    $('.dropdown-menu input').click(function(e) {
+        e.stopPropagation();
+    });
+</script>
 
 </body>
 </html>
