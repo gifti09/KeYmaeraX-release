@@ -24,8 +24,10 @@ Currently, the following examples are available:
 STTT Journal - FASE long version
 --------------------------------
 For the STTT journal version of the FASE paper 
+
   Müller, A., Mitsch, S., Retschitzegger, W., Schwinger, W., Platzer, A.: Change and delay contracts for hybrid system component verification. In: Huisman, M., Rubin, J. (eds.) FASE. LNCS, vol. 10202, pp. 134-151. Springer (2017).
-we presented the results of this performance tests. The examples considered there, are:
+  
+we presented the results of this performance tests. The examples considered there are:
 * RC Robot - corresponts to "Running Example 3"
 * ETCS - corresponds to "Case Study 1 - ETCS"
 * Robix - corresponds to " Case Study 2 - Robix"
