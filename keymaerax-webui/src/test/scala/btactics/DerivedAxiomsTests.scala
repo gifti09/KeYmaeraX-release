@@ -2,6 +2,7 @@ package edu.cmu.cs.ls.keymaerax.btactics
 
 import java.io.{File, FileWriter}
 
+import edu.cmu.cs.ls.keymaerax.Configuration
 import edu.cmu.cs.ls.keymaerax.bellerophon.BelleProvable
 import edu.cmu.cs.ls.keymaerax.btactics.DerivedAxioms._
 import edu.cmu.cs.ls.keymaerax.core.{Lemma, Sequent}
@@ -42,7 +43,7 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
 
   "The DerivedAxioms prepopulation procedure" should "not crash" taggedAs KeYmaeraXTestTags.CheckinTest in withMathematica { qeTool =>
     DerivedAxioms.prepopulateDerivedLemmaDatabase()
-    val cache = new File(System.getProperty("user.home") + File.separator + ".keymaerax" + File.separator + "cache")
+    val cache = new File(Configuration.path(Configuration.Keys.LEMMA_CACHE_PATH))
     val versionFile = new File(cache.getAbsolutePath + File.separator + "VERSION")
     if (!versionFile.exists()) {
       if (!versionFile.createNewFile()) throw new Exception(s"Could not create ${versionFile.getAbsolutePath}")
@@ -71,6 +72,12 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
 
   it should "prove [] monotone 2" in withMathematica { qeTool => boxMonotone2.fact.subgoals shouldBe List(
     Sequent(immutable.IndexedSeq("q_(||)".asFormula), immutable.IndexedSeq("p_(||)".asFormula))
+  ) }
+
+  it should "prove con convergence flat" in withMathematica { qeTool => convergenceFlat.fact.subgoals shouldBe List(
+    //Sequent(immutable.IndexedSeq("v_<=0".asFormula, "J(||)".asFormula), immutable.IndexedSeq("p_(||)".asFormula)),
+    Sequent(immutable.IndexedSeq("\\exists x_ (x_<=0 & J(||))".asFormula), immutable.IndexedSeq("p_(||)".asFormula)),
+    Sequent(immutable.IndexedSeq("x_>0".asFormula, "J(||)".asFormula), immutable.IndexedSeq("<a_{|x_|};><x_:=x_-1;>J(||)".asFormula))
   ) }
 
   "Derived Axioms" should "prove <-> reflexive" in {check(equivReflexiveAxiom)}
@@ -120,6 +127,12 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   it should "prove II induction" in {check(iiinduction)}
   it should "prove [*] merge" in {check(loopMergeb)}
   it should "prove <*> merge" in {check(loopMerged)}
+  it should "prove [**] iterate iterate" in {check(iterateiterateb)}
+  it should "prove <**> iterate iterate" in {check(iterateiterated)}
+  it should "prove [*-] backiterate sufficiency" in {check(backiteratebsuff)}
+  it should "prove [*-] backiterate necessity" in {check(backiteratebnecc)}
+  it should "prove [*-] backiterate" in {check(backiterateb)}
+  it should "prove Ieq induction" in {check(Ieq)}
   it should "prove [d] dual" in {check(dualbAxiom)}
   it should "prove [d] dual direct" in {check(dualbDirectAxiom)}
   it should "prove <d> dual direct" in {check(dualdDirectAxiom)}
@@ -147,10 +160,11 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   //it should "prove DI differential invariance from DI" in {check(DIinvariance)}
   it should "prove DI differential invariant from DI" in {check(DIinvariant)}
   it should "prove DIo open differential invariance <" in {check(DIOpeninvariantLess)}
-  it should "prove DIo open differential invariance <=" in {check(DIOpeninvariantLessEqual)}
   it should "prove DV differential variant <=" in withMathematica {qeTool => check(DVLessEqual)}
   it should "prove DW differential weakening" in {check(DWeakening)}
   it should "prove DW differential weakening and" in {check(DWeakeningAnd)}
+  it should "prove DR differential refine" in {check(DiffRefine)}
+  it should "prove DC differential cut" in {check(DiffCut)}
   it should "prove DS no domain" in {check(DSnodomain)}
   it should "prove Dsol& differential equation solution" in {check(DSddomain)}
   it should "prove DGd differential ghost" in {check(DGddifferentialghost)}
@@ -287,23 +301,23 @@ class DerivedAxiomsTests extends edu.cmu.cs.ls.keymaerax.btactics.TacticTestBase
   }
 
   "SimplifierV3" should "prove * identity neg" in {check{timesIdentityNeg}}
-  "it" should "prove -0" in {check{minusZero}}
-  "it" should "prove 0-" in {check{zeroMinus}}
-  "it" should "prove >0 -> !=0"  in {check{gtzImpNez}}
-  "it" should "prove <0 -> !=0"  in {check{ltzImpNez}}
-  "it" should "prove !=0 -> 0/F" in {check{zeroDivNez}}
-  "it" should "prove F^0" in {check{powZero}}
-  "it" should "prove F^1"        in {check{powOne}}
+  it should "prove -0" in {check{minusZero}}
+  it should "prove 0-" in {check{zeroMinus}}
+  it should "prove >0 -> !=0"  in {check{gtzImpNez}}
+  it should "prove <0 -> !=0"  in {check{ltzImpNez}}
+  it should "prove !=0 -> 0/F" in {check{zeroDivNez}}
+  it should "prove F^0" in {check{powZero}}
+  it should "prove F^1"        in {check{powOne}}
 
-  "it" should "prove < irrefl" in {check{lessNotRefl}}
-  "it" should "prove > irrefl" in {check{greaterNotRefl}}
-  "it" should "prove != irrefl" in {check{notEqualNotRefl}}
-  "it" should "prove = refl"  in {check{equalRefl}}
-  "it" should "prove <= refl"  in {check{lessEqualRefl}}
-  "it" should "prove >= refl"  in {check{greaterEqualRefl}}
+  it should "prove < irrefl" in {check{lessNotRefl}}
+  it should "prove > irrefl" in {check{greaterNotRefl}}
+  it should "prove != irrefl" in {check{notEqualNotRefl}}
+  it should "prove = refl"  in {check{equalRefl}}
+  it should "prove <= refl"  in {check{lessEqualRefl}}
+  it should "prove >= refl"  in {check{greaterEqualRefl}}
 
-  "it" should "prove = sym"  in {check{equalSym}}
-  "it" should "prove != sym"  in {check{equalSym}}
-  "it" should "prove > antisym"  in {check{greaterNotSym}}
-  "it" should "prove < antisym"  in {check{lessNotSym}}
+  it should "prove = sym"  in {check{equalSym}}
+  it should "prove != sym"  in {check{equalSym}}
+  it should "prove > antisym"  in {check{greaterNotSym}}
+  it should "prove < antisym"  in {check{lessNotSym}}
 }

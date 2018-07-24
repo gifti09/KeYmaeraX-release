@@ -43,6 +43,67 @@ class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
 
   }
 
+  it should "parse nullary predicate definitions" in {
+    val input = """
+      |Definitions.
+      |  B J() <-> ( 1>=0 ).
+      |End.
+      |ProgramVariables.
+      |  R x.
+      |End.
+      |Problem.
+      |  J() -> [{x:=x+1;}*@invariant(J())]J()
+      |End.
+    """.stripMargin
+    KeYmaeraXProblemParser(input) shouldBe "1>=0 -> [{x:=x+1;}*]1>=0".asFormula
+  }
+
+  it should "parse unary predicate definitions" in {
+    val input = """
+      |Definitions.
+      |  B J(R x) <-> ( x>=0 ).
+      |End.
+      |ProgramVariables.
+      |  R x.
+      |End.
+      |Problem.
+      |  J(x) -> [{x:=x+1;}*@invariant(J(x))]J(x)
+      |End.
+    """.stripMargin
+    KeYmaeraXProblemParser(input) shouldBe "x>=0 -> [{x:=x+1;}*]x>=0".asFormula
+  }
+
+  it should "parse binary predicate definitions" in {
+    val input = """
+      |Definitions.
+      |  B J(R x, R y) <-> ( x>=y ).
+      |End.
+      |ProgramVariables.
+      |  R x.
+      |  R y.
+      |End.
+      |Problem.
+      |  J(x,y) -> [{x:=x+1;}*@invariant(J(x,y))]J(x,y)
+      |End.
+    """.stripMargin
+    KeYmaeraXProblemParser(input) shouldBe "x>=y -> [{x:=x+1;}*]x>=y".asFormula
+  }
+
+  it should "parse program definitions" in {
+    val input = """
+      |Definitions.
+      |  HP prg ::= { x:=x+1; }.
+      |End.
+      |ProgramVariables.
+      |  R x.
+      |End.
+      |Problem.
+      |  x>=0 -> [{prg;}*@invariant(x>=0)]x>=0
+      |End.
+    """.stripMargin
+    KeYmaeraXProblemParser(input) shouldBe "x>=0 -> [{x:=x+1;}*]x>=0".asFormula
+  }
+
   "The Parser" should "place implicit parens correctly (a.k.a. resolve abiguities correctly)" in {
     val equalPairs =
       // unary operator binds stronger than binary operator
@@ -354,17 +415,57 @@ class ParserTests extends FlatSpec with Matchers with BeforeAndAfterEach {
   it should "complain about sort mismatches" in {
     val input = "Functions. R y() = (3>2). End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
     the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
-      """1:18 Definition sort does not match declaration
-        |Found:    <Bool> at 1:18 to 1:25
+      """1:20 Definition sort does not match declaration
+        |Found:    <Bool> at 1:20 to 1:25
         |Expected: <Real>""".stripMargin
   }
 
   it should "complain about non-delimited definitions" in {
     val input = "Functions. R y() = (3>2. End. ProgramVariables. R x. End. Problem. x>=2 -> x>=0 End."
     the [ParseException] thrownBy KeYmaeraXProblemParser(input) should have message
-      """1:18 Non-delimited definition
-        |Found:    NUM(2.) at 1:18 to 1:23
+      """1:12 Non-delimited definition
+        |Found:    NUM(2.) at 1:12 to 1:23
         |Expected: )""".stripMargin
+  }
+
+  it should "populate easy ODE annotations" in {
+    val input = "x>=2 -> [{x'=1}@invariant(x>=1)]x>=0"
+    //@todo mock objects
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x'=1}".asProgram
+      fml shouldBe "x>=1".asFormula
+    })
+    KeYmaeraXParser(input)
+    called shouldBe true
+  }
+
+  it should "populate ODE annotations with old(.)" in {
+    val input = "x>=2 -> [{x'=1}@invariant(x>=old(x))]x>=0"
+    //@todo mock objects
+    var called = false
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      called = true
+      prg shouldBe "{x'=1}".asProgram
+      fml shouldBe "x>=old(x)".asFormula
+    })
+    KeYmaeraXParser(input)
+    called shouldBe true
+  }
+
+  it should "parse multiple annotations" in {
+    val input = "x>=3 -> [{x'=1}@invariant(x>=2, x>=1)]x>=0"
+    //@todo mock objects
+    var idx = 0
+    var invs = ("{x'=1}".asProgram -> "x>=2".asFormula) :: ("{x'=1}".asProgram -> "x>=1".asFormula) :: Nil
+    KeYmaeraXParser.setAnnotationListener((prg, fml) =>{
+      prg shouldBe invs(idx)._1
+      fml shouldBe invs(idx)._2
+      idx = idx + 1
+    })
+    KeYmaeraXParser(input)
+    idx shouldBe 2
   }
   
   //////////////////////////////////////////////////////////////////////////////

@@ -12,8 +12,8 @@ import edu.cmu.cs.ls.keymaerax.btactics.helpers.QELogger.LogConfig
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+import edu.cmu.cs.ls.keymaerax.tools.Tool
 
-import scala.language.postfixOps
 import scala.math.Ordering.Implicits._
 import scala.collection.immutable._
 
@@ -28,25 +28,27 @@ private object ToolTactics {
   private val namespace = "tooltactics"
 
   /** Performs QE and fails if the goal isn't closed. */
-  def fullQE(order: List[NamedSymbol] = Nil)(qeTool: => QETool): BelleExpr = {
-    Idioms.NamedTactic("QE",
-      QELogger.getLogTactic &
-      (done | //@note don't fail QE if already proved
-        ((alphaRule*) &
+  def fullQE(order: Seq[NamedSymbol] = Nil)(qeTool: => QETool): BelleExpr = Idioms.NamedTactic("QE", {
+    val prepareAndRcf = toSingleFormula & assertT(_.succ.head.isFOL, "QE on FOL only") &
+      FOQuantifierTactics.universalClosure(order)(1) & rcf(qeTool) &
+      (done | ("ANON" by ((s: Sequent) =>
+        if (s.succ.head == False) label(BelleLabels.QECEX)
+        else DebuggingTactics.done("QE was unable to prove: invalid formula")))
+        )
+
+    QELogger.getLogTactic &
+    (done | //@note don't fail QE if already proved
+      (SaturateTactic(alphaRule) &
         (close |
-          ((EqualityTactics.atomExhaustiveEqL2R('L)*) &
-          hidePredicates &
-          toSingleFormula & assertT(_.succ.head.isFOL, "QE on FOL only") &
-            FOQuantifierTactics.universalClosure(order)(1) & rcf(qeTool) &
-            (done | ("ANON" by ((s: Sequent) =>
-              if (s.succ.head == False) label("QE CEX")
-              else DebuggingTactics.done("QE was unable to prove: invalid formula")))
-              )
-            )
+          (SaturateTactic(EqualityTactics.atomExhaustiveEqL2R('L)) &
+            hidePredicates &
+            (prepareAndRcf | EqualityTactics.expandAll & prepareAndRcf)
           )
         )
       )
-  )}
+    )
+  })
+
   def fullQE(qeTool: => QETool): BelleExpr = fullQE()(qeTool)
 
   // Follows heuristic in C.W. Brown. Companion to the tutorial: Cylindrical algebraic decomposition, (ISSAC 2004)
@@ -139,13 +141,13 @@ private object ToolTactics {
     Idioms.NamedTactic("ordered QE",
       //      DebuggingTactics.recordQECall() &
       done | //@note don't fail QE if already proved
-        ((alphaRule*) &
+        (SaturateTactic(alphaRule) &
         (close |
-          ((EqualityTactics.atomExhaustiveEqL2R('L)*) &
+          (SaturateTactic(EqualityTactics.atomExhaustiveEqL2R('L)) &
           hidePredicates &
           toSingleFormula & orderedClosure(po) & rcf(qeTool) &
             (done | ("ANON" by ((s: Sequent) =>
-              if (s.succ.head == False) label("QE CEX")
+              if (s.succ.head == False) label(BelleLabels.QECEX)
               else DebuggingTactics.done("QE was unable to prove: invalid formula")))
               ))))
     )}
@@ -306,7 +308,12 @@ private object ToolTactics {
           })) skip
           else transform(expandTo)(pos)
         } catch {
-          case _: UnificationException => transform(expandTo)(pos)
+          case ex: UnificationException =>
+            //@note looks for specific transform position until we have better formula diff
+            FormulaTools.posOf(e, ex.e2.asExpr) match {
+              case Some(pp) => transform(ex.e1.asExpr)(pos.topLevel ++ pp) | transform(expandTo)(pos)
+              case _ => transform(expandTo)(pos)
+            }
         }
     })
 
@@ -453,7 +460,7 @@ private object ToolTactics {
         pushIn(pos.inExpr)(pos.top)
       )
       )
-    else throw BelleTacticFailure(s"Invalid transformation: $to")
+    else throw BelleTacticFailure(s"Invalid transformation: cannot transform ${sequent.sub(pos)} to $to")
   }
 
   /** Transforms the term at position `pos` into the term `to`. */

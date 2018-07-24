@@ -10,6 +10,8 @@ import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.pt._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXArchiveParser
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXArchiveParser.ParsedArchiveEntry
 
 import scala.collection.immutable
 import scala.io.Source
@@ -42,19 +44,19 @@ class ProofTermCheckerTests extends TacticTestBase {
 */
   private def checkIfPT(p:ProvableSig,f:Formula):Unit = {
     p match {
-      case _ : NoProofTermProvable => ()
-      case PTProvable(ps,pt) =>
+      case _ : ElidingProvable => ()
+      case TermProvable(ps,pt) =>
         val checkResult = ProofChecker(pt)
         proves(checkResult, f) shouldBe true
     }
   }
 
-  "Belle interpreter" should "generate proof terms when supplied with the PTProvable as input" in {
+  "Belle interpreter" should "generate proof terms when supplied with the TermProvable as input" ignore {
     val label = "[:=] assign"
     val f = "[x_:=f();]p(x_) <-> p(f())".asFormula
     val t = ??? //US(USubst.apply(scala.collection.immutable.Seq()), label)
 
-    val provable = PTProvable.startProof(f)
+    val provable = TermProvable.startProof(f)
     val tacticResult = proveBy(provable, t)
     println(tacticResult.prettyString)
     checkIfPT(tacticResult,f)
@@ -62,7 +64,7 @@ class ProofTermCheckerTests extends TacticTestBase {
 
   it should "work for prop tautologies" in withMathematica(_ => {
     val f = "A() -> A()".asFormula
-    val provable = PTProvable.startProof(f)
+    val provable = TermProvable.startProof(f)
     val t = TactixLibrary.implyR(1) & TactixLibrary.close(-1,1)
 
     val tacticResult = proveBy(provable, t)
@@ -77,7 +79,7 @@ class ProofTermCheckerTests extends TacticTestBase {
     val provable = ProvableSig.startProof(fml)
     val tacticResult = proveBy(provable,tac)
     tacticResult match {
-      case pr:PTProvable =>
+      case pr:TermProvable =>
         val size = pr.pt.numCons
         val bytes = pr.pt.bytesEstimate
         val axioms = pr.pt.axiomsUsed
@@ -107,7 +109,7 @@ class ProofTermCheckerTests extends TacticTestBase {
     val provable = ProvableSig.startProof(velCar2Fml)
     val tacticResult = proveBy(provable,tac)
     tacticResult match {
-      case pr:PTProvable =>
+      case pr:TermProvable =>
         val size = pr.pt.numCons
         val bytes = pr.pt.bytesEstimate
         val axioms = pr.pt.axiomsUsed
@@ -122,7 +124,7 @@ class ProofTermCheckerTests extends TacticTestBase {
         val conv = new IsabelleConverter(pr.pt)
         //val source = conv.scalaObjects("ProofTerm", "proofTerm", "GeneratedProofChecker")
         val source = conv.sexp
-        val writer = new PrintWriter("doubleCar.pt")
+        val writer = new PrintWriter("doubleCar-dfunl.pt")
         writer.write(source)
         writer.close()
       case _ => ()
@@ -130,14 +132,13 @@ class ProofTermCheckerTests extends TacticTestBase {
     println(tacticResult)
   })
 
-
   it should "work for ETCS dI-ified proof" in withMathematica (_ => {
     val fml = "    v^2<=2*b()*(m-x) & v>=0  & A()>=0 & b()>0-> [{{?(2*b()*(m-x) >= v^2+(A()+b())*(A()*ep()^2+2*ep()*v)); a:=A(); ++ a:=-b(); } t := 0;{x'=v, v'=a, t'=1 & v>=0 & t<=ep()}}*@invariant(v^2<=2*b()*(m-x))] x <= m".asFormula
     val tac = BelleParser("implyR(1) ; loop({`v^2<=2*b()*(m-x)`}, 1) ; <(closeId, QE,composeb(1) ; choiceb(1) ;andR(1) ; <(composeb(1) ; testb(1) ; implyR(1) ; assignb(1) ; composeb(1) ; assignb(1) ; dC({`2*b()*(m-x)>=v^2+(A()+b())*(A()*(ep()-t)^2+2*(ep()-t)*v)`}, 1) ; <(dW(1) ; QE,dI(1)), assignb(1) ; composeb(1) ; assignb(1) ; dI(1)))")
     val provable = ProvableSig.startProof(fml)
         val tacticResult = proveBy(provable,tac)
         tacticResult match {
-          case pr:PTProvable =>
+          case pr:TermProvable =>
             val size = pr.pt.numCons
             val bytes = pr.pt.bytesEstimate
             val axioms = pr.pt.axiomsUsed
@@ -176,12 +177,12 @@ class ProofTermCheckerTests extends TacticTestBase {
     println(source)
   })
 
-  it should "convert simple axiom usage" in withMathematica(_ => {
+  it should "convert simple axiom usage" ignore withMathematica(_ => {
     val label = "[:=] assign"
     val f = "[x_:=f();]p(x_) <-> p(f())".asFormula
     val t = ??? ///US(USubst.apply(scala.collection.immutable.Seq()), label)
     proveBy(ProvableSig.startProof(f), t) match {
-      case ptp: PTProvable =>
+      case ptp: TermProvable =>
         val conv = new IsabelleConverter(ptp.pt)
         val source = conv.scalaObjects("ProofTerm", "proofTerm", "GeneratedProofChecker")
         println(source)
@@ -191,11 +192,11 @@ class ProofTermCheckerTests extends TacticTestBase {
 
   it should "convert prop tautologies" in withMathematica(_ => {
     val f = "A() -> A()".asFormula
-    val provable = PTProvable.startProof(f)
+    val provable = TermProvable.startProof(f)
     val t = TactixLibrary.implyR(1) & TactixLibrary.close(-1,1)
 
     proveBy(provable, t) match {
-      case ptp: PTProvable =>
+      case ptp: TermProvable =>
         val conv = new IsabelleConverter(ptp.pt)
         val source = conv.scalaObjects("ProofTerm", "proofTerm", "GeneratedProofChecker")
         println(source)
@@ -203,23 +204,12 @@ class ProofTermCheckerTests extends TacticTestBase {
     }
   })
 
-  it should "convert VelocityCar" in withMathematica(_ => {
-    val f = "x<=m() & V()>=0 -> [{{?x<=m()-V()*ep(); v:=V(); ++ v:=0;} t := 0; {x'=v, t'=1 & t<=ep()}}*@invariant(x<=m())] x <= m()".asFormula
-    val t =
-      implyR(1) & loop("x<=m()".asFormula)(1) <(
-        closeId,
-        closeId,
-        composeb(1) & composeb(1, 1::Nil) & choiceb(1) & andR(1) <(
-        composeb(1) & testb(1) & implyR(1) & assignb(1) & assignb(1) & dC("x<=m()-V()*(ep()-t)".asFormula)(1) <(
-          dW(1) & QE,
-          dI()(1)
-        ),
-        assignb(1) & assignb(1) & dI()(1)
-      )
-    )
-    val provable = PTProvable.startProof(f)
-    proveBy(provable, t) match {
-      case ptp: PTProvable =>
+  it should "convert leaderfollower" in withMathematica(_ => {
+    val archive = "SharedDefinitions.\n  R A.\n  R B.\n  R T.\n\n  R SB(R vl, R vf) = ( vf*vf - vl*vl + (A()+B())*(A()*T()*T() + 2*T()*vf) ).\n\n  /* predicates */\n  B bounds() <-> ( A()>=0 & B()>0 & T()>=0 ).\n  B loopinv(R vl, R pl, R vf, R pf) <-> ( vl>=0 & vf>=0 & (pl-pf)*2*B()>=vf*vf-vl*vl & pl>=pf ).\n\n  /* differential invariants */\n  B vinv(R v, R a, R t) <-> ( v=old(v)+a*t ).\n  B pinv(R p, R v, R a, R t) <-> ( p=old(p)+old(v)*t+a*t^2/2 ).\n\n  /* programs */\n  HP ctrl ::= {\n    {   ?(posLead - posCtrl)*2*B() >= SB(velLead, velCtrl); accCtrl := A();\n     ++ accCtrl := -B();\n    };\n    t := 0;\n  }.\n\n  HP plant ::= {\n       { velCtrl' = accCtrl, velLead' =  A(), posCtrl' = velCtrl, posLead' = velLead, t' = 1 & t <= T() & velCtrl >= 0 & velLead >= 0}\n    ++ { velCtrl' = accCtrl, velLead' = -B(), posCtrl' = velCtrl, posLead' = velLead, t' = 1 & t <= T() & velCtrl >= 0 & velLead >= 0}\n  }.\nEnd.\n\nLemma \"Leader-Follower Preserves Invariant\".\n\nProgramVariables.\n  R velLead.\n  R velCtrl.\n  R posLead.\n  R posCtrl.\n  R accCtrl.\n  R accLead.\n  R t.\nEnd.\n\nProblem.\nbounds() & loopinv(velLead, posLead, velCtrl, posCtrl)\n->\n[\n  ctrl;\n  plant;\n]\nloopinv(velLead, posLead, velCtrl, posCtrl)\nEnd.\n\n\nTactic \"Proof Leader-Follower Preserves Loop Invariant\".\nunfold ; <(\n  diffInvariant({`vinv(velCtrl, A(), t)`}, 1);\n  diffInvariant({`vinv(velLead, A(), t)`}, 1);\n  diffInvariant({`pinv(posCtrl, velCtrl, A(), t)`}, 1);\n  diffInvariant({`pinv(posLead, velLead, A(), t)`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1);\n  implyR(1);\n  andL('L)*;\n  hideL(-3=={`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0`});\n  print({`Transforming`});\n  cut({`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0+(A()+B())*(A()*t*t+2*t*velCtrl_0)`}); <(\n    hideL(-7=={`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0+(A()+B())*(A()*T()*T()+2*T()*velCtrl_0)`}),\n    hideR(1);\n    hideL('L=={`posLead=posLead_0+velLead_0*t+A()*t^2/2`});\n    hideL('L=={`posCtrl=posCtrl_0+velCtrl_0*t+A()*t^2/2`});\n    hideL('L=={`velLead=velLead_0+A()*t`});\n    hideL('L=={`velCtrl=velCtrl_0+A()*t`});\n    hideL('L=={`velCtrl>=0`});\n    hideL('L=={`velLead>=0`});\n    QE\n  );\n  hideL('L=={`T()>=0`});\n  hideL('L=={`t<=T()`});\n  print({`Lead=A(), Follow=A()`}); master; print({`...done`})\n  ,\n  diffInvariant({`vinv(velCtrl, -B(), t)`}, 1);\n  diffInvariant({`vinv(velLead, A(), t)`}, 1);\n  diffInvariant({`pinv(posCtrl, velCtrl, -B(), t)`}, 1);\n  diffInvariant({`pinv(posLead, velLead, A(), t)`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1); print({`Lead=A(), Follow=-B()`}); master; print({`...done`})\n  ,\n  diffInvariant({`vinv(velCtrl, A(), t)`}, 1);\n  diffInvariant({`vinv(velLead, -B(), t)`}, 1);\n  diffInvariant({`pinv(posCtrl, velCtrl, A(), t)`}, 1);\n  diffInvariant({`pinv(posLead, velLead, -B(), t)`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1);\n  implyR(1);\n  andL('L)*;\n  hideL(-3=={`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0`});\n  print({`Transforming`});\n  cut({`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0+(A()+B())*(A()*t*t+2*t*velCtrl_0)`}); <(\n    hideL(-7=={`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0+(A()+B())*(A()*T()*T()+2*T()*velCtrl_0)`}),\n    hideR(1);\n    hideL('L=={`posLead=posLead_0+velLead_0*t+(-B())*t^2/2`});\n    hideL('L=={`posCtrl=posCtrl_0+velCtrl_0*t+A()*t^2/2`});\n    hideL('L=={`velLead=velLead_0+(-B())*t`});\n    hideL('L=={`velCtrl=velCtrl_0+A()*t`});\n    hideL('L=={`velCtrl>=0`});\n    hideL('L=={`velLead>=0`});\n    QE\n  );\n  hideL('L=={`T()>=0`});\n  hideL('L=={`t<=T()`});\n  print({`Lead=-B(), Follow=A()`}); master; print({`...done`})\n  ,\n  diffInvariant({`vinv(velCtrl, -B(), t)`}, 1);\n  diffInvariant({`vinv(velLead, -B(), t)`}, 1);\n  diffInvariant({`pinv(posCtrl, velCtrl, -B(), t)`}, 1);\n  diffInvariant({`pinv(posLead, velLead, -B(), t)`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1); print({`Lead=-B(), Follow=-B()`}); master; print({`...done`})\n)\nEnd.\n\nEnd.\n\nTheorem \"Leader-Follower Safety\".\n\nProgramVariables.\n  R velLead.\n  R velCtrl.\n  R posLead.\n  R posCtrl.\n  R accCtrl.\n  R accLead.\n  R t.\nEnd.\n\nProblem.\nbounds() & velLead=0 & velCtrl=0 & posLead>=posCtrl\n->\n[{\n   ctrl;\n   plant;\n }*@invariant(loopinv(velLead, posLead, velCtrl, posCtrl))\n]\nposLead>=posCtrl\nEnd.\n\nTactic \"Proof Leader-Follower Safety\".\nimplyR(1); loop({`loopinv(velLead, posLead, velCtrl, posCtrl)`}, 1); <(\n  QE,\n  QE,\n  useLemma({`Leader-Follower Preserves Invariant`}, {`prop`})\n)\nEnd.\n\nEnd."
+    val ParsedArchiveEntry(name, kind, modelText, _, formula, parsedTactics,_) = KeYmaeraXArchiveParser.parse(archive).head
+    val provable = TermProvable.startProof(formula.asInstanceOf[Formula])
+    proveBy(provable, parsedTactics.head._2) match {
+      case ptp: TermProvable =>
         val size = ptp.pt.numCons
         val bytes = ptp.pt.bytesEstimate
         val axioms = ptp.pt.axiomsUsed
@@ -234,19 +224,58 @@ class ProofTermCheckerTests extends TacticTestBase {
         val conv = new IsabelleConverter(ptp.pt)
         //val source = conv.scalaObjects("ProofTerm", "proofTerm", "GeneratedProofChecker")
         val source = conv.sexp
-        val writer = new PrintWriter("velocityCar.pt")
+        val writer = new PrintWriter("TheLeadFollow.pt")
+        writer.write(source)
+        writer.close()
+      //println(source)
+    }})
+
+  it should "convert VelocityCarDist" in withMathematica(_ => {
+    val f = "(d>=0 & (V()>=0 & ep()>=0)) -> [{{{{?d>=V()*ep(); v:=*; ?0<=v&v<=V();} ++ v:=0;}t := 0;}{d'=-v, t'=1 & t<=ep()}}*@invariant(d>=0)] ( d>=0)".asFormula
+    val t =
+      implyR(1) &
+        loop("d >= 0".asFormula)(1)  <(
+          closeId,
+          closeId,
+          composeb(1) & composeb(1) & choiceb(1) & andR(1) <(
+            composeb(1) & testb(1) & implyR(1) & composeb(1) & randomb(1) & allR(1) & testb(1) & implyR(1) &
+              assignb(1) & dC("d>=V()*(ep()-t)".asFormula)(1) <(
+              dW(1) & QE,
+              dI()(1)
+            ),
+            assignb(1) & assignb(1) & dI()(1)
+          )
+        )
+    val provable = TermProvable.startProof(f)
+    proveBy(provable, t) match {
+      case ptp: TermProvable =>
+        val size = ptp.pt.numCons
+        val bytes = ptp.pt.bytesEstimate
+        val axioms = ptp.pt.axiomsUsed
+        val rules = ptp.pt.rulesUsed
+        val goals = ptp.pt.arithmeticGoals
+
+        println("Size: " + size + "\n\n\n")
+        println("Axioms: " + axioms + "\n\n\n")
+        println("Rules: " + rules + "\n\n\n")
+        println("Arithmetic Goals: " + goals + "\n\n\n")
+        println("END OF STATS\n\n\n\n\n\n\n\n\n\n\n")
+        val conv = new IsabelleConverter(ptp.pt)
+        //val source = conv.scalaObjects("ProofTerm", "proofTerm", "GeneratedProofChecker")
+        val source = conv.sexp
+        val writer = new PrintWriter("velocityCar-dist.pt")
         writer.write(source)
         writer.close()
         //println(source)
     }})
 
-  it should "convert CPP'17 example" in withMathematica(_ => {
+  it should "convert CPP'17 example" ignore withMathematica(_ => {
     val f = "A() >= 0 & v >= 0 -> [{v' = A(), x' = v & true}] v >= 0".asFormula
-    val provable = PTProvable.startProof(f)
+    val provable = TermProvable.startProof(f)
     val t = TactixLibrary.implyR(1) & andL(-1) & dI()(1)
 
     proveBy(provable, t) match {
-      case ptp: PTProvable =>
+      case ptp: TermProvable =>
         val size = ptp.pt.numCons
         val bytes = ptp.pt.bytesEstimate
         val axioms = ptp.pt.axiomsUsed
@@ -281,6 +310,43 @@ class ProofTermCheckerTests extends TacticTestBase {
       case _  =>
     }
   })
+
+  it should "work for Lab2 dI-ified proof version 2" in withZ3 (_ => {
+    val lab2Fml=
+    ("( A()>=0 & B()>0 & T()>=0 ) &" +
+        "( velLead>=0 & velCtrl>=0 & (posLead-posCtrl)*2*B()>=velCtrl*velCtrl-velLead*velLead & posLead>=posCtrl ) ->" +
+        "[    {   ?(posLead - posCtrl)*2*B() >= ( velCtrl*velCtrl - velLead*velLead + (A()+B())*(A()*T()*T() + 2*T()*velCtrl) ); accCtrl := A();\n     ++ accCtrl := -B();\n    };\n    t := 0;" +
+        "       { velCtrl' = accCtrl, velLead' =  A(), posCtrl' = velCtrl, posLead' = velLead, t' = 1 & t <= T() & velCtrl >= 0 & velLead >= 0}\n    ++ { velCtrl' = accCtrl, velLead' = -B(), posCtrl' = velCtrl, posLead' = velLead, t' = 1 & t <= T() & velCtrl >= 0 & velLead >= 0}]" +
+        "( velLead>=0 & velCtrl>=0 & (posLead-posCtrl)*2*B()>=velCtrl*velCtrl-velLead*velLead & posLead>=posCtrl )").asFormula
+
+    /*val lab2Fml ="velLead >= 0 &\nvelCtrl >= 0 &\nA() > 0 & \nB() > 0 & \n(posLead - posCtrl)*B() >= velCtrl*velCtrl - velLead*velCtrl &\n posLead >= posCtrl &\n T() > 0\n->\n[{\n  SB := (velCtrl - velLead)*T()*2*B() + B()*(A() + B())*T()*T() + 2*(T()*(A()+B()) + velCtrl - velLead)*((velCtrl + T()*A()));\n {{?2*B()*(posLead - posCtrl) > SB;\n   accCtrl := A(); }\n ++\n   accCtrl := -B();};\n {accLead := A() ;++ accLead := -B(); };\n t := 0;\n { velCtrl' = accCtrl, velLead' = accLead, posCtrl' = velCtrl, posLead' = velLead, t' = 1 & t < T() & velCtrl >= 0 & velLead >= 0}\n}*@invariant(velLead >= 0 & velCtrl >= 0 &  (posLead - posCtrl)*B() >= velCtrl*velCtrl - velLead*velCtrl & posLead >= posCtrl)\n]posLead >= posCtrl".asFormula*/
+    /*val lab2Tac:BelleExpr = BelleParser("unfold ; loop({`velLead>=0&velCtrl>=0&(posLead-posCtrl)*B()>=velCtrl*velCtrl-velLead*velCtrl&posLead>=posCtrl`}, 1) ; <(  unfold,  unfold,  unfold ; <(    dC({`velCtrl=old(velCtrl)+A()*t`}, 1) ; <(      dC({`velLead=old(velLead)+A()*t`}, 1) ; <(        dC({`posCtrl=old(posCtrl)+old(velCtrl)*t+A()*t*t*0.5`}, 1) ; <(          dC({`posLead=old(posLead)+old(velLead)*t+A()*t*t*0.5`}, 1) ; <(            dC({`t>=0`}, 1) ; <(              dW(1) ; master,              dI(1)              ),            dI(1)            ),          dI(1)          ),        dI(1)        ),      dI(1)      ),    dC({`velCtrl=old(velCtrl)+-B()*t`}, 1) ; <(      dC({`velLead=old(velLead)+A()*t`}, 1) ; <(        dC({`posCtrl=old(posCtrl)+old(velCtrl)*t-B()*t*t*0.5`}, 1) ; <(          dC({`posLead=old(posLead)+old(velLead)*t+A()*t*t*0.5`}, 1) ; <(            dC({`t>=0`}, 1) ; <(              dW(1) ; master,              dI(1)              ),            dI(1)            ),          dI(1)          ),        dI(1)        ),      dI(1)      ),    dC({`velCtrl=old(velCtrl)+A()*t`}, 1) ; <(      dC({`velLead=old(velLead)+-B()*t`}, 1) ; <(        dC({`posCtrl=old(posCtrl)+old(velCtrl)*t+A()*t*t*0.5`}, 1) ; <(          dC({`posLead=old(posLead)+old(velLead)*t-B()*t*t*0.5`}, 1) ; <(            dC({`t>=0`}, 1) ; <(              dC({`2*B()*(posLead-posCtrl)>(velCtrl-velLead)*(T()-t)*2*B()+B()*(A()+B())*(T()-t)*(T()-t)+2*((T()-t)*(A()+B())+velCtrl-velLead)*(velCtrl+(T()-t)*A())`}, 1) ; <(                dC({`B()*t<=old(velLead)`}, 1) ; <(                  dW(1) ; unfold ; <(                    QE,                    QE                    ),                  ODE(1)                  ),                dI(1)                ),              dI(1)              ),            dI(1)            ),          dI(1)          ),        dI(1)        ),      dI(1)      ),    dC({`velCtrl=old(velCtrl)+-B()*t`}, 1) ; <(      dC({`velLead=old(velLead)+-B()*t`}, 1) ; <(        dC({`posCtrl=old(posCtrl)+old(velCtrl)*t-B()*t*t*0.5`}, 1) ; <(          dC({`posLead=old(posLead)+old(velLead)*t-B()*t*t*0.5`}, 1) ; <(            dC({`t>=0`}, 1) ; <(              dW(1) ; master,              dI(1)              ),            dI(1)            ),          dI(1)          ),        dI(1)        ),      dI(1)      )    )  )")*/
+    val lab2Tac = BelleParser("unfold ; <(\n  diffInvariant({`velCtrl=old(velCtrl)+A()*t`}, 1);\n  diffInvariant({`velLead=old(velLead)+A()*t`}, 1);\n  diffInvariant({`posCtrl=old(posCtrl)+old(velCtrl)*t+A()*t*t*0.5`}, 1);\n  diffInvariant({`posLead=old(posLead)+old(velLead)*t+A()*t*t*0.5`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1); print({`Lead=A(), Follow=A()`}); master; print({`...done`})\n  ,\n  diffInvariant({`velCtrl=old(velCtrl)-B()*t`}, 1);\n  diffInvariant({`velLead=old(velLead)+A()*t`}, 1);\n  diffInvariant({`posCtrl=old(posCtrl)+old(velCtrl)*t-B()*t*t*0.5`}, 1);\n  diffInvariant({`posLead=old(posLead)+old(velLead)*t+A()*t*t*0.5`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1); print({`Lead=A(), Follow=-B()`}); master; print({`...done`})\n  ,\n\n  diffInvariant({`velCtrl=old(velCtrl)+A()*t`}, 1);\n  diffInvariant({`velLead=old(velLead)-B()*t`}, 1);\n  diffInvariant({`posCtrl=old(posCtrl)+old(velCtrl)*t+A()*t*t*0.5`}, 1);\n  diffInvariant({`posLead=old(posLead)+old(velLead)*t-B()*t*t*0.5`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1);\n  implyR(1);\n  print({`Transforming`});\n  transform(\n    {`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0+(A()+B())*(A()*t*t+2*t*velCtrl_0)`},\n    'L=={`(posLead_0-posCtrl_0)*2*B()>=velCtrl_0*velCtrl_0-velLead_0*velLead_0+(A()+B())*(A()*T()*T()+2*T()*velCtrl_0)`}\n  );\n  print({`Lead=-B(), Follow=A()`}); master; print({`...done`})\n  ,\n  diffInvariant({`velCtrl=old(velCtrl)-B()*t`}, 1);\n  diffInvariant({`velLead=old(velLead)-B()*t`}, 1);\n  diffInvariant({`posCtrl=old(posCtrl)+old(velCtrl)*t-B()*t*t*0.5`}, 1);\n  diffInvariant({`posLead=old(posLead)+old(velLead)*t-B()*t*t*0.5`}, 1);\n  diffInvariant({`t>=0`}, 1);\n  dW(1); print({`Lead=-B(), Follow=-B()`}); master; print({`...done`})\n)")
+    val provable = ProvableSig.startProof(lab2Fml)
+    val tacticResult = proveBy(provable,lab2Tac)
+    tacticResult match {
+      case pr:TermProvable =>
+        val size = pr.pt.numCons
+        val bytes = pr.pt.bytesEstimate
+        val axioms = pr.pt.axiomsUsed
+        val rules = pr.pt.rulesUsed
+        val goals = pr.pt.arithmeticGoals
+        println("Size: " + size + "\n\n\n")
+        println("Axioms: " + axioms + "\n\n\n")
+        println("Rules: " + rules + "\n\n\n")
+        println("Arithmetic Goals: " + goals + "\n\n\n")
+        println("END OF STATS\n\n\n\n\n\n\n\n\n\n\n")
+        val conv = new IsabelleConverter(pr.pt)
+        //val source = conv.scalaObjects("ProofTerm", "proofTerm", "GeneratedProofChecker")
+        val source = conv.sexp
+        val writer = new PrintWriter("lab2.pt")
+        writer.write(source)
+        writer.close()
+      case _ => ()
+    }
+    println(tacticResult)
+  })
+
 
   import pt.lib.Sum_Type._
   import pt.lib.Scratch._

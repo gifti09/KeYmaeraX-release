@@ -3,10 +3,11 @@ package edu.cmu.cs.ls.keymaerax.hydra
 import java.util.Calendar
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleProvable, Interpreter, SequentialInterpreter, SpoonFeedingInterpreter}
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXArchiveParser, KeYmaeraXProblemParser}
 import edu.cmu.cs.ls.keymaerax.tacticsinterface.TraceRecordingListener
+import org.apache.logging.log4j.scala.Logging
 import spray.json._
 import spray.json.DefaultJsonProtocol._
 
@@ -16,13 +17,13 @@ import scala.collection.immutable._
   * Populates the database from a JSON collection of models and tactics.
   * @author Stefan Mitsch
   */
-object DatabasePopulator {
+object DatabasePopulator extends Logging {
 
   //@todo publish the tutorials and case studies somewhere on the web page, add Web UI functionality to explore tutorials
   // and case studies and import into the database
 
   case class TutorialEntry(name: String, model: String, description: Option[String], title: Option[String],
-                           link: Option[String], tactic: Option[(String, String, Boolean)])
+                           link: Option[String], tactic: Option[(String, String, Boolean)], kind: String = "Unknown")
 
   /** Imports tutorial entries from the JSON file at URL. Optionally proves the models when tactics are present. */
   def importJson(db: DBAbstraction, user: String, url: String, prove: Boolean = false): Unit = {
@@ -45,8 +46,17 @@ object DatabasePopulator {
   def readKya(url: String): List[TutorialEntry] = {
     val kya = loadResource(url)
     val archiveEntries = KeYmaeraXArchiveParser.read(kya)
-    archiveEntries.flatMap({case (modelName, modelContent, _, tactics) =>
-      tactics.map({case (tname, tactic) => TutorialEntry(modelName, modelContent, None, None, None, Some((tname, tactic, true)))})})
+    val entries = archiveEntries.flatMap({case (modelName, modelContent, kind, tactics, info) =>
+      if (tactics.nonEmpty) tactics.map({case (tname, tactic) =>
+        TutorialEntry(modelName, modelContent, info.get("Description"), info.get("Title"), info.get("Link"),
+          Some((tname, tactic, true)), kind)})
+      else
+        TutorialEntry(modelName, modelContent, info.get("Description"), info.get("Title"), info.get("Link"),
+          None, kind) :: Nil
+    })
+    assert(entries.map(_.name).toSet.size == archiveEntries.map(_._1).toSet.size,
+      "Expected " + archiveEntries.size + " entries, but got " + entries.size)
+    entries
   }
 
   /** Reads tutorial entries from the specified URL. */
@@ -88,21 +98,21 @@ object DatabasePopulator {
   def importModel(db: DBAbstraction, user: String, prove: Boolean)(entry: TutorialEntry): Unit = {
     val now = Calendar.getInstance()
     val entryName = db.getUniqueModelName(user, entry.name)
-    println("Importing model " + entryName + "...")
+    logger.info("Importing model " + entryName + "...")
     db.createModel(user, entryName, entry.model, now.getTime.toString, entry.description,
       entry.link, entry.title, entry.tactic match { case Some((_, t, _)) => Some(t) case _ => None }) match {
       case Some(modelId) => entry.tactic match {
         case Some((tname, tacticText, _)) =>
-          println("Importing proof...")
+          logger.info("Importing proof...")
           val proofId = db.createProofForModel(modelId, entryName + " (" + tname + ")", "Imported from tactic " + tname,
             now.getTime.toString, Some(tacticText))
           if (prove) executeTactic(db, entry.model, proofId, tacticText)
-          println("...done")
+          logger.info("...done")
         case _ => // nothing else to do, not asked to prove or don't know how to prove without tactic
       }
       case None => ???
     }
-    println("...done")
+    logger.info("...done")
   }
 
   /** Prepares an interpreter for executing tactics. */
@@ -118,7 +128,7 @@ object DatabasePopulator {
       new TraceRecordingListener(db, proofId, parentStep,
         globalProvable, branch, recursive = false, tacticName) :: Nil
     }
-    SpoonFeedingInterpreter(proofId, -1, db.createProof, listener, SequentialInterpreter)
+    SpoonFeedingInterpreter(proofId, -1, db.createProof, listener, LazySequentialInterpreter)
   }
 
   /** Executes the `tactic` on the `model` and records the tactic steps as proof in the database. */

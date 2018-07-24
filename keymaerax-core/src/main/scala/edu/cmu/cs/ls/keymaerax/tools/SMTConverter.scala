@@ -8,7 +8,7 @@
 package edu.cmu.cs.ls.keymaerax.tools
 
 import edu.cmu.cs.ls.keymaerax.core._
-import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable._
 
@@ -21,14 +21,12 @@ object DefaultSMTConverter extends SMTConverter {}
   * @author Ran Ji
   * @author Stefan Mitsch
   */
-abstract class SMTConverter extends (Formula=>String) {
-  protected val DEBUG: Boolean = System.getProperty("DEBUG", "false")=="true"
-
+abstract class SMTConverter extends (Formula=>String) with Logging {
   /** Convert given formula to an SMTLib specification that, if SMT(\result) returns `unsat` says that `expr` is valid. */
   def apply(expr: Formula): String = {
     val negation = generateAssertNegation(expr)
     val result = negation
-    if(DEBUG) println(s"SMT output for ${expr.prettyString} (NEGATED AS: ${result}) is: \n${result}")
+    logger.debug(s"SMT output for ${expr.prettyString} (NEGATED AS: $result) is: \n$result")
     result
   }
 
@@ -136,6 +134,8 @@ abstract class SMTConverter extends (Formula=>String) {
       case Minus(l, r)  => "(- " + convertTerm(l) + " " + convertTerm(r) + ")"
       case Times(l, r)  => "(* " + convertTerm(l) + " " + convertTerm(r) + ")"
       case Divide(l, r) => "(/ " + convertTerm(l) + " " + convertTerm(r) + ")"
+      case Power(_, Number(r)) if r==0 => "1"
+      case Power(l, Number(r)) if r.isValidInt && r>=1 => convertTerm(Times(l, Power(l, Number(r-1))))
       case Power(l, r)  => "(^ " + convertTerm(l) + " " + convertTerm(r) + ")"
       case Number(n) =>
         //@todo Code Review: check number conventions supported by SMTLIB format
@@ -153,7 +153,8 @@ abstract class SMTConverter extends (Formula=>String) {
           //@todo Real literals should contain a dot in Z3 (integer without dot), check whether compatible with Polya
           "(- " + (-n).toString() + ")"
         } else n.toString()
-      case t: Variable => PREFIX + nameIdentifier(t)
+      case t: BaseVariable => PREFIX + nameIdentifier(t)
+      case t: DifferentialSymbol => throw new SMTConversionException("Name conversion of differential symbols not allowed: " + t.prettyString)
       case FuncOf(fn, Nothing) => PREFIX + nameIdentifier(fn)
       case FuncOf(fn, child) if fn.interpreted => fn match {
         case Function("min",None,Tuple(Real,Real),Real,true) => "(" + SMT_MIN + " " + convertTerm(child) + ")"

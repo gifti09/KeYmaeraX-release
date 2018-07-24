@@ -6,13 +6,12 @@ package edu.cmu.cs.ls.keymaerax.parser
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, PosInExpr}
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
-import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 import edu.cmu.cs.ls.keymaerax.btactics.{ExpressionTraversal, SubstitutionHelper}
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
 import edu.cmu.cs.ls.keymaerax.core.{Variable, _}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.annotation.tailrec
-import scala.util.Try
 
 /**
  * Parses `.kyx` KeYmaera X problem files.
@@ -20,7 +19,7 @@ import scala.util.Try
  * @author Nathan Fulton
  * Created by nfulton on 6/12/15.
  */
-object KeYmaeraXProblemParser {
+object KeYmaeraXProblemParser extends Logging {
   type Declaration = KeYmaeraXDeclarationsParser.Declaration
 
   /** Indicates whether or not the model represents an exercise. */
@@ -37,7 +36,7 @@ object KeYmaeraXProblemParser {
         case Some(pair) => throw ParseException(s"Input string contains non-ASCII character ${pair._2}", pair._1)
         case None =>
           val lexResult = KeYmaeraXLexer.inMode(input, ProblemFileMode)
-          if(KeYmaeraXParser.PARSER_DEBUGGING) println(lexResult) //@note Useful to change this to true if you're modifying the parser or chasing down a bug.
+          logger.info(lexResult) //@note Useful to enable logging in keymaerax-webui/src/test/resources/log4j2-test.xml if you're modifying the parser or chasing down a bug.
           parseProblem(lexResult)
       }
     } catch {
@@ -114,6 +113,8 @@ object KeYmaeraXProblemParser {
       }
       val prefix = s.split(nonAsciiCharacter).head
       val lines = prefix.split("\n")
+      assert(lines != null && lines.length > 0,
+        s"Expected a 'last' element but found ${lines} because there is a disallowed unicode character _${disallowedChars.mkString(" ")}_")
       val lineNumber = lines.length
       val columnNumber = lines.last.length + 1
       Some(new Region(lineNumber, columnNumber, lineNumber, columnNumber), nonAsciiCharacter)
@@ -131,7 +132,7 @@ object KeYmaeraXProblemParser {
     checkInput(remainingTokens.head.tok.equals(PROBLEM_BLOCK), "Problem. block expected", remainingTokens.head.loc, "kyx reading problem block")
 
     if(d.decls.keySet.nonEmpty && remainingTokens.head.loc.line <= 1)
-      println("WARNING: There were declarations in this file but the non-declaration portion of the file starts at line 0 or line 1. There may be off-by-n errors in location messages.")
+      logger.warn("WARNING: There were declarations in this file but the non-declaration portion of the file starts at line 0 or line 1. There may be off-by-n errors in location messages.")
 
     val (theProblem, eof) = remainingTokens.span(x => !x.tok.equals(END_BLOCK))
     checkInput(eof.length == 2 && eof.head.tok.equals(END_BLOCK),
@@ -171,7 +172,7 @@ object KeYmaeraXProblemParser {
 /**
  * Parses the declarations in .kyx and .alp files.
  */
-object KeYmaeraXDeclarationsParser {
+object KeYmaeraXDeclarationsParser extends Logging {
   /** Name is alphanumeric name and index. */
   type Name = (String, Option[Int])
   /** Signature is domain sort, codomain sort, "interpretation", token that starts the declaration. */
@@ -199,6 +200,9 @@ object KeYmaeraXDeclarationsParser {
 
     /** Joins two declarations. */
     def ++(other: Declaration): Declaration = Declaration(decls ++ other.decls)
+
+    /** Finds the definition with `name` and index `idx`. */
+    def find(name: String, idx: Option[Int] = None): Option[Signature] = decls.get(name -> idx)
 
     /** Turns a function declaration (with defined body) into a substitution pair. */
     private def declAsSubstitutionPair(name: KeYmaeraXDeclarationsParser.Name, signature: KeYmaeraXDeclarationsParser.Signature): SubstitutionPair = {
@@ -637,8 +641,7 @@ object KeYmaeraXDeclarationsParser {
           case Some(i) => nextDecl._1._1 + "_" + i
           case None => nextDecl._1._1
         }
-        throw new ParseException("Duplicate symbol '" + name + "'",
-          UnknownLocation, "", "", "", "")
+        logger.info("Duplicate symbol '" + name + "', entry local definition overrides shared definition")
       }
       processDeclarations(remainders, Declaration(accumulated.decls.updated(nextDecl._1, nextDecl._2)))
     } else accumulated

@@ -8,17 +8,19 @@ import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.ExpressionTraversalFunction
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.StopTraversal
+import edu.cmu.cs.ls.keymaerax.btactics.Idioms.mapSubpositions
 import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics.helpers.DifferentialHelper
-import edu.cmu.cs.ls.keymaerax.core._
+import edu.cmu.cs.ls.keymaerax.core.{Variable, _}
+import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXPrettyPrinter
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.tools.SimplificationTool
+import org.apache.logging.log4j.scala.Logging
 
-import scala.collection.immutable
+import scala.collection.{immutable, mutable}
 import scala.compat.Platform
-import scala.language.postfixOps
 
 /**
  * ModelPlex: Verified runtime validation of verified cyber-physical system models.
@@ -30,7 +32,8 @@ import scala.language.postfixOps
  * @see Stefan Mitsch and André Platzer. [[http://dx.doi.org/10.1007/978-3-319-11164-3_17 ModelPlex: Verified runtime validation of verified cyber-physical system models]].
  *      In Borzoo Bonakdarpour and Scott A. Smolka, editors, Runtime Verification - 5th International Conference, RV 2014, Toronto, ON, Canada, September 22-25, 2014. Proceedings, volume 8734 of LNCS, pages 199-214. Springer, 2014.
  */
-object ModelPlex extends ModelPlexTrait {
+object ModelPlex extends ModelPlexTrait with Logging {
+
   /**
    * Synthesize the ModelPlex (Controller) Monitor for the given formula for monitoring the given variable.
    */
@@ -59,9 +62,9 @@ object ModelPlex extends ModelPlexTrait {
     val mxInputSequent = Sequent(immutable.IndexedSeq[Formula](), immutable.IndexedSeq(mxInputFml))
     //@note SimplifierV2 disabled as precaution in case Z3 cannot prove one of its lemmas
     val tactic = (kind, ToolProvider.simplifierTool()) match {
-      case ('ctrl, tool) => controllerMonitorByChase(1) & (optimizationOneWithSearch(tool, assumptions)(1)*) &
+      case ('ctrl, tool) => controllerMonitorByChase(1) & SaturateTactic(optimizationOneWithSearch(tool, assumptions)(1)) &
         (if (tool.isDefined) SimplifierV2.simpTac(1) else skip)
-      case ('model, tool) => modelMonitorByChase(1) & (optimizationOneWithSearch(tool, assumptions)(1)*) &
+      case ('model, tool) => modelMonitorByChase(1) & SaturateTactic(optimizationOneWithSearch(tool, assumptions)(1)) &
         (if (tool.isDefined) SimplifierV2.simpTac(1) else skip)
       case _ => throw new IllegalArgumentException("Unknown monitor kind " + kind + ", expected one of 'ctrl or 'model; both require a simplification tool")
     }
@@ -69,7 +72,7 @@ object ModelPlex extends ModelPlexTrait {
     val proofStart = Platform.currentTime
     val result = TactixLibrary.proveBy(ProvableSig.startProof(mxInputSequent), tactic)
     val proofDuration = Platform.currentTime - proofStart
-    Console.println("[proof time " + proofDuration + "ms]")
+    logger.info("[proof time " + proofDuration + "ms]")
 
     assert(result.subgoals.size == 1 && result.subgoals.head.ante.isEmpty &&
       result.subgoals.head.succ.size == 1, "ModelPlex tactic expected to provide a single formula (in place version)")
@@ -78,25 +81,18 @@ object ModelPlex extends ModelPlexTrait {
     val mxOutputProofTree = result.subgoals.head.succ.head
     checkProvable match {
       case Some(report) =>
-        //@todo probably doesn't make much sense anymore in new version
-        val witnessStart= Platform.currentTime
-        val provable = result.proved
-        assert(provable.ante.size == 1 && provable.succ.size == 1, "ModelPlex tactic expected to provide a single formula (in place version)")
-        assert(provable == mxInputSequent, "Provable is a proof of the ModelPlex specification")
-        assert(provable.ante.head == True)
-        val mxOutput = provable.succ.head
-        assert(mxOutput == mxOutputProofTree, "ModelPlex output from Provable and from ProofNode agree (if ProofNode is correct)")
-        val witnessDuration = Platform.currentTime - witnessStart
-        Console.println("[proof time       " + proofDuration + "ms]")
-        Console.println("[certificate time " + witnessDuration + "ms]")
-        println("ModelPlex Proof certificate: Passed")
         report(result)
-        mxOutput
+        logger.info("ModelPlex Proof certificate: Produced")
+        mxOutputProofTree
       case None =>
-        println("ModelPlex Proof certificate: Skipped")
+        logger.info("ModelPlex Proof certificate: Skipped")
         mxOutputProofTree
     }
   }
+
+  /** Returns the post variable of `v` */
+  private def postVar = (v: Variable) => BaseVariable(v.name + "post", v.index)
+  private def preVar = (v: Variable) => BaseVariable(v.name + "pre", v.index)
 
   /**
     * Construct ModelPlex monitor specification conjecture corresponding to given formula.
@@ -108,7 +104,7 @@ object ModelPlex extends ModelPlexTrait {
     */
   def createMonitorSpecificationConjecture(fml: Formula, vars: Variable*): (Formula, List[Formula]) = {
     require(vars.nonEmpty, "ModelPlex expects non-empty list of variables to monitor")
-    require(StaticSemantics.symbols(fml).intersect(vars.map(v => BaseVariable(v.name + "post", v.index)).toSet).isEmpty,
+    require(StaticSemantics.symbols(fml).intersect(vars.map(postVar).toSet).isEmpty,
       "ModelPlex post symbols must not occur in original formula")
 
     def conjectureOf(assumptions: Formula, prg: Program): (Formula, List[Formula]) = {
@@ -116,7 +112,7 @@ object ModelPlex extends ModelPlexTrait {
       assert(boundVars.forall(v => !v.isInstanceOf[Variable] || v.isInstanceOf[DifferentialSymbol] || vars.contains(v)),
         "All bound variables " + StaticSemantics.boundVars(prg).prettyString + " must occur in monitor list " + vars.mkString(", ") +
           "\nMissing: " + (StaticSemantics.boundVars(prg).symbols.toSet diff vars.toSet).mkString(", "))
-      val posteqs = vars.map(v => Equal(BaseVariable(v.name + "post", v.index), v)).reduceRight(And)
+      val posteqs = vars.map(v => Equal(postVar(v), v)).reduceRight(And)
       //@note suppress assumptions mentioning bound variables
       val nonboundAssumptions = FormulaTools.conjuncts(assumptions).filter(a => boundVars.intersect(StaticSemantics.freeVars(a).symbols).isEmpty)
       (Diamond(prg, posteqs), nonboundAssumptions)
@@ -126,6 +122,455 @@ object ModelPlex extends ModelPlexTrait {
       case Imply(assumptions, Box(prg, _)) => conjectureOf(assumptions, prg)
       case _ => throw new IllegalArgumentException("Unsupported shape of formula " + fml)
     }
+  }
+
+  /** Conjecture for double-checking a monitor formula for correctness: assumptions -> (monitor -> < prg; >Upsilon). */
+  def createMonitorCorrectnessConjecture(vars: List[Variable], kind: Symbol, checkProvable: Option[(ProvableSig => Unit)]): (Formula => Formula) = formula => {
+    val monitor = apply(vars, kind, checkProvable)(formula)
+    val (monitorConjecture, assumptions) = createMonitorSpecificationConjecture(formula, vars:_*)
+    Imply(assumptions.reduceOption(And).getOrElse(True), Imply(monitor, monitorConjecture))
+  }
+
+  private def doReplaceOld(t: Term, x0: Map[Variable, Variable]): Term = ExpressionTraversal.traverse(new ExpressionTraversalFunction {
+    override def preT(p: PosInExpr, e: Term): Either[Option[StopTraversal], Term] = e match {
+      case v: BaseVariable if x0.contains(v) => Right(x0(v))
+      case _ => Left(None)
+    }
+  }, t).get
+
+  private def replaceOld(f: Formula, x0: Map[Variable, Variable]): Formula = ExpressionTraversal.traverse(new ExpressionTraversalFunction {
+    override def preT(p: PosInExpr, e: Term): Either[Option[StopTraversal], Term] = e match {
+      case FuncOf(Function("old", _, _, _, _), v: BaseVariable) if x0.contains(v) => Right(x0(v))
+      case FuncOf(Function("old", _, _, _, _), v: BaseVariable) if !x0.contains(v) => Right(v)
+      case FuncOf(Function("old", _, _, _, _), t) => Right(doReplaceOld(t, x0))
+      case _ => Left(None)
+    }
+  }, f).get
+
+  private def proofListener(name: String, senseVars: Set[Variable], q: Formula, x0: Map[Variable, Variable]) = new IOListener() {
+    var invariant: Option[Formula] = None
+    var diffInvariants: List[Formula] = Nil
+    var odeLemma: Option[(String, Formula, BelleExpr)] = None
+    var throughoutLemmas: List[(String, Formula, BelleExpr)] = Nil
+    var loopBranch: Option[BelleExpr] = None
+    override def begin(input: BelleValue, expr: BelleExpr): Unit = expr match {
+      case SeqTactic(t: AppliedDependentPositionTacticWithAppliedInput, b: BranchTactic) if t.pt.name == "throughout" =>
+        loopBranch = Some(b)
+      case SeqTactic(t: AppliedDependentPositionTactic, s: BelleExpr) if t.name == "dW" => input match {
+        case BelleProvable(p, _) =>
+          assert(p.subgoals.size == 1, "dW expected on a single subgoal")
+          val dWResult = proveBy(p.subgoals.head, t)
+          assert(dWResult.subgoals.size == 1, "dW expected to result in a single subgoal")
+          odeLemma = Some((name+"_dW", dWResult.subgoals.head.toFormula, s))
+      }
+      case t: AppliedDependentPositionTacticWithAppliedInput if t.pt.name == "throughout" =>
+        invariant = Some(t.pt.asInstanceOf[DependentPositionWithAppliedInputTactic].inputs.head.asInstanceOf[Formula])
+      case t: AppliedDependentPositionTacticWithAppliedInput if t.pt.name == "dC" => input match {
+        case BelleProvable(p, _) =>
+          val di = t.pt.asInstanceOf[DependentPositionWithAppliedInputTactic].inputs.head.asInstanceOf[Formula]
+          p.subgoals.head.sub(t.locator.toPosition(p)) match {
+            case Some(Box(ODESystem(_, qq@And(_, prevDi)), _)) if qq != q =>
+              //@todo identify branch (e.g., (a=-B -> dC1) & (a=0 -> dC2) & (a=A -> dC3)
+              //@todo shared diffcuts before branch
+              if (StaticSemantics.freeVars(di).intersect(senseVars).toSet.nonEmpty) {
+                val idx = diffInvariants.indexWhere({
+                  case And(_, diPostfix) => replaceOld(diPostfix, x0) == prevDi
+                  case diPostfix => replaceOld(diPostfix, x0) == prevDi
+                })
+                if (idx >= 0) diffInvariants = diffInvariants.updated(idx, And(diffInvariants(idx), di))
+                else diffInvariants = diffInvariants :+ di
+              }
+            case Some(Box(ODESystem(_, _), _)) => diffInvariants = diffInvariants :+ di
+          }
+      }
+      case b@BranchTactic(children) if loopBranch.contains(b) => input match {
+        case BelleProvable(p, _) =>
+          //@todo make sandbox tactic synthesis more flexible for shapes other than ctrl;plant
+          assert(children.size == 4 && children.size == p.subgoals.size, "4 open goals expected after throughout")
+          throughoutLemmas = p.subgoals.zip(children).zipWithIndex.map({ case ((s, t), i) => (name+"_"+i, s.toFormula, implyR(1) & t) }).toList
+        case _ =>
+      }
+      case _ => // nothing to do
+    }
+    override def end(input: BelleValue, expr: BelleExpr, output: Either[BelleValue, BelleThrowable]): Unit = expr match {
+      case b@BranchTactic(children) if loopBranch.contains(b) => loopBranch = None
+      case _ =>
+    }
+    override def kill(): Unit = {}
+  }
+
+  /** Creates a model with the ODE approximated by the evolution domain and diff. invariants from the `tactic`.
+    * Returns the adapted model and a tactic to proof safety from the original proof. */
+  def createNonlinearModelApprox(name: String, tactic: BelleExpr): (Expression => (Formula, BelleExpr)) = {
+    case fml@Imply(init, Box(Loop(Compose(ctrl, plant@ODESystem(_, q))), safe)) =>
+      val plantVars = StaticSemantics.boundVars(plant).toSet.filter(_.isInstanceOf[BaseVariable]).toList.sorted[NamedSymbol]
+      val x0 = plantVars.map(v => v -> BaseVariable(v.name, TacticHelper.freshIndexInFormula(v.name, fml))).toMap
+      val x0Ghosts = x0.map({ case (v, g) => Assign(g, v) }).reduceRight(Compose)
+      val nondetPlant = plantVars.map(AssignAny).reduceRight(Compose)
+
+      val pl = proofListener(name, plantVars.toSet, q, x0)
+      LazySequentialInterpreter(pl::Nil)(tactic, BelleProvable(ProvableSig.startProof(fml)))
+
+      val diffInvariants = pl.diffInvariants.map(replaceOld(_, x0)).map(f => FormulaTools.conjuncts(f).toSet[Formula]).map(_.reduceRightOption(And).getOrElse(True)).reduceRightOption(Or).getOrElse(True)
+      val evolDomain = if (q == True) diffInvariants else And(q, diffInvariants)
+      val body = Compose(ctrl, Compose(x0Ghosts, Compose(Test(evolDomain), Compose(nondetPlant, Test(evolDomain)))))
+      val approx = Imply(init, Box(Loop(body), safe))
+      (approx, skip)
+    case _ => throw new IllegalArgumentException("Unsupported model shape, expected shape init -> [(ctrl;plant;)*]safe")
+  }
+
+  /** Creates a sandbox safety conjecture from a formula of the shape init->[?bounds;{ctrl;plant}*]safe. The sandbox embeds
+    * an (unverified) external controller in monitor checks of `kind`. It approximates the external controller behavior
+    * with nondeterministic values for each of the bound variables in `ctrl`. Input to the external controller is measured with
+    * nondeterministic values for each of the bound variables in `plant`, but restricted to those satisfying the
+    * evolution domain constraints and invariants of the plant. If the monitor is satisfied, the external controller's
+    * decision are actuated. Otherwise (monitor unsatisfied) `fallback` (if specified, ctrl by default) is executed.
+    * @param tactic The tactic used to prove safety of the original model.
+    * @param fallback The fallback controller to embed in the sandbox, `ctrl` by default.
+    * @param kind The kind of monitor to derive (controller or model monitor).
+    * @param checkProvable Whether or not to check the ModelPlex provable.
+    * @return The sandbox formula with a tactic to prove it, and a list of lemmas used in the proof.
+    */
+  def createSandboxPlantFirst(name: String, tactic: BelleExpr, fallback: Option[Program], kind: Symbol,
+                    checkProvable: Option[(ProvableSig => Unit)]):
+  (Formula => ((Formula,BelleExpr), List[(String,Formula,BelleExpr)])) = formula => {
+    require(kind == 'ctrl, s"Unable to create a sandbox of kind $kind, so far only controller monitors supported")
+    val vars: List[BaseVariable] = StaticSemantics.symbols(formula).filter({case _: BaseVariable => true case _ => false}).map(_.asInstanceOf[BaseVariable]).toList.sorted[NamedSymbol]
+    val monitor = apply(vars, kind, checkProvable)(formula)
+    formula match {
+      case Imply(init, Box(Compose(Test(bounds), Loop(Compose(ctrlPrg, ODESystem(ode, q)))), safe)) =>
+        val senseVars: List[Variable] = StaticSemantics.boundVars(ode).toSet.filterNot(StaticSemantics.isDifferential(_)).toList.sorted[NamedSymbol]
+        val ctrlVars: List[Variable] = StaticSemantics.boundVars(ctrlPrg).toSet[Variable].toList.sorted[NamedSymbol]
+        val x0 = senseVars.map(v => v -> BaseVariable(v.name, TacticHelper.freshIndexInFormula(v.name, formula))).toMap
+
+        val pl = proofListener(name, senseVars.toSet, q, x0)
+        LazySequentialInterpreter(pl::Nil)(tactic, BelleProvable(ProvableSig.startProof(formula)))
+
+        val plantApprox = pl.diffInvariants.flatMap(f => FormulaTools.conjuncts(f)).toSet[Formula].reduceRightOption(And).getOrElse(True)
+
+        assert(proveBy(Imply(init,bounds), auto).isProved)
+        val preVars = senseVars.map(v => preVar(v) -> v)
+//        assert((StaticSemantics(And(plantApprox,q)).fv -- senseVars).toSet.subsetOf(preVars.map(_._1).toSet),
+//          "Plant approximation only allowed to mention sensed variables and their initial states")
+        val pre = preVars.map(Assign.tupled).reduceOption(Compose).getOrElse(Test(True))
+        // senseVars0:=senseVars; senseVars:=*; ?Q;
+        val readSensors = senseVars.map(AssignAny).reduceOption(Compose).getOrElse(Test(True))
+        val sense = Compose(pre, Compose(readSensors, Test(And(plantApprox, q))))
+        // ctrlVarsTemp:=*;
+        val ctrl = ctrlVars.map(postVar).map(AssignAny).reduceOption(Compose).getOrElse(Test(True))
+        // ctrlVars:=ctrlVarsTemp
+        val operationalize = ctrlVars.map(v => Assign(v, postVar(v))).reduceOption(Compose).getOrElse(Test(True))
+        // if (monitor) ctrlVars:=ctrlVarsTemp else ctrlVars:=fallback
+        val act = Choice(Compose(Test(monitor), operationalize), Compose(Test(Not(monitor)), fallback.getOrElse(ctrlPrg)))
+
+        val upsilonConjuncts = vars.sorted[NamedSymbol].map(v => Equal(BaseVariable(v.name + "post", v.index), v))
+        val upsilon = upsilonConjuncts.reduce(And)
+
+        // ctrlVarsTemp:=ctrlVars
+        val tempCtrl = vars.map(v => Assign(postVar(v), v)).reduceOption(Compose).getOrElse(Test(True))
+        val fallbackCtrl = Compose(fallback.getOrElse(ctrlPrg), tempCtrl)
+
+        val sandbox = Imply(init, Box(Compose(Test(bounds), Loop(Compose(sense, Compose(ctrl, act)))), safe))
+        val sbTactic = sandboxTacticPlantFirst(name, pl.invariant.get, monitor, q, ctrlPrg, fallbackCtrl,
+          upsilon, senseVars)
+
+        val monitorCheck = (name+"_MonitorCheck", Imply(monitor, Diamond(ctrlPrg, And(upsilon, q))), chase(1, 1::Nil) & QE)
+        val fallbackCheck = (name+"_FallbackCheck", Imply(bounds, Box(fallbackCtrl, monitor)), master())
+
+        val lemmas =
+          pl.throughoutLemmas ++
+          (if (pl.odeLemma.isDefined) pl.odeLemma.get::Nil else Nil) ++
+          (monitorCheck::Nil) ++
+          (fallbackCheck::Nil)
+
+        (sandbox -> sbTactic, lemmas)
+    }
+  }
+
+  /** Creates a sandbox safety conjecture from a formula of the shape init->[?bounds;{ctrl;plant}*]safe. The sandbox embeds
+    * an (unverified) external controller in monitor checks of `kind`. It approximates the external controller behavior
+    * with nondeterministic values for each of the bound variables in `ctrl`. Input to the external controller is measured with
+    * nondeterministic values for each of the bound variables in `plant`, but restricted to those satisfying the
+    * evolution domain constraints and invariants of the plant. If the monitor is satisfied, the external controller's
+    * decision are actuated. Otherwise (monitor unsatisfied) `fallback` (if specified, ctrl by default) is executed.
+    * @param tactic The tactic used to prove safety of the original model.
+    * @param fallback The fallback controller to embed in the sandbox, `ctrl` by default.
+    * @param kind The kind of monitor to derive (controller or model monitor).
+    * @param checkProvable Whether or not to check the ModelPlex provable.
+    * @return The sandbox formula with a tactic to prove it, and a list of lemmas used in the proof.
+    */
+  def createSandbox(name: String, tactic: BelleExpr, fallback: Option[Program], kind: Symbol,
+                    checkProvable: Option[(ProvableSig => Unit)]):
+  (Formula => ((Formula,BelleExpr), List[(String,Formula,BelleExpr)])) = formula => {
+    require(kind == 'ctrl, s"Unable to create a sandbox of kind $kind, so far only controller monitors supported")
+    val vars: List[BaseVariable] = StaticSemantics.symbols(formula).filter({case _: BaseVariable => true case _ => false}).map(_.asInstanceOf[BaseVariable]).toList.sorted[NamedSymbol]
+    formula match {
+      case Imply(initCond, Box(sysPrg@Loop(Compose(ctrlPrg, ODESystem(ode, q))), safe)) =>
+
+        def replace[S<:Expression, T<:Term, U<:Term](fml: S, repl: Map[T, U]): S = {
+          repl.foldLeft(fml)({
+            case (f: Formula, v) => f.replaceFree(v._1, v._2).asInstanceOf[S]
+            case (p: Program, v) => p.replaceFree(v._1, v._2).asInstanceOf[S]
+          })
+        }
+
+        val consts = StaticSemantics.symbols(sysPrg).
+          filter({ case Function(_, _, Unit, _, _) => true case _ => false }).
+          map(_.asInstanceOf[Function]).
+          map(s => FuncOf(s, Nothing) -> Variable(s.name, s.index)).toMap
+        val init = replace(initCond, consts)
+        val monitor = replace(apply(vars, kind, checkProvable)(formula), consts)
+        val senseVars: List[Variable] = StaticSemantics.boundVars(ode).toSet.
+          filterNot(StaticSemantics.isDifferential(_)).toList.sorted[NamedSymbol]
+        val sensePostVars = senseVars.map(v => v -> postVar(v)).toMap
+        val ctrlVars: List[Variable] = StaticSemantics.boundVars(ctrlPrg).toSet[Variable].toList.sorted[NamedSymbol]
+        val x0 = senseVars.map(v => v -> BaseVariable(v.name, TacticHelper.freshIndexInFormula(v.name, formula))).toMap
+
+        val readConsts = consts.values.toList.sorted[NamedSymbol].map(AssignAny).reduceOption(Compose).getOrElse(Test(True))
+
+        val pl = proofListener(name, senseVars.toSet, q, x0)
+        LazySequentialInterpreter(pl::Nil)(tactic, BelleProvable(ProvableSig.startProof(formula)))
+        val inv = replace(pl.invariant.get, consts)
+
+        val plantApprox = (pl.diffInvariants :+ q).
+          flatMap(f => FormulaTools.conjuncts(f)).
+          map(replace(_, sensePostVars)).
+          map(replace(_, consts)).
+          toSet[Formula].reduceRightOption(And).getOrElse(True)
+
+        // senseVars+:=*; ?Q; senseVars:=senseVars+;
+        val readInitialSensors = senseVars.map(AssignAny).reduceOption(Compose).getOrElse(Test(True))
+        val readSensors = sensePostVars.values.map(AssignAny).reduceOption(Compose).getOrElse(Test(True))
+        val copySensors = sensePostVars.map(Assign.tupled).reduceOption(Compose).getOrElse(Test(True))
+        val sense = Compose(readSensors, Compose(Test(plantApprox), copySensors))
+        // ctrlVarsTemp:=*;
+        val ctrl = ctrlVars.map(postVar).map(AssignAny).reduceOption(Compose).getOrElse(Test(True))
+        // ctrlVars:=ctrlVarsTemp
+        val operationalize = ctrlVars.map(v => Assign(v, postVar(v))).reduceOption(Compose).getOrElse(Test(True))
+        // if (monitor) ctrlVars:=ctrlVarsTemp else ctrlVars:=fallback
+        val act = Choice(Compose(Test(monitor), operationalize), Compose(Test(Not(monitor)), fallback.getOrElse(ctrlPrg)))
+
+        val upsilonConjuncts = vars.sorted[NamedSymbol].map(v => Equal(BaseVariable(v.name + "post", v.index), v))
+        val upsilon = upsilonConjuncts.reduce(And)
+
+        // ctrlVarsTemp:=ctrlVars
+        val tempCtrl = vars.map(v => Assign(postVar(v), v)).reduceOption(Compose).getOrElse(Test(True))
+        val fallbackCtrl = Compose(fallback.getOrElse(replace(ctrlPrg, consts)), tempCtrl)
+
+        val sandbox = Box(Compose(readConsts, Compose(readInitialSensors, Compose(Test(init),
+          Loop(Compose(ctrl, Compose(act, sense)))))), safe)
+        val sbTactic = sandboxTactic(name, inv, monitor, replace(q, consts),
+          replace(ctrlPrg, consts), fallbackCtrl, consts,
+          upsilon, senseVars)
+
+        val monitorCheck = (name+"_MonitorCheck",
+          Imply(monitor, Diamond(replace(ctrlPrg, consts), And(upsilon, replace(q, consts)))),
+          chase(1, 1::Nil) & QE)
+        val fallbackCheck = (name+"_FallbackCheck", Imply(inv, Box(fallbackCtrl, monitor)), master())
+
+        val lemmas =
+          pl.throughoutLemmas ++
+            (if (pl.odeLemma.isDefined) pl.odeLemma.get::Nil else Nil) ++
+            (monitorCheck::Nil) ++
+            (fallbackCheck::Nil)
+
+        (sandbox -> sbTactic, lemmas)
+      case _ => throw new IllegalArgumentException("Sandbox synthesis supports input formulas of the shape init -> [{ctrl;ODE}*]safe. Please use {} to group program statements into exactly two blocks, e.g. { {ctrl1;ctrl2;}{ODE} }*.")
+    }
+  }
+
+  /**
+    * Synthesizes a tactic to derive a sandbox safety proof from the safety proof of the original model.
+    * @param name The name of the sandbox (used to prefix lemma lookup).
+    * @param inv The throughout invariant used in the original safety proof.
+    * @param monitor Monitor derived from the model.
+    * @param ctrl Verified control program.
+    * @param fallbackCtrl Fallback control with control effect set to post-vars, of the shape fallback;xp:=x;
+    * @param upsilon The ModelPlex conjecture post-condition of the shape xp=x
+    * @param senseVars The variables bound in the plant.
+    * @return The tactic to derive a sandbox safety proof from the original safety proof.
+    */
+  private def sandboxTacticPlantFirst(name: String, inv: Formula, monitor: Formula, odeDomain: Formula,
+                            ctrl: Program, fallbackCtrl: Program,
+                            upsilon: Formula, senseVars: List[Variable]): BelleExpr = {
+    val numCtrlVars = StaticSemantics.boundVars(ctrl).toSet.size
+    val upsilonConjuncts = FormulaTools.conjuncts(upsilon)
+
+    /*@note chase but stop on <ctrl>fallbackUpsilon */
+    val chaseFallback = "ANON" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Diamond(prg, _)) if prg == ctrl => nil
+      case _ => step(pos) | alphaRule | allR(pos)
+    })
+
+    //@todo generalize to fallback with nondeterministic choice
+    val Diamond(_, fallbackUpsilon) = proveBy(Box(fallbackCtrl, Diamond(ctrl, upsilon)),
+      SaturateTactic(chaseFallback(1))).subgoals.head.succ.head
+
+    val fallbackUpsilonConjuncts = FormulaTools.conjuncts(fallbackUpsilon)
+
+    implyR(1) & SaturateTactic(andL('L)) & composeb(1) & testb(1) & implyR(1) & throughout(inv)(1) & Idioms.<(
+      DebuggingTactics.print("Proving base case") & useLemma(name+"_0", Some(prop)) & DebuggingTactics.done("Base case")
+      ,
+      DebuggingTactics.print("Proving use case") & useLemma(name+"_1", Some(prop)) & DebuggingTactics.done("Use case")
+      ,
+      DebuggingTactics.print("Proving plant") & chase(1) & allR(1)*senseVars.size &
+      DebuggingTactics.print("Applying " + name + "_dW lemma") &
+      useLemma(name+"_dW", Some(prop)) & DebuggingTactics.done(name + "_dW lemma")
+      ,
+      DebuggingTactics.print("Proving external control") & chase(1) & allR(1)*numCtrlVars & prop &
+      DebuggingTactics.done("External control")
+      ,
+      DebuggingTactics.print("Proving controllers") & chase(1) & andR(1) & Idioms.<(
+        DebuggingTactics.print("Proving external control passes monitor") &
+        useLemmaAt(name+"_MonitorCheck", Some(PosInExpr(0::Nil)))(1, 0::Nil) &
+        implyR(1) & cut(Box(ctrl, inv)) & Idioms.<(
+          cut(Diamond(ctrl, And(inv, And(upsilon, odeDomain)))) & Idioms.<(
+            hideL('L, Box(ctrl, inv)) & hideL('L, Diamond(ctrl, And(upsilon, odeDomain))) &
+            useAt("<> diamond", PosInExpr(1::Nil))('Llast) &
+            notL('Llast) & abstractionb('Rlast) & allR('Rlast)*numCtrlVars & notR('Rlast) & SaturateTactic(andL('L)) &
+            upsilonConjuncts.filter({ case Equal(l, r) => l != r }).map(c => exhaustiveEqL2R('L, c)).reduce[BelleExpr](_&_) &
+            prop & DebuggingTactics.done("External control passes monitor 1")
+            ,
+            useAt("Kd2 diamond modus ponens", PosInExpr(1::1::Nil))(2) & onAll(prop) &
+            DebuggingTactics.done("External control passes monitor 2")
+          ),
+          useLemma(name+"_2", Some(prop)) & DebuggingTactics.done("External control passes monitor 3")
+        ) & DebuggingTactics.done("External control")
+        ,
+        DebuggingTactics.print("Proving fallback") &
+        implyR(1) & hideL('Llast) & cut(Box(fallbackCtrl, monitor)) <(
+          Idioms.searchApplyIn(Box(fallbackCtrl, monitor),
+            useLemmaAt(name+"_MonitorCheck", Some(PosInExpr(0::Nil))), PosInExpr(1::Nil)) &
+            SaturateTactic(chaseFallback('Llast)) & cut(Box(ctrl, inv)) <(
+            cut(Diamond(ctrl, And(inv, And(fallbackUpsilon, odeDomain)))) <(
+              hideL('L, Box(ctrl, inv)) & hideL('L, Diamond(ctrl, And(fallbackUpsilon, odeDomain))) &
+              useAt("<> diamond", PosInExpr(1::Nil))('Llast) &
+              notL('Llast) & abstractionb('Rlast) & allR('Rlast)*numCtrlVars & notR('Rlast) & SaturateTactic(andL('L)) &
+              fallbackUpsilonConjuncts.filter({ case Equal(l, r) => l != r }).
+                map(c => exhaustiveEqR2L('L, c)).
+                reduce[BelleExpr](_&_) &
+              prop & DebuggingTactics.done("Fallback 1")
+              ,
+              useAt("Kd2 diamond modus ponens", PosInExpr(1::1::Nil))('Rlast) & onAll(prop) &
+              DebuggingTactics.done("Fallback 2")
+            )
+            ,
+            DebuggingTactics.print("Applying " + name + "_2 lemma") &
+            useLemma(name+"_2", Some(prop)) &
+            DebuggingTactics.done("Applying " + name + "_2 lemma")
+          )
+          ,
+          DebuggingTactics.print("Applying " + name + "_FallbackCheck lemma") &
+          useLemma(name+"_FallbackCheck", Some(prop)) & DebuggingTactics.done("Applying " + name + "_FallbackCheck lemma")
+        ) & DebuggingTactics.done("Proving fallback")
+      )
+    )
+  }
+
+  /**
+    * Synthesizes a tactic to derive a sandbox safety proof from the safety proof of the original model.
+    * @param name The name of the sandbox (used to prefix lemma lookup).
+    * @param inv The throughout invariant used in the original safety proof.
+    * @param monitor Monitor derived from the model.
+    * @param ctrl Verified control program.
+    * @param fallbackCtrl Fallback control with control effect set to post-vars, of the shape fallback;xp:=x;
+    * @param upsilon The ModelPlex conjecture post-condition of the shape xp=x
+    * @param senseVars The variables bound in the plant.
+    * @return The tactic to derive a sandbox safety proof from the original safety proof.
+    */
+  private def sandboxTactic(name: String, inv: Formula, monitor: Formula, odeDomain: Formula,
+                            ctrl: Program, fallbackCtrl: Program, consts: Map[FuncOf, Variable],
+                            upsilon: Formula, senseVars: List[Variable]): BelleExpr = {
+    val numCtrlVars = StaticSemantics.boundVars(ctrl).toSet.size
+    val upsilonConjuncts = FormulaTools.conjuncts(upsilon)
+
+    /*@note chase but stop on <ctrl>fallbackUpsilon */
+    val chaseFallback = "ANON" by ((pos: Position, seq: Sequent) => seq.sub(pos) match {
+      case Some(Diamond(prg, _)) if prg == ctrl => nil
+      case _ => step(pos) | alphaRule | allR(pos)
+    })
+
+    //@todo generalize to fallback with nondeterministic choice
+    val Diamond(_, fallbackUpsilon) = proveBy(Box(fallbackCtrl, Diamond(ctrl, upsilon)),
+      SaturateTactic(chaseFallback(1))).subgoals.head.succ.head
+
+    val fallbackUpsilonConjuncts = FormulaTools.conjuncts(fallbackUpsilon)
+
+    def constify(tactic: BelleExpr): BelleExpr = consts.foldLeft[BelleExpr](tactic)((tactic, c) => let(c._1, c._2, tactic))
+
+    DebuggingTactics.print("Proving sandbox safety") &
+    chase(1) & SaturateTactic((allR(1) | implyR(1))) & loop(inv)(1) <(
+      DebuggingTactics.print("Proving base case") & constify(useLemma(name+"_0", Some(prop))) & DebuggingTactics.done("Base case")
+      ,
+      DebuggingTactics.print("Proving use case") & constify(useLemma(name+"_1", Some(prop))) & DebuggingTactics.done("Use case")
+      ,
+      DebuggingTactics.print("Proving induction step") &
+      DebuggingTactics.print("Executing external control") &
+      composeb(1) & (composeb(1) & randomb(1) & allR(1))*(numCtrlVars-1) & randomb(1) & allR(1) &
+      DebuggingTactics.print("Splitting actuation/fallback from plant") &
+      composeb(1) & generalize(inv)(1) <(
+        DebuggingTactics.print("Proving controllers") & choiceb(1) & andR(1) <(
+          DebuggingTactics.print("Proving external control actuation") &
+          composeb(1) & testb(1) &
+          useLemmaAt(name+"_MonitorCheck", Some(PosInExpr(0::Nil)))(1, 0::Nil) &
+          implyR(1) & cut(Box(ctrl, inv)) <(
+            cut(Diamond(ctrl, And(inv, And(upsilon, odeDomain)))) <(
+              DebuggingTactics.print("Using external control actuation cuts") &
+              chase(1) &
+              hideL('L, Box(ctrl, inv)) & hideL('L, Diamond(ctrl, And(upsilon, odeDomain))) &
+              useAt("<> diamond", PosInExpr(1::Nil))('Llast) &
+              notL('Llast) & abstractionb('Rlast) & allR('Rlast)*numCtrlVars & notR('Rlast) & SaturateTactic(andL('L)) &
+              upsilonConjuncts.filter({ case Equal(l, r) => l != r }).map(c => exhaustiveEqL2R('L, c)).reduce[BelleExpr](_&_) &
+              prop & DebuggingTactics.done("Using external control actuation cuts")
+              ,
+              DebuggingTactics.print("Proving <ctrl;>(inv&upsilon&q)") &
+              useAt("Kd2 diamond modus ponens", PosInExpr(1::1::Nil))(2) & onAll(prop) &
+              DebuggingTactics.done("Proving <ctrl;>(inv&upsilon&q)")
+            )
+            ,
+            DebuggingTactics.print("Proving [ctrl;]inv") &
+            constify(useLemma(name+"_2", Some(prop))) & DebuggingTactics.done("Proving [ctrl;]inv")
+          ) &
+          DebuggingTactics.done("Proving external control actuation")
+          ,
+          DebuggingTactics.print("Proving fallback") & composeb(1) & testb(1) & implyR(1) & hideL('Llast) &
+          cut(Box(fallbackCtrl, monitor)) <(
+            Idioms.searchApplyIn(Box(fallbackCtrl, monitor),
+              useLemmaAt(name+"_MonitorCheck", Some(PosInExpr(0::Nil))), PosInExpr(1::Nil)) &
+              SaturateTactic(chaseFallback('Llast)) & DebuggingTactics.print("Fallback chased") &
+            cut(Box(ctrl, inv)) <(
+              cut(Diamond(ctrl, And(inv, And(fallbackUpsilon, odeDomain)))) <(
+                DebuggingTactics.print("Using fallback cuts") &
+                chase(1) & hideL('L, Box(ctrl, inv)) & hideL('L, Diamond(ctrl, And(fallbackUpsilon, odeDomain))) &
+                useAt("<> diamond", PosInExpr(1::Nil))('Llast) &
+                notL('Llast) & abstractionb('Rlast) & allR('Rlast)*numCtrlVars & notR('Rlast) & SaturateTactic(andL('L)) &
+                fallbackUpsilonConjuncts.filter({ case Equal(l, r) => l != r }).map(c => exhaustiveEqR2L('L, c)).reduce[BelleExpr](_&_) &
+                prop & DebuggingTactics.done("Using fallback cuts")
+                ,
+                DebuggingTactics.print("Proving <ctrl;>(inv&upsilon&q)") &
+                useAt("Kd2 diamond modus ponens", PosInExpr(1::1::Nil))('Rlast) & onAll(prop) &
+                DebuggingTactics.done("Proving <ctrl;>(inv&upsilon&q)")
+              )
+              ,
+              DebuggingTactics.print("Applying " + name + "_2 lemma") &
+              constify(useLemma(name+"_2", Some(prop))) &
+              DebuggingTactics.done("Applying " + name + "_2 lemma")
+            )
+            ,
+            DebuggingTactics.print("Applying " + name + "_FallbackCheck lemma") &
+            useLemma(name+"_FallbackCheck", Some(prop)) &
+            DebuggingTactics.done("Applying " + name + "_FallbackCheck lemma")
+          ) &
+          DebuggingTactics.done("Proving fallback")
+        ),
+        DebuggingTactics.print("Proving plant") & chase(1) & allR(1)*senseVars.size &
+        DebuggingTactics.print("Applying " + name + "_dW lemma") &
+        constify(useLemma(name+"_dW", Some(prop))) &
+        DebuggingTactics.done(name + "_dW lemma")
+      ) &
+      DebuggingTactics.done("Proving induction step")
+    ) &
+    DebuggingTactics.done("Proving sandbox safety")
   }
 
   /**
@@ -157,8 +602,32 @@ object ModelPlex extends ModelPlexTrait {
     case Diamond(Loop(_), _) => "<*> approx" :: Nil
     // remove ODEs for controller monitor
     case Diamond(ODESystem(_, _), _) => "DX diamond differential skip" :: Nil
-    case _ => println("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
+    case _ => logger.trace("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
   })
+
+  def chaseToTests(combineTests: Boolean): DependentPositionTactic = {
+//    val index: String => (PosInExpr, List[PosInExpr]) = {
+//      case "<?> test" => (PosInExpr(1::Nil), Nil)
+//      case "&true" => (PosInExpr(1::Nil), Nil)
+//      case ax => AxiomIndex.axiomIndex(ax)
+//    }
+
+    def onlyEqualities(fml: Formula): Boolean = fml match {
+      case _: Equal => true
+      case And(l, r) => onlyEqualities(l) && onlyEqualities(r)
+      case _ => false
+    }
+
+    chaseI(3,3, (e:Expression) => e match {
+      case Or(_, _) => "| recursor" :: Nil
+      case And(_, _) => "<?> invtest" :: Nil
+      case f: Formula if f.isFOL && f != True => "&true inv" :: Nil
+      case f: Formula if f == True => Nil
+      case Diamond(Test(p), Diamond(Test(_: Equal), _)) if combineTests && onlyEqualities(p) => "<?> combine" :: Nil
+      case _: Diamond => "<a> stuck" :: Nil
+      //case _ => logger.trace("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
+    }, (_,_) => pr=>pr, _ => us=>us, AxiomIndex.axiomIndex)
+  }
 
   /**
     * Returns a tactic to derive a model monitor in axiomatic style using forward chase + diffSolve. The tactic is
@@ -177,12 +646,12 @@ object ModelPlex extends ModelPlexTrait {
     applyAtAllODEs(ode)(pos) & // solve isolated ODEs once before splitting choices
     // chase and solve remaining
     chase(3,3, (e:Expression) => e match {
-    // remove loops
-    case Diamond(Loop(_), _) => "<*> approx" :: Nil
-    // keep ODEs, solve later
-    case Diamond(ODESystem(_, _), _) => Nil
-    case _ => println("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
-  })(pos) &
+      // remove loops
+      case Diamond(Loop(_), _) => "<*> approx" :: Nil
+      // keep ODEs, solve later
+      case Diamond(ODESystem(_, _), _) => Nil
+      case _ => logger.trace("Chasing " + e.prettyString); AxiomIndex.axiomsFor(e)
+    })(pos) &
     applyAtAllODEs(ode)(pos))
 
   /** Applies tatic `t` at all ODEs underneath this tactic's position. */
@@ -300,7 +769,7 @@ object ModelPlex extends ModelPlexTrait {
                              (unprog: Boolean => DependentPositionTactic): DependentPositionTactic = "Modelplex In-Place" by ((pos: Position, sequent: Sequent) => {
     sequent.sub(pos) match {
       case Some(Diamond(_, _)) =>
-        ((debug("Before HP") & unprog(useOptOne)(pos) & debug("After  HP"))*) &
+        (SaturateTactic(debug("Before HP") & unprog(useOptOne)(pos) & debug("After  HP"))) &
           debug("Done with transformation, now looking for quantifiers") &
           debug("Modelplex done")
     }
@@ -414,7 +883,9 @@ object ModelPlex extends ModelPlexTrait {
         case None => skip
         case Some(t) =>
           val simplified = t.simplify(qeFml, assumptions)
-          val backSubst = signature.foldLeft[Formula](simplified)((fml, t) => fml.replaceAll(Variable(t.name, t.index), FuncOf(t, Nothing)))
+          val backSubst = And(
+            assumptions.reduceOption(And).getOrElse(True),
+            signature.foldLeft[Formula](simplified)((fml, t) => fml.replaceAll(Variable(t.name, t.index), FuncOf(t, Nothing))))
           val pqe = proveBy(Imply(backSubst, existsFml), QE & done)
           cutAt(backSubst)(pp) < (skip, (if (pp.isSucc) cohideR(pp.topLevel) else cohideR('Rlast)) & CMon(pp.inExpr) & by(pqe))
       }
@@ -424,8 +895,8 @@ object ModelPlex extends ModelPlexTrait {
         case (Forall(xs, Imply(Equal(x, _), _)), pp) if pp.isSucc && xs.contains(x) => Some(useAt(simplForall1, PosInExpr(1::Nil))(pp))
         case (Forall(xs, Imply(Equal(_, x), _)), pp) if pp.isSucc && xs.contains(x) => Some(useAt(simplForall2, PosInExpr(1::Nil))(pp))
         // @note shape of ode solution
-        case (ode@Exists(ts, And(GreaterEqual(_, _), And(Forall(ss, Imply(And(_, _), _)), _))), pp)
-            if tool.isDefined && pp.isSucc && ts.contains("t_".asVariable) && ss.contains("s_".asVariable)=>
+        case (ode@Exists(t::Nil, And(GreaterEqual(_, _), And(Forall(s::Nil, Imply(And(_, _), _)), _))), pp)
+            if tool.isDefined && pp.isSucc && t == "t_".asVariable && s == "s_".asVariable =>
           val signature = StaticSemantics.signature(ode).filter({
             case Function(_, _, Unit, _, false) => true case _ => false }).map(_.asInstanceOf[Function])
           val edo = signature.foldLeft[Formula](ode)((fml, t) => fml.replaceAll(FuncOf(t, Nothing), Variable(t.name, t.index)))
@@ -451,21 +922,36 @@ object ModelPlex extends ModelPlexTrait {
       case Some(Exists(vars, phi)) if pos.isSucc =>
         // case from nondeterministic assignments
 
-        class SynonymFinder(v: NamedSymbol) extends ExpressionTraversalFunction {
-          var synonyms: Set[Term] = Set()
+        class SynonymFinder(v: Variable) extends ExpressionTraversalFunction {
+          private val vs = v :: postVar(v) :: Nil
+          var synonyms: mutable.Map[Variable, Set[Term]] = mutable.Map(vs.map(_ -> Set[Term]()):_*)
           override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] = e match {
-            case Equal(l, r) if v==l => synonyms = synonyms + r; Left(None)
-            case Equal(l, r) if v==r => synonyms = synonyms + l; Left(None)
+            case Equal(l: Variable, r: Variable) =>
+              if (vs.contains(l)) synonyms(l) = synonyms(l) + r
+              if (vs.contains(r)) synonyms(r) = synonyms(r) + l
+              Left(None)
+            case Equal(l: Variable, r) if vs.contains(l) => synonyms(l) = synonyms(l) + r; Left(None)
+            case Equal(l, r: Variable) if vs.contains(r) => synonyms(r) = synonyms(r) + l; Left(None)
             case Or(l, r) =>
               val lFinder = new SynonymFinder(v)
               val rFinder = new SynonymFinder(v)
               ExpressionTraversal.traverse(lFinder, l)
               ExpressionTraversal.traverse(rFinder, r)
-              synonyms = synonyms ++
-                (if (lFinder.synonyms.nonEmpty && rFinder.synonyms.nonEmpty) lFinder.synonyms & rFinder.synonyms
-                 else lFinder.synonyms | rFinder.synonyms)
+              val vSyns = lFinder.flattenSynonyms(v).intersect(rFinder.flattenSynonyms(v))
+              val vPostSyns = lFinder.flattenSynonyms(postVar(v)).intersect(rFinder.flattenSynonyms(postVar(v)))
+              val newSyns = Map(v -> vSyns, postVar(v) -> vPostSyns)
+              synonyms = synonyms.map({ case (key, value) => key -> value.union(newSyns(key)) })
               Right(e)
             case _ => Left(None)
+          }
+
+          def flattenSynonyms(of: Variable): Set[Term] = {
+            //@note if v synonyms empty but vpost contains a term: then v=vpost because vpost synonyms are result of [:=] subst
+            if (synonyms(v).isEmpty) synonyms(v) = synonyms(postVar(v))
+            val direct = synonyms(of)
+            val transitive1 = direct.filter(_.isInstanceOf[BaseVariable]).map(_.asInstanceOf[BaseVariable]).flatMap(synonyms.getOrElse(_, Set()))
+            val transitive2 = direct.flatMap(s => synonyms.filterKeys(k => synonyms.getOrElse(k, Set()).contains(s)).keySet)
+            (direct ++ transitive1 ++ transitive2) - of
           }
         }
 
@@ -473,14 +959,11 @@ object ModelPlex extends ModelPlexTrait {
         val vFinder = new SynonymFinder(v)
         ExpressionTraversal.traverse(vFinder, phi)
 
-        //@note use synonym if all equalities (except x=xpost) agree across branches, otherwise instantiate with "xpost"
-        val postEquality = vFinder.synonyms.find({
-          case r: Variable => v.name + "post" == r.name
-          case _ => false})
-        val remainingEqs = vFinder.synonyms.filter(Some(_) != postEquality)
-        val equality: Option[Term] =
-          if (remainingEqs.size == 1) Some(remainingEqs.head)
-          else postEquality
+        //@note prefer x=xpost over first synonym, if no synonyms found instantiate with "xpost"
+        val synonyms = vFinder.flattenSynonyms(v)
+        val postEquality = synonyms.find({ case r: BaseVariable => v.name + "post" == r.name case _ => false })
+        val equality: Option[Term] = if (postEquality.isDefined) postEquality else synonyms.headOption
+
         optimizationOneAt(equality.map(v -> _))(pos)
     }
   })
@@ -575,20 +1058,5 @@ object ModelPlex extends ModelPlexTrait {
       Idioms.repeatWhile(_.isInstanceOf[BinaryCompositeFormula])(propNF(1))(1))
     assert(result.subgoals.length == 1 && result.subgoals.head.ante.isEmpty && result.subgoals.head.succ.length == 1)
     result.subgoals.head.succ.head
-  }
-
-  private def mapSubpositions[T](pos: Position, sequent: Sequent, trafo: (Expression, Position) => Option[T]): List[T] = {
-    var result: List[T] = Nil
-    ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
-      override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] = trafo(e, pos ++ p) match {
-        case Some(tt) => result = tt +: result; Left(None)
-        case None => Left(None)
-      }
-      override def preT(p: PosInExpr, t: Term): Either[Option[StopTraversal], Term] = trafo(t, pos ++ p) match {
-        case Some(tt) => result = tt +: result; Left(None)
-        case None => Left(None)
-      }
-    }, sequent.sub(pos).get.asInstanceOf[Formula])
-    result
   }
 }

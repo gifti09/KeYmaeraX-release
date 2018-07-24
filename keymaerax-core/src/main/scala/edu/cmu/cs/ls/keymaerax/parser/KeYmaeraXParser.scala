@@ -10,9 +10,12 @@
  */
 package edu.cmu.cs.ls.keymaerax.parser
 
+import edu.cmu.cs.ls.keymaerax.Configuration
+
 import scala.annotation.{switch, tailrec}
 import scala.collection.immutable._
 import edu.cmu.cs.ls.keymaerax.core._
+import org.apache.logging.log4j.scala.Logging
 
 /**
  * KeYmaera X parser items on the parser stack.
@@ -97,17 +100,15 @@ private object MORE extends ExpectNonterminal("<more>") {override def toString =
  * @see [[edu.cmu.cs.ls.keymaerax.parser]]
  * @see [[http://keymaeraX.org/doc/dL-grammar.md Grammar]]
  */
-object KeYmaeraXParser extends Parser {
+object KeYmaeraXParser extends Parser with Logging {
   import OpSpec.statementSemicolon
   import OpSpec.func
 
   /** This default parser. */
-  val parser = this
+  val parser: Parser = this
 
   /** Lax mode where the parser is a little flexible about accepting input. */
-  private[keymaerax] val LAX_MODE = System.getProperty("LAX", "true")=="true"
-
-  private[parser] val DEBUG = System.getProperty("DEBUG", "false")=="true"
+  private[keymaerax] val LAX_MODE = Configuration(Configuration.Keys.LAX) == "true"
 
   private val parseErrorsAsExceptions = true
 
@@ -178,7 +179,7 @@ object KeYmaeraXParser extends Parser {
     }
     semanticAnalysis(parse) match {
       case None => parse
-      case Some(error) => if (LAX_MODE) {if (false) println("WARNING: " + "Semantic analysis" + "\nin " + "parsed: " + printer.stringify(parse) + "\n" + error); parse}
+      case Some(error) => if (LAX_MODE) { logger.trace("WARNING: " + "Semantic analysis" + "\nin " + "parsed: " + printer.stringify(parse) + "\n" + error); parse}
       else throw ParseException("Semantic analysis error " + error, parse).inInput("<unknown>", Some(input))
     }
   }
@@ -198,7 +199,7 @@ object KeYmaeraXParser extends Parser {
       case ex: CoreException => return Some("semantics: symbols computation error\n" + ex)
     }
     val names = symbols.map(s => (s.name, s.index, s.isInstanceOf[DifferentialSymbol]))
-    assert(!DEBUG || (names.size == symbols.size) == (symbols.toList.map(s => (s.name, s.index, s.isInstanceOf[DifferentialSymbol])).distinct.length == symbols.toList.map(s => (s.name, s.index, s.isInstanceOf[DifferentialSymbol])).length), "equivalent ways of checking uniqueness via set conversion or list distinctness")
+    assert(Configuration(Configuration.Keys.DEBUG) == "false" || (names.size == symbols.size) == (symbols.toList.map(s => (s.name, s.index, s.isInstanceOf[DifferentialSymbol])).distinct.length == symbols.toList.map(s => (s.name, s.index, s.isInstanceOf[DifferentialSymbol])).length), "equivalent ways of checking uniqueness via set conversion or list distinctness")
     //@NOTE Stringify avoids infinite recursion of KeYmaeraXPrettyPrinter.apply contract checking.
     if (names.size == symbols.size) None
     else {
@@ -244,6 +245,8 @@ object KeYmaeraXParser extends Parser {
     case ode: ODESystem if kind==ProgramKind => Some(ode)
     // whether ODESystem is classified as ProgramKind or DifferentialProgramKind
     case ode: ODESystem if kind==ProgramKind || kind==DifferentialProgramKind => Some(ode)
+    // lift misclassified differential program constants without evolution domain constraints to program constants
+    //case ode: DifferentialProgramConst if kind==ProgramKind => Some(ProgramConst(ode.name, ode.space))
     // lift differential equations without evolution domain constraints to ODESystems
     case ode: DifferentialProgram if ode.kind==DifferentialProgramKind && kind==ProgramKind => assert(!ode.isInstanceOf[ODESystem], "wrong kind"); Some(ODESystem(ode))
 
@@ -280,7 +283,7 @@ object KeYmaeraXParser extends Parser {
     op.const(tok1.tok.img, elaborate(st, tok1, op, op.kind._1, e1), elaborate(st, tok1, op, op.kind._2, e2), elaborate(st, tok1, op, op.kind._3, e3))
 
   private[parser] var annotationListener: ((Program,Formula) => Unit) =
-  {(p,inv) => println("Annotation: " + p + " @invariant(" + inv + ")")}
+  {(p,inv) => logger.trace("Annotation: " + p + " @invariant(" + inv + ")")}
   /**
    * Register a listener for @annotations during the parse.
     *
@@ -306,8 +309,8 @@ object KeYmaeraXParser extends Parser {
   //@todo reorder cases also such that pretty cases like fully parenthesized get parsed fast and early
   private def parseStep(st: ParseState): ParseState = {
     val ParseState(s, input@(Token(la,laloc) :: rest)) = st
-    if(PARSER_DEBUGGING) println(s)
-    if(PARSER_DEBUGGING) println(la)
+    logger.info(s)
+    logger.info(la)
     //@note This table of LR Parser matches needs an entry for every prefix substring of the grammar.
     s match {
       // nonproductive: help KeYmaeraXLexer recognize := * with whitespaces as ASSIGNANY
@@ -320,8 +323,13 @@ object KeYmaeraXParser extends Parser {
         reportAnnotation(elaborate(st, tok, OpSpec.sNone, ProgramKind, p).asInstanceOf[Program],
           elaborate(st, tok, OpSpec.sNone, FormulaKind, f1).asInstanceOf[Formula])
         reduce(st, 4, Bottom, r :+ Expr(p))
+      case r :+ Expr(p: Program) :+ (tok@Token(INVARIANT, _)) :+ (lpar@Token(LPAREN, _)) :+ Expr(f1) :+ Token(COMMA, _) if isAnnotable(p) =>
+        //@note elaborate DifferentialProgramKind to ODESystem to make sure annotations are stored on top-level
+        reportAnnotation(elaborate(st, tok, OpSpec.sNone, ProgramKind, p).asInstanceOf[Program],
+          elaborate(st, tok, OpSpec.sNone, FormulaKind, f1).asInstanceOf[Formula])
+        reduce(st, 2, Bottom, r :+ Expr(p) :+ tok :+ lpar)
       case r :+ Expr(p: Program) :+ Token(INVARIANT, _) :+ Token(LPAREN, _) :+ Expr(f1: Formula) if isAnnotable(p) =>
-        if (la == RPAREN || formulaBinOp(la)) shift(st) else error(st, List(RPAREN, BINARYFORMULAOP))
+        if (la == RPAREN || la == COMMA || formulaBinOp(la)) shift(st) else error(st, List(RPAREN, COMMA, BINARYFORMULAOP))
       case r :+ Expr(p: Program) :+ Token(INVARIANT, _) =>
         if (isAnnotable(p)) if (la == LPAREN) shift(st) else error(st, List(LPAREN))
         else errormsg(st, "requires an operator that supports annotation")
@@ -401,10 +409,16 @@ object KeYmaeraXParser extends Parser {
       case r :+ Token(tok: IDENT, _) :+ Token(LBARB, _) :+ Token(RBARB, _) =>
         require(tok.index == None, "no index supported for DifferentialProgramConst")
         reduce(st, 3, DifferentialProgramConst(tok.name, AnyArg), r)
+      case r :+ Token(tok: IDENT, _) :+ Token(LBARB, _) :+ Expr(x: Variable) :+ Token(RBARB, _) :+ Token(SEMI, _) if statementSemicolon =>
+        require(tok.index == None, "no index supported for ProgramConst")
+        reduce(st, 5, ProgramConst(tok.name, Except(x)), r)
       // DifferentialProgramConst symbols of argument Taboo
       case r :+ Token(tok: IDENT, _) :+ Token(LBARB, _) :+ Expr(x: Variable) :+ Token(RBARB, _) =>
-        require(tok.index == None, "no index supported for DifferentialProgramConst")
-        reduce(st, 4, DifferentialProgramConst(tok.name, Except(x)), r)
+        if (la == SEMI) shift(st)
+        else {
+          require(tok.index == None, "no index supported for DifferentialProgramConst")
+          reduce(st, 4, DifferentialProgramConst(tok.name, Except(x)), r)
+        }
       case r :+ Token(tok: IDENT, _) :+ Token(LBARB, _) :+ Token(DUAL, _) :+ Token(RBARB, _) :+ Token(SEMI, _) if statementSemicolon =>
         require(tok.index == None, "no index supported for SystemConst")
         reduce(st, 5, SystemConst(tok.name), r)
@@ -418,7 +432,7 @@ object KeYmaeraXParser extends Parser {
         if (la == RBARB) shift(st)
         else error(st, List(RBARB))
       case r :+ Token(tok: IDENT, _) :+ Token(LBARB, _) :+ Expr(_) =>
-        errormsg(st, "Identifier expected after state-dependent DiffProgramConst")
+        errormsg(st, "Identifier expected after state-dependent ProgramConst or DiffProgramConst")
       case r :+ Token(tok: IDENT, _) :+ Token(LBARB, _) :+ Token(DUAL, _) =>
         if (la == RBARB) shift(st)
         else error(st, List(RBARB))
@@ -972,6 +986,7 @@ object KeYmaeraXParser extends Parser {
   private def followsFormula(la: Terminal): Boolean = la==AMP || la==OR || la==IMPLY || la==REVIMPLY || la==EQUIV || la==RPAREN ||
     la==SEMI /* from tests */ ||
     la==RBRACE /* from predicationals */ ||
+    la==COMMA /* from invariant annotations */ ||
     la==PRIME || la==EOF
 
   /** Is la a (binary) operator that only works for formulas? */

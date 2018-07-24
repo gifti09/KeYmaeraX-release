@@ -5,11 +5,13 @@
 
 package edu.cmu.cs.ls.keymaerax.btactics.helpers
 
-import edu.cmu.cs.ls.keymaerax.bellerophon.UnificationMatch
+import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleExpr, UnificationMatch}
 import edu.cmu.cs.ls.keymaerax.btactics.AxiomaticODESolver.AxiomaticODESolverExn
-import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary
+import edu.cmu.cs.ls.keymaerax.btactics.{DLBySubst, FormulaTools, TactixLibrary}
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
+import edu.cmu.cs.ls.keymaerax.tools.SimplificationTool
+import edu.cmu.cs.ls.keymaerax.btactics.SimplifierV3._
 
 import scala.collection.immutable
 
@@ -62,18 +64,21 @@ object DifferentialHelper {
     vs.exists(v => isPrimedVariable(v, Some(system.ode)))
 
   /**
-    * Extracts all equalities that look like initial conditions from the formula f.
+    * Extracts all comparisons that look like initial conditions from the formula f.
     *
-    * @param ode Optionally an ODE; if None, then all equalities are extracted from f. This may include non-initial-conds.
+    * @param ode Optionally an ODE; if None, then all comparisons are extracted from f. This may include non-initial-conds.
     * @param f A formula containing conjunctions.
-    * @return A list of equality formulas after deconstructing Ands. E.g., A&B&C -> A::B::C::Nil
+    * @return A list of comparison formulas after deconstructing Ands. E.g., A&B&C -> A::B::C::Nil
     */
-  def extractInitialConditions(ode : Option[Program])(f : Formula) : List[Formula] =
-    flattenAnds(f match {
+  def extractInitialConditions(ode: Option[Program])(f: Formula): List[Formula] =
+    FormulaTools.conjuncts(f match {
       case And(l, r) => extractInitialConditions(ode)(l) ++ extractInitialConditions(ode)(r)
-      case Equal(v: Variable, _) => if (isPrimedVariable(v, ode)) f :: Nil else Nil
-      case Equal(_, v: Variable) => if (isPrimedVariable(v, ode)) f :: Nil else Nil
-      case _ => Nil //@todo is it possible to allow set-valued initial conditiosn (e.g., inequalities, disjunctions, etc.)?
+      //@todo search in other formulas using polarity
+      case cf: ComparisonFormula =>
+        val leftInitials = cf.left match { case v: Variable if isPrimedVariable(v, ode) => f :: Nil case _ => Nil }
+        val rightInitials = cf.right match { case v: Variable if isPrimedVariable(v, ode) => f :: Nil case _ => Nil }
+        leftInitials ++ rightInitials
+      case _ => Nil
     })
 
   /** Returns the list of variables that have differential equations in an ODE. */
@@ -84,14 +89,6 @@ object DifferentialHelper {
     case _: AtomicDifferentialProgram => ???
     case _ => throw AxiomaticODESolverExn(s"Expected a differential program or ODE system but found ${ode.getClass}")
   }
-
-  /**
-    * Converts list of formulas possibly containing Ands into list of formulas that does not contain any ANDs.
-    *
-    * @param fs A list of formulas, possibly containing Ands.
-    */
-  //@todo duplicate with FormulaTools.conjuncts
-  def flattenAnds(fs : immutable.List[Formula]): immutable.List[Formula] = fs.flatMap(decomposeAnds)
 
   /** Split a differential program into its ghost constituents: parseGhost("y'=a*x+b".asProgram) is (y,a,b) */
   def parseGhost(ghost: DifferentialProgram): (Variable,Term,Term) = {
@@ -169,17 +166,6 @@ object DifferentialHelper {
 
   /**
     *
-    * @param f A formula.
-    * @return A list of formulas with no top-level Ands.
-    */
-  def decomposeAnds(f : Formula) : immutable.List[Formula] = f match {
-    case And(l,r) => decomposeAnds(l) ++ decomposeAnds(r)
-    case _ => f :: Nil
-  }
-
-
-  /**
-    *
     * @param iniitalConstraints
     * @param x The variable whose initial value is requested.
     * @return The initial value of x.
@@ -196,7 +182,7 @@ object DifferentialHelper {
     * @return A map (f -> term) which maps each f in fs of the foram f=term to term.
     */
   def conditionsToValues(fs : List[Formula]) : Map[Variable, Term] = {
-    val flattened = flattenAnds(fs)
+    val flattened = FormulaTools.conjuncts(fs)
     val vOnLhs = flattened.map({
       case Equal(left, right) => left match {
         case v : Variable => Some(v, right)
@@ -245,6 +231,44 @@ object DifferentialHelper {
       TactixLibrary.Dassignb(1)*(StaticSemantics.boundVars(ode).symbols.count(_.isInstanceOf[DifferentialSymbol])))
     ).
       subgoals(1).succ(0)
+  }
+
+  //Simplification with either term simplifier or using simplification tool if available
+  def simpWithTool(tool: Option[SimplificationTool],t:Term) : Term = {
+    tool match {
+      case None => termSimp(t,emptyCtx,defaultTaxs)._1
+      case Some(tl) => tl.simplify(t,List())
+    }
+  }
+
+  // Computes and simplifies the lie derivative
+  // Firstly, it turns all remaining differentials into 0, then it simplifies and strips out things like x^0 = 1
+  // The simplifier can't do the last simplification with proof (since 0^0 is nasty)
+  def stripConstants(t:Term) : Term = {
+    t match {
+      case v:DifferentialSymbol => {
+        Number(0)
+      }
+      case bop:BinaryCompositeTerm => bop.reapply(stripConstants(bop.left),stripConstants(bop.right))
+      case uop:UnaryCompositeTerm => uop.reapply(stripConstants(uop.child))
+      case _ => t
+    }
+  }
+
+  def stripPowZero(t:Term) : Term = {
+    t match {
+      case Power(v,n:Number) if n.value.isValidInt && n.value.intValue()== 0 => Number(1)
+      case bop:BinaryCompositeTerm => bop.reapply(stripPowZero(bop.left),stripPowZero(bop.right))
+      case uop:UnaryCompositeTerm => uop.reapply(stripPowZero(uop.child))
+      case _ => t
+    }
+  }
+
+  def simplifiedLieDerivative(p:DifferentialProgram,t:Term, tool: Option[SimplificationTool]) : Term = {
+    val ld = stripConstants(lieDerivative(p,t))
+    val ts1 = simpWithTool(tool,ld)
+    val ts2 = simpWithTool(tool,stripPowZero(ts1))
+    ts2
   }
 
   /**

@@ -2,15 +2,13 @@ package edu.cmu.cs.ls.keymaerax.tools
 
 import java.util.concurrent._
 
+import org.apache.logging.log4j.scala.Logging
+
 import scala.collection.mutable
 
-object ToolExecutor {
-  val defaultSize = 10
-  def defaultExecutor[T](): ToolExecutor[T] = new ToolExecutor[T](defaultSize)
-}
-
-class ToolExecutor[T](poolSize: Int) {
+class ToolExecutor[T](poolSize: Int) extends Logging {
   require(poolSize > 0, "At least one thread is needed.")
+
   private val pool: ExecutorService = Executors.newFixedThreadPool(poolSize)
 
   private val scheduledTasks: mutable.Map[String, FutureTask[Either[T, Throwable]]] = mutable.Map()
@@ -81,7 +79,7 @@ class ToolExecutor[T](poolSize: Int) {
     pool.shutdownNow()
     if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
       // timeout before all tasks terminated
-      println("Tasks did not terminate while shutting down")
+      logger.info("Tasks did not terminate while shutting down")
     }
   }
 

@@ -5,32 +5,26 @@
 package edu.cmu.cs.ls.keymaerax.hydra
 
 import _root_.edu.cmu.cs.ls.keymaerax.core.{Expression, Formula}
-
 import java.io.File
 
+import edu.cmu.cs.ls.keymaerax.Configuration
 import edu.cmu.cs.ls.keymaerax.bellerophon.BelleExpr
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.hydra.ExecutionStepStatus.ExecutionStepStatus
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable.Nil
 
 //Global setting:
-object DBAbstractionObj {
-  def defaultDatabase = SQLite.ProdDB //this needs to be a def and not a val because DBAbstractionObj is initialized in SQLite.
-  def testDatabase = SQLite.TestDB
+object DBAbstractionObj extends Logging {
+  def defaultDatabase: SQLite.SQLiteDB = SQLite.ProdDB //this needs to be a def and not a val because DBAbstractionObj is initialized in SQLite.
+  def testDatabase: SQLite.SQLiteDB = SQLite.TestDB
   private def getLocation(isTest: Boolean): String = {
-    val dirname = ".keymaerax"
-    val filename = if (isTest) "testDB.sqlite" else "keymaerax.sqlite"
-    new File(
-      System.getProperty("user.home") + File.separator + dirname
-    ).mkdirs()
-    val file = new File(System.getProperty("user.home") + File.separator +
-      dirname + File.separator + filename)
-    file.getCanonicalPath
+    new File(Configuration.path(if (isTest) Configuration.Keys.TEST_DB_PATH else Configuration.Keys.DB_PATH)).getCanonicalPath
   }
 
   val dblocation: String = getLocation(isTest=false)
-  println(dblocation)
+  logger.info("Using database " + dblocation)
   val testLocation: String = getLocation(isTest=true)
 }
 
@@ -149,14 +143,18 @@ case class ExecutionTrace(proofId: String, executionId: String, steps: List[Exec
   //@note expensive assert
   private val orderViolationStep = findOutOfOrderBranchStep(steps)
   assert(orderViolationStep.isEmpty, "Trace steps not ordered in descending branches:"
-    + " branch " + orderViolationStep.get.branch
-    + " of step " + orderViolationStep.get.stepId + " (" + orderViolationStep.get.rule + ")"
-    + " is higher than its predecessor's branch")
+    + " branch " + orderViolationStep.get._1.branch
+    + " of step " + orderViolationStep.get._1.stepId + " (" + orderViolationStep.get._1.rule + ")"
+    + " is not less than branch " + orderViolationStep.get._2.branch + " of its predecessor step " + orderViolationStep.get._2.stepId + " (" + orderViolationStep.get._2.rule + ")")
 
   /** Finds the first step whose branch is out of order (higher than its predecessor's branch) */
-  def findOutOfOrderBranchStep(steps: List[ExecutionStep]): Option[ExecutionStep] = steps match {
+  def findOutOfOrderBranchStep(steps: List[ExecutionStep]): Option[(ExecutionStep,ExecutionStep)] = steps match {
     case Nil => None
-    case step::tail => tail.filter(_.prevStepId == step.prevStepId).find(_.branch >= step.branch).orElse(findOutOfOrderBranchStep(tail))
+      // .orElse(findOutOfOrderBranchStep(tail))
+    case step::tail => tail.filter(_.prevStepId == step.prevStepId).find(_.branch >= step.branch) match {
+      case None => findOutOfOrderBranchStep(tail)
+      case Some(s) => Some(s -> step)
+    }
   }
 
   def branch: Option[Int] = steps.lastOption.map(_.branch)

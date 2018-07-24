@@ -9,7 +9,6 @@ import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversal
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 
-import scala.language.postfixOps
 
 
 /**
@@ -233,7 +232,7 @@ object Simplifier {
         val (ctx, t1:Term) = fml.at(pos)
         print("Trying to prove " + Equal(t1,t2))
         val eqProof = TactixLibrary.proveBy(Equal(t1, t2), e)
-        HilbertCalculus.useAt("TODOmakeCE", HilbertCalculus.CE(ctx)(eqProof), PosInExpr(0::Nil))(where)
+        HilbertCalculus.useAt(HilbertCalculus.CE(ctx)(eqProof), PosInExpr(0::Nil))(where)
       case None => TactixLibrary.nil
     }
   }
@@ -244,6 +243,6 @@ object Simplifier {
   })
 
   def simp(simps:List[Simplification] = defaultSimps):DependentPositionTactic = "simp" by ((pos, sequent) =>
-    ((simpOnce(simps)(pos))*))
+    SaturateTactic(simpOnce(simps)(pos)))
 }
 

@@ -8,15 +8,14 @@ import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import BelleLexer.TokenStream
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXDeclarationsParser.Declaration
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXProblemParser.Declaration
+import org.apache.logging.log4j.scala.Logging
 
 /**
   * The Bellerophon parser
   *
   * @author Nathan Fulton
   */
-object BelleParser extends (String => BelleExpr) {
-  private var DEBUG = false
-
+object BelleParser extends (String => BelleExpr) with Logging {
   private case class DefScope[K, V](defs: scala.collection.mutable.Map[K, V] = scala.collection.mutable.Map.empty[K, V],
                                     parent: Option[DefScope[K, V]] = None) {
     def get(key: K): Option[V] = defs.get(key) match {
@@ -41,17 +40,10 @@ object BelleParser extends (String => BelleExpr) {
         parseTokenStream(BelleLexer(s), DefScope[String, DefTactic](), DefScope[Expression, DefExpression](), g, defs)
       } catch {
         case e: Throwable =>
-          System.err.println("Error parsing\n" + s)
+          logger.error("Error parsing\n" + s, e)
           throw e
       }
     }
-
-  /** Runs the parser with debug mode turned on. */
-  def debug(s: String): Unit = {
-    DEBUG = true
-    apply(s)
-    DEBUG = false
-  }
 
   //region The LL Parser
 
@@ -81,7 +73,7 @@ object BelleParser extends (String => BelleExpr) {
   private def parseLoop(st: ParserState, tacticDefs: DefScope[String, DefTactic],
                         exprDefs: DefScope[Expression, DefExpression], g: Option[Generator.Generator[Expression]],
                         defs: Declaration): ParserState = {
-    if (DEBUG) println(s"Current state: $st")
+    logger.debug(s"Current state: $st")
 
     st.stack match {
       case _ :+ (_: FinalBelleItem) => st
@@ -128,7 +120,6 @@ object BelleParser extends (String => BelleExpr) {
           case Some(BelleToken(BRANCH_COMBINATOR, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(OPTIONAL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(ON_ALL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
-          case Some(BelleToken(DONE, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(TACTIC, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(LET, _)) => ParserState(stack :+ st.input.head, st.input.tail)
           case Some(BelleToken(DEF, _)) => ParserState(stack :+ st.input.head, st.input.tail)
@@ -164,6 +155,26 @@ object BelleParser extends (String => BelleExpr) {
           case Some(BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
           case _ =>
             val parsedExpr = left | right
+            parsedExpr.setLocation(combatinorLoc)
+            ParserState(r :+ ParsedBelleExpr(parsedExpr, leftLoc.spanTo(rightLoc)), st.input)
+        }
+      //endregion
+
+      //region After combinator
+      case _ :+ ParsedBelleExpr(_, _) :+ BelleToken(AFTER_COMBINATOR, combatinorLoc) => st.input.headOption match {
+        case Some(BelleToken(OPEN_PAREN, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+        case Some(BelleToken(IDENT(_), _)) => ParserState(stack :+ st.input.head, st.input.tail)
+        case Some(BelleToken(PARTIAL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+        case Some(BelleToken(OPTIONAL, _)) => ParserState(stack :+ st.input.head, st.input.tail)
+        case Some(_) => throw ParseException("A combinator should be followed by a full tactic expression", st)
+        case None => throw ParseException("Tactic script cannot end with a combinator", combatinorLoc)
+      }
+      case r :+ ParsedBelleExpr(left, leftLoc) :+ BelleToken(AFTER_COMBINATOR, combatinorLoc) :+ ParsedBelleExpr(right, rightLoc) =>
+        st.input.headOption match {
+          case Some(BelleToken(AFTER_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
+          case Some(BelleToken(SEQ_COMBINATOR | DEPRECATED_SEQ_COMBINATOR, _)) => ParserState(st.stack :+ st.input.head, st.input.tail)
+          case _ =>
+            val parsedExpr = left > right
             parsedExpr.setLocation(combatinorLoc)
             ParserState(r :+ ParsedBelleExpr(parsedExpr, leftLoc.spanTo(rightLoc)), st.input)
         }
@@ -331,15 +342,6 @@ object BelleParser extends (String => BelleExpr) {
 
       //endregion
 
-      //region done
-
-      case r :+ BelleToken(DONE, doneLoc) =>
-        val parsedExpr = TactixLibrary.done
-        parsedExpr.setLocation(doneLoc)
-        ParserState(r :+ ParsedBelleExpr(parsedExpr, doneLoc), st.input)
-
-      //endregion
-
       //region built-in tactics
       case r :+ BelleToken(IDENT(name), identLoc) =>
         try {
@@ -433,7 +435,6 @@ object BelleParser extends (String => BelleExpr) {
 
   private def isProofStateToken(toks: TokenStream) = toks.headOption match {
     case Some(BelleToken(PARTIAL, _)) => true
-    case Some(BelleToken(DONE, _)) => true
     case _ => false
   }
 
@@ -552,7 +553,11 @@ object BelleParser extends (String => BelleExpr) {
         import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
         //Use the parsed result if it matches the expected type. Otherwise re-parse using a grammar-specific parser.
         assert(expectedType.nonEmpty, "When parsing an EXPRESSION argument an expectedType should be specified.")
-        expectedType.get match {
+        val unwrappedExpectedType = expectedType match {
+          case Some(OptionArg(argType)) => argType
+          case Some(argType) => argType
+        }
+        unwrappedExpectedType match {
           case _:StringArg => Left(tok.undelimitedExprString)
           case _:FormulaArg if tok.expression.isInstanceOf[Formula] => Left(tok.expression)
           case _:FormulaArg => try {

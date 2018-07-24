@@ -8,6 +8,7 @@ import edu.cmu.cs.ls.keymaerax.btactics.Augmentors._
 import edu.cmu.cs.ls.keymaerax.btactics.Idioms
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+import org.apache.logging.log4j.scala.Logging
 
 trait ExecutionContext {
   def store(e: BelleExpr): ExecutionContext
@@ -51,7 +52,7 @@ case class DbBranchPointer(parent: Int, branch: Int, predStep: Int, openBranches
   * @param rootProofId The ID of the proof this interpreter is working on.
   * @param startStepIndex The index in the proof trace where the interpreter starts appending steps (-1 for none, e.g., in a fresh proof).
   * @param idProvider Provides IDs for child provables created in this interpreter.
-  * @param listeners Creates listener that are notified from the inner interpreter, takes (tactic name, parent step index in trace, branch).
+  * @param listenerFactory Creates listener that are notified from the inner interpreter, takes (tactic name, parent step index in trace, branch).
   * @param inner Processes atomic tactics.
   * @param descend How far to descend into depending tactics (default: do not descend)
   * @param strict If true, follow tactic strictly; otherwise perform some optimizations (e.g., do not execute nil).
@@ -60,16 +61,26 @@ case class DbBranchPointer(parent: Int, branch: Int, predStep: Int, openBranches
   * @author Stefan Mitsch
   */
 case class SpoonFeedingInterpreter(rootProofId: Int, startStepIndex: Int, idProvider: ProvableSig => Int,
-                                   listeners: Int => ((String, Int, Int) => Seq[IOListener]),
-                                   inner: Seq[IOListener] => Interpreter, descend: Int = 0,
-                                   strict: Boolean = true) extends Interpreter {
+                                   listenerFactory: Int => ((String, Int, Int) => scala.collection.immutable.Seq[IOListener]),
+                                   inner: scala.collection.immutable.Seq[IOListener] => Interpreter, descend: Int = 0,
+                                   strict: Boolean = true) extends Interpreter with Logging {
   var innerProofId: Option[Int] = None
 
   private var runningInner: Interpreter = _
 
-  private var isDead = false
+  var isDead = false
 
-  override def apply(expr: BelleExpr, v: BelleValue): BelleValue = runTactic(expr, v, descend, DbAtomPointer(startStepIndex))._1
+  /** The spoon-feeding interpreter itself does not have listeners. */
+  val listeners: scala.collection.immutable.Seq[IOListener] = Nil
+
+  override def apply(expr: BelleExpr, v: BelleValue): BelleValue = {
+    if (runningInner == null) {
+      runTactic(expr, v, descend, DbAtomPointer(startStepIndex))._1
+    } else {
+      logger.debug("Handing auxiliary proof of an already running tactic (like initiated by UnifyUSCalculus or Simplifier) to fresh inner interpreter")
+      inner(Nil)(expr, v)
+    }
+  }
 
   private def runTactic(tactic: BelleExpr, goal: BelleValue, level: Int, ctx: ExecutionContext): (BelleValue, ExecutionContext) = synchronized {
     if (isDead) (goal, ctx)
@@ -97,11 +108,18 @@ case class SpoonFeedingInterpreter(rootProofId: Int, startStepIndex: Int, idProv
           }
         }
 
-      case SaturateTactic(child) if child==Idioms.nil => throw new BelleThrowable("SaturateTactic done")
       case SaturateTactic(child) =>
         var result: (BelleValue, ExecutionContext) = (goal, ctx)
         try {
-          result = runTactic(if (child==Idioms.nil) child else SeqTactic(child, tactic), result._1, level, result._2)
+          val repeatOnChange = new DependentTactic("ANON") {
+            override def computeExpr(provable: ProvableSig): BelleExpr = goal match {
+              case BelleProvable(p, _) => provable.subgoals.headOption match {
+                case Some(s) if s != p.subgoals.head => tactic
+                case _ => Idioms.nil
+              }
+            }
+          }
+          result = runTactic(child & repeatOnChange, result._1, level, result._2)
         } catch {
           case _: BelleThrowable =>
         }
@@ -121,7 +139,9 @@ case class SpoonFeedingInterpreter(rootProofId: Int, startStepIndex: Int, idProv
       case BranchTactic(children) if children.nonEmpty => goal match {
         case BelleProvable(p, labels) =>
           if (children.length != p.subgoals.length)
-            throw new BelleThrowable("<(e)(v) is only defined when len(e) = len(v), but " + children.length + "!=" + p.subgoals.length).inContext(tactic, "")
+            throw new BelleThrowable("<(e)(v) is only defined when len(e) = len(v), but " +
+              children.length + "!=" + p.subgoals.length + " subgoals (v)\n" +
+              p.subgoals.map(_.prettyString).mkString("\n===================\n")).inContext(tactic, "")
 
           val branchTactics: Seq[(BelleExpr, BelleValue)] = children.zip(p.subgoals.map(sg => BelleProvable(ProvableSig.startProof(sg), labels)))
           val branchCtxs = ctx.branch(children.size)
@@ -176,31 +196,41 @@ case class SpoonFeedingInterpreter(rootProofId: Int, startStepIndex: Int, idProv
         }
 
         val (in: ProvableSig, us: USubst, innerMost) = flattenLets(innerTactic, SubstitutionPair(abbr, value)::Nil, value->abbr::Nil)
-        println("INFO: " + tactic + " considers\n" + in + "\nfor outer\n" + provable)
-        val innerId = idProvider(in)
-        innerProofId = Some(innerId)
-        val innerFeeder = SpoonFeedingInterpreter(innerId, -1, idProvider, listeners, inner, descend, strict = strict)
-        val result = innerFeeder.runTactic(innerMost, BelleProvable(in), level, DbAtomPointer(-1)) match {
-          case (BelleProvable(derivation, _), _) =>
-            val backsubst: ProvableSig = derivation(us)
-            //@todo store inner steps as part of this proof
-            (BelleProvable(provable(backsubst, 0), lbl), ctx.store(Idioms.nil))
-          case _ => throw new BelleThrowable("Let expected sub-derivation")
+        logger.debug(tactic + " considers\n" + in + "\nfor outer\n" + provable)
+        if (descend > 0) {
+          val innerId = idProvider(in)
+          innerProofId = Some(innerId)
+          val innerFeeder = SpoonFeedingInterpreter(innerId, -1, idProvider, listenerFactory, inner, descend, strict = strict)
+          val result = innerFeeder.runTactic(innerMost, BelleProvable(in), level, DbAtomPointer(-1)) match {
+            case (BelleProvable(derivation, _), _) =>
+              val backsubst: ProvableSig = derivation(us)
+              //@todo store inner steps as part of this proof
+              (BelleProvable(provable(backsubst, 0), lbl), ctx/*.store(tactic)*/)
+            case _ => throw new BelleThrowable("Let expected sub-derivation")
+          }
+          innerFeeder.kill()
+          result
+        } else {
+          runningInner = inner(listenerFactory(rootProofId)(tactic.prettyString, ctx.parentId, ctx.onBranch))
+          runningInner(tactic, BelleProvable(provable.sub(0), lbl)) match {
+            case BelleProvable(innerProvable, _) =>
+              val r = (BelleProvable(provable(innerProvable, 0), lbl), ctx.store(tactic))
+              runningInner = null
+              r
+            case e: BelleThrowable => throw e
+          }
         }
-        innerFeeder.kill()
-        result
-
       case ChooseSome(options, e) =>
         val opts = options()
         var errors = ""
         var result: Option[(BelleValue, ExecutionContext)] = None
         while (opts.hasNext && result.isEmpty) {
           val o = opts.next()
-          if (BelleExpr.DEBUG) println("ChooseSome: try " + o)
+          logger.debug("ChooseSome: try " + o)
           val someResult: Option[(BelleValue, ExecutionContext)] = try {
             Some(runTactic(e(o), goal, level, ctx))
           } catch { case err: BelleThrowable => errors += "in " + o + " " + err + "\n"; None }
-          if (BelleExpr.DEBUG) println("ChooseSome: try " + o + " got " + someResult)
+          logger.debug("ChooseSome: try " + o + " got " + someResult)
           (someResult, e) match {
             case (Some((p@BelleProvable(_, _), pctx)), _) => result = Some((p, pctx))
             case (Some((p, pctx)), _: PartialTactic) => result = Some((p, pctx))
@@ -234,13 +264,13 @@ case class SpoonFeedingInterpreter(rootProofId: Int, startStepIndex: Int, idProv
         if (!strict && tactic == Idioms.nil) (goal, ctx)
         else goal match {
           case BelleProvable(provable, _) if provable.subgoals.isEmpty =>
-            runningInner = inner(Seq())
+            runningInner = inner(scala.collection.immutable.Seq())
             val result = (runningInner(tactic, goal), ctx)
             runningInner = null
             result
           case BelleProvable(provable, labels) if provable.subgoals.nonEmpty =>
             if (ctx.onBranch >= 0) {
-              runningInner = inner(listeners(rootProofId)(tactic.prettyString, ctx.parentId, ctx.onBranch))
+              runningInner = inner(listenerFactory(rootProofId)(tactic.prettyString, ctx.parentId, ctx.onBranch))
               runningInner(tactic, BelleProvable(provable.sub(0), labels)) match {
                 case BelleProvable(innerProvable, _) =>
                   val result = (BelleProvable(provable(innerProvable, 0), labels), ctx.store(tactic))

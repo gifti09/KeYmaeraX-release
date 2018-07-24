@@ -10,6 +10,7 @@ package edu.cmu.cs.ls.keymaerax.core
 
 import java.security.MessageDigest
 
+import edu.cmu.cs.ls.keymaerax.Configuration
 import edu.cmu.cs.ls.keymaerax.btactics.{AxiomInfo, DerivationInfo, DerivedAxiomInfo, DerivedRuleInfo}
 import edu.cmu.cs.ls.keymaerax.parser.{FullPrettyPrinter, KeYmaeraXExtendedLemmaParser}
 import edu.cmu.cs.ls.keymaerax.pt._
@@ -24,7 +25,7 @@ import scala.collection.immutable._
   */
 object Lemma {
   //@todo disable lemma compatibility mode. This will require some version update code because old lemma dbs (both SQLite and file lemma db) will fail to work.
-  private val LEMMA_COMPAT_MODE = System.getProperty("LEMMA_COMPAT_MODE", "true")=="true"
+  private val LEMMA_COMPAT_MODE = Configuration(Configuration.Keys.LEMMA_COMPATIBILITY) == "true"
   //@todo figure out a stable but fast checksum. Ideally something like portable hashCodes.
   private[this] val digest = MessageDigest.getInstance("MD5")
 
@@ -72,7 +73,7 @@ object Lemma {
 
     val ptProvable =
       if (ProvableSig.PROOF_TERMS_ENABLED) {
-        PTProvable(NoProofTermProvable(fact), name match { case Some(n) =>
+        TermProvable(ElidingProvable(fact), name match { case Some(n) =>
           DerivedAxiomInfo.allInfo.find(info => info.storedName == n) match {
             case Some(info) =>
             AxiomTerm(info.canonicalName)
@@ -84,7 +85,7 @@ object Lemma {
           }
         case None => FOLRConstant(sequents.head.succ.head) })
       } else {
-        NoProofTermProvable(fact)
+        ElidingProvable(fact)
       }
     Lemma(ptProvable, evidence, name) //@todo also load proof terms.
   }

@@ -7,6 +7,7 @@ package edu.cmu.cs.ls.keymaerax.btactics
 import edu.cmu.cs.ls.keymaerax.bellerophon.PosInExpr
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable.List
 
@@ -14,9 +15,7 @@ import scala.collection.immutable.List
  * Tactic tools for formula manipulation and extraction.
  * @author Andre Platzer
  */
-object FormulaTools {
-  // formula tools
-
+object FormulaTools extends Logging {
   /**
    * Split a formula into its conjuncts.
    * Without performing clause form or CNF or DNF transformations.
@@ -26,6 +25,8 @@ object FormulaTools {
     case And(p,q) => conjuncts(p) ++ conjuncts(q)
     case f => List(f)
   }
+  /** @see conjuncts(formula: Formula) */
+  def conjuncts(formulas: List[Formula]): List[Formula] = formulas.flatMap(conjuncts)
 
   /**
    * Split a formula into its disjuncts.
@@ -35,6 +36,25 @@ object FormulaTools {
   def disjuncts(formula: Formula): List[Formula] = formula match {
     case Or(p,q) => disjuncts(p) ++ disjuncts(q)
     case f => List(f)
+  }
+
+  /** Split a formula into `length` left-hand side conjuncts (-1 for exhaustive splitting),
+    * keep right-hand side conjunctions (inverse reduce). */
+  def leftConjuncts(formula: Formula, length: Int = -1): List[Formula] = {
+    def leftConjuncts(formula: Formula, length: Int, count: Int): List[Formula] = formula match {
+      case And(p, q) if length == -1 || count < length => leftConjuncts(p, length, count+1) :+ q
+      case f => List(f)
+    }
+    leftConjuncts(formula, length, 1) //@note not splitting is a list of length 1
+  }
+
+  /** Reassociates conjunctions and disjunctions into their default right-associative case. */
+  def reassociate(fml: Formula): Formula = fml match {
+    case Or(Or(ll, lr), r) => reassociate(Or(reassociate(ll), Or(reassociate(lr), reassociate(r))))
+    case Or(l, r) => Or(reassociate(l), reassociate(r))
+    case And(And(ll, lr), r) => reassociate(And(reassociate(ll), And(reassociate(lr), reassociate(r))))
+    case And(l, r) => And(reassociate(l), reassociate(r))
+    case _ => fml
   }
 
   /**
@@ -76,6 +96,9 @@ object FormulaTools {
       case GreaterEqual(a,b) => Less(a,b)
       case Less(a,b) => GreaterEqual(a,b)
       case LessEqual(a,b) => Greater(a,b)
+      case True => False
+      case False => True
+      case _ => throw new IllegalArgumentException("negationNormalForm of formula " + formula + " not implemented")
     }
     case Not(g:CompositeFormula) => g match {
       case Not(f) => negationNormalForm(f)
@@ -86,6 +109,7 @@ object FormulaTools {
         And(negationNormalForm(p), negationNormalForm(Not(q))),
         And(negationNormalForm(Not(p)), negationNormalForm(q))
       )
+      case _ => throw new IllegalArgumentException("negationNormalForm of formula " + formula + " not implemented")
     }
     case Imply(p,q) => Or(negationNormalForm(Not(p)), negationNormalForm(q))
     case Equiv(p,q) => Or(
@@ -127,7 +151,7 @@ object FormulaTools {
       case f: BinaryCompositeFormula if pos.head == 0 => polarityAt(f.left, pos.child)
       case f: BinaryCompositeFormula if pos.head == 1 => polarityAt(f.right, pos.child)
       case f: Modal                  if pos.head == 1 => polarityAt(f.child, pos.child)
-      case f: Modal                  if pos.head == 0 => println("Polarity within programs not yet implemented " + formula); 0
+      case f: Modal                  if pos.head == 0 => logger.warn("Polarity within programs not yet implemented " + formula); 0
 //      case f: Modal                  => require(pos.head == 1, "Modal operator must have position head 1, but was " + pos); polarityAt(f.child, pos.child)
       case f: Quantified             => require(pos.head == 0, "Quantified must have position head 0, but was " + pos); polarityAt(f.child, pos.child)
     }
@@ -162,18 +186,39 @@ object FormulaTools {
   }
 
   /**
-   * Returns the first (i.e., left-most) position of subFormula within formula, if any.
-   * @param formula The formula to search for containment of subformula.
-   * @param subFormula The subformula.
-   * @return The first position, or None if subformula is not contained in formula.
+   * Returns the first (i.e., left-most) position of `sub` within `expr`, if any.
+   * @param expr The expression to search for containment of `sub`.
+   * @param sub The sub-expression.
+   * @return The first position, or None if `sub` is not contained in `expr`.
    */
-  def posOf(formula: Formula, subFormula: Formula): Option[PosInExpr] = {
+  def posOf(expr: Expression, sub: Expression): Option[PosInExpr] = {
     var pos: Option[PosInExpr] = None
-    ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
-      override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] =
-        if (e == subFormula) { pos = Some(p); Left(Some(ExpressionTraversal.stop)) }
-        else Left(None)
-    }, formula)
+    expr match {
+      case formula: Formula =>
+        sub match {
+          case subFormula: Formula =>
+            ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+              override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] =
+                if (e == subFormula) { pos = Some(p); Left(Some(ExpressionTraversal.stop)) }
+                else Left(None)
+            }, formula)
+          case subTerm: Term =>
+            ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+              override def preT(p: PosInExpr, e: Term): Either[Option[StopTraversal], Term] =
+                if (e == subTerm) { pos = Some(p); Left(Some(ExpressionTraversal.stop)) }
+                else Left(None)
+            }, formula)
+        }
+      case term: Term =>
+        sub match {
+          case subTerm: Term =>
+            ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+              override def preT(p: PosInExpr, e: Term): Either[Option[StopTraversal], Term] =
+                if (e == subTerm) { pos = Some(p); Left(Some(ExpressionTraversal.stop)) }
+                else Left(None)
+            }, term)
+        }
+    }
     pos
   }
 

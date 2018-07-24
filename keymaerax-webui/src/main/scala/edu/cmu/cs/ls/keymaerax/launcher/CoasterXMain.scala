@@ -1,7 +1,8 @@
 package edu.cmu.cs.ls.keymaerax.launcher
 
+import edu.cmu.cs.ls.keymaerax.Configuration
 import edu.cmu.cs.ls.keymaerax.bellerophon.IOListeners.{QEFileLogListener, QELogListener, StopwatchListener}
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleInterpreter, DependentTactic, Interpreter, SequentialInterpreter}
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.coasterx.CoasterXTestLib.{CoasterStats, ComponentStats, countVars, doStats}
 import edu.cmu.cs.ls.keymaerax.btactics.coasterx.{CoasterXParser, CoasterXProver, CoasterXSpec, CoasterXTestLib}
 import edu.cmu.cs.ls.keymaerax.parser.{KeYmaeraXParser, KeYmaeraXPrettyPrinter}
@@ -25,11 +26,11 @@ object CoasterXMain {
   private type OptionMap = Map[Symbol, Any]
   private var interpreters: List[Interpreter] = _
 
-  private val LOG_EARLIEST_QE = System.getProperty("LOG_POTENTIAL_QE", "false")=="true"
-  private val LOG_QE = System.getProperty("LOG_QE", "false")=="true"
-  private val LOG_QE_DURATION = System.getProperty("LOG_QE_DURATION", "true")=="true"
+  private val LOG_EARLIEST_QE = Configuration(Configuration.Keys.LOG_ALL_FO) == "true"
+  private val LOG_QE = Configuration(Configuration.Keys.LOG_QE) == "true"
+  private val LOG_QE_DURATION = Configuration(Configuration.Keys.LOG_QE_DURATION) == "true"
 
-  protected val qeLogPath: String = System.getProperty("user.home") + "/.keymaerax/logs/qe/"
+  protected val qeLogPath: String = Configuration.path(Configuration.Keys.QE_LOG_PATH)
   private val allPotentialQEListener = new QEFileLogListener(qeLogPath + "wantqe.txt", (p, _) => { p.subgoals.size == 1 && p.subgoals.head.isFOL })
     private val qeListener = new QEFileLogListener(qeLogPath + "haveqe.txt", (_, t) => t match { case DependentTactic("rcf") => true case _ => false })
     protected val qeDurationListener = new StopwatchListener((_, t) => t match {
@@ -48,10 +49,11 @@ object CoasterXMain {
     val listeners = (if (LOG_QE) qeListener::Nil else Nil) ++
       (if (LOG_EARLIEST_QE) allPotentialQEListener::Nil else Nil) ++
       (if (LOG_QE_DURATION) qeDurationListener::Nil else Nil)
-    BelleInterpreter.setInterpreter(registerInterpreter(SequentialInterpreter(listeners)))
+    BelleInterpreter.setInterpreter(registerInterpreter(ExhaustiveSequentialInterpreter(listeners)))
     PrettyPrinter.setPrinter(edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXNoContractPrettyPrinter)
     val generator = new ConfigurableGenerator[Formula]()
-    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p->inv))
+    KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) =>
+      generator.products += (p->(generator.products.getOrElse(p, Nil) :+ inv)))
     TactixLibrary.invGenerator = generator
     ToolProvider.setProvider(new NoneToolProvider())
   }
@@ -185,18 +187,19 @@ object CoasterXMain {
     val options = nextOption(Map('commandLine -> args.mkString(" ")), args.toList)
 
     //@note setup interpreter
-    BelleInterpreter.setInterpreter(SequentialInterpreter())
+    BelleInterpreter.setInterpreter(ExhaustiveSequentialInterpreter())
     //@note pretty printer setup must be first, otherwise derived axioms print wrong
     PrettyPrinter.setPrinter(edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXNoContractPrettyPrinter)
     // connect invariant generator to tactix library
     val generator = new ConfigurableGenerator[Formula]()
     TactixLibrary.invGenerator = generator
-    KeYmaeraXParser.setAnnotationListener((p:Program,inv:Formula) => generator.products += (p->inv))
+    KeYmaeraXParser.setAnnotationListener((p:Program,inv:Formula) =>
+      generator.products += (p->(generator.products.getOrElse(p, Nil) :+ inv)))
 
     println("Connecting to arithmetic tools...")
 
     try {
-      val preferredTool = preferredToolFromDB(database)
+      val preferredTool = preferredToolFromConfig
       val config = configFromDB(options, database, preferredTool)
       createTool(options, config, preferredTool)
     } catch {
@@ -249,19 +252,19 @@ object CoasterXMain {
   private def configFromDB(options: OptionMap, db: DBAbstraction, preferredTool: String): ToolProvider.Configuration = {
     val tool: String = options.getOrElse('tool, preferredTool).toString
     tool.toLowerCase() match {
-      case "mathematica" => mathematicaConfigFromDB(db)
+      case "mathematica" => mathematicaConfig
       case "z3" => Map.empty
       case t => throw new Exception("Unknown tool '" + t + "'")
     }
   }
 
-  private def preferredToolFromDB(db: DBAbstraction): String = {
-    db.getConfiguration("tool").config.getOrElse("qe", throw new Exception("No preferred tool"))
+  private def preferredToolFromConfig: String = {
+    Configuration.getOption(Configuration.Keys.QE_TOOL).getOrElse(throw new Exception("No preferred tool"))
   }
 
-  private def mathematicaConfigFromDB(db: DBAbstraction): ToolProvider.Configuration = {
-    getMathematicaLinkName(db) match {
-      case Some(l) => getMathematicaLibDir(db) match {
+  private def mathematicaConfig: ToolProvider.Configuration = {
+    getMathematicaLinkName match {
+      case Some(l) => getMathematicaLibDir match {
         case Some(libDir) => Map("linkName" -> l, "libDir" -> libDir)
         case None => Map("linkName" -> l)
       }
@@ -269,14 +272,12 @@ object CoasterXMain {
     }
   }
 
-  private def getMathematicaLinkName(db: DBAbstraction): Option[String] = {
-    db.getConfiguration("mathematica").config.get("linkName")
+  private def getMathematicaLinkName: Option[String] = {
+    Configuration.getOption(Configuration.Keys.MATHEMATICA_LINK_NAME)
   }
 
-  private def getMathematicaLibDir(db: DBAbstraction): Option[String] = {
-    val config = db.getConfiguration("mathematica").config
-    if (config.contains("jlinkLibDir")) Some(config("jlinkLibDir"))
-    else None
+  private def getMathematicaLibDir: Option[String] = {
+    Configuration.getOption(Configuration.Keys.MATHEMATICA_JLINK_LIB_DIR)
   }
 
 

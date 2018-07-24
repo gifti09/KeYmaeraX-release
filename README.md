@@ -21,6 +21,7 @@ Currently, the following examples are available:
 * Case Study 2 - Robix: 2 dimesional robot collision avoidance
 * Case Study 3 - Local Lane Control: Adaptive cruise control system
 
+
 STTT Journal - FASE long version
 --------------------------------
 For the STTT journal version of the FASE paper 
@@ -32,6 +33,7 @@ we presented the results of this performance tests. The examples considered ther
 * ETCS - corresponds to "Case Study 1 - ETCS"
 * Robix - corresponds to " Case Study 2 - Robix"
 * LLC - corresponds to "Case Study 3 - Local Lane Control"
+
 
 The detailed models, interfaces, contracts and tactics can be found in the scala code.
 

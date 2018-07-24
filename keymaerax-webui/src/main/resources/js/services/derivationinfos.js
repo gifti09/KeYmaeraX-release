@@ -12,6 +12,26 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', '$root
         });
       return promise;
     },
+
+    allDerivationsCache: undefined,
+
+    allDerivationInfos: function(userId, proofId, nodeId) {
+      if (serviceDef.allDerivationsCache) {
+        return $q(function(resolve, reject) { resolve({data: serviceDef.allDerivationsCache}); });
+      } else {
+        var promise = $http.get('proofs/user/' + userId + '/' + proofId + '/' + nodeId + '/derivationInfos/')
+          .then(function(response) {
+            // return value gets picked up by 'then' in the controller using this service
+            serviceDef.allDerivationsCache = $.map(response.data, function(info, i) {
+              return serviceDef.convertTacticInfo(info, true);
+            });
+            return {
+              data: serviceDef.allDerivationsCache
+            };
+          });
+        return promise;
+      }
+    },
     sequentSuggestionDerivationInfos: function(userId, proofId, nodeId) {
       var promise = $http.get('proofs/user/' + userId + '/' + proofId + '/' + nodeId + '/listStepSuggestions')
         .then(function(response) {
@@ -76,8 +96,15 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', '$root
           isClosed: premise.isClosed
         };
       });
+      tactic.derivation.conclusion = {
+        ante: serviceDef.convertToInput(tactic.derivation.conclusion.ante, tactic),
+        succ: serviceDef.convertToInput(tactic.derivation.conclusion.succ, tactic),
+        numInputs: tactic.derivation.input.length
+      };
       tactic.missingInputNames = function() {
-        var missingInputs = $.grep(tactic.derivation.input, function(input, idx) { return input.value == undefined; });
+        var missingInputs = $.grep(tactic.derivation.input, function(input, idx) {
+          return !input.type.startsWith('option[') && input.value == undefined;
+        });
         return $.map(missingInputs, function(val, i) { return val.param; });
       };
       return tactic;
@@ -93,7 +120,9 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', '$root
       if (tactic.derivation.input === undefined || tactic.derivation.input === null) {
         tactic.derivation.input = [];
       }
-      var inputs = $.grep(tactic.derivation.input, function(input, i) { return formula.indexOf(input.param) >= 0; });
+      //@note search inputs that occur in formula, sorted by length descending
+      var inputs = $.grep(tactic.derivation.input, function(input, i) { return formula.indexOf(input.param) >= 0; }).
+        sort(function(a, b){ return b.param.length - a.param.length; });
       var inputBoundaries = $.map(inputs, function(input, i) {
         var inputStart = formula.indexOf(input.param);
         var occurrences = [];
@@ -105,14 +134,22 @@ angular.module('keymaerax.services').factory('derivationInfos', ['$http', '$root
       }).sort(function(a, b) { return a.start - b.start; });
 
       if (inputBoundaries.length > 0) {
-        result[0] = {text: formula.slice(0, inputBoundaries[0].start), isInput: false};
-        result[1] = serviceDef.createInput(formula, tactic, inputBoundaries[0]);
+        var filteredInputBoundaries = [ inputBoundaries[0] ];
         for (var i = 1; i < inputBoundaries.length; i++) {
-          result[2*i] = {text: formula.slice(inputBoundaries[i-1].end, inputBoundaries[i].start), isInput: false};
-          result[2*i+1] = serviceDef.createInput(formula, tactic, inputBoundaries[i]);
+          var curr = inputBoundaries[i];
+          if (curr.start > filteredInputBoundaries[filteredInputBoundaries.length-1].end) {
+            filteredInputBoundaries.push(curr);
+          } // else boundaries overlap, i.e., axiom info argument occurs as substring in another, e.g., \exists x j(x), keep only the longer argument
         }
-        result[2*inputBoundaries.length] = {
-          text: formula.slice(inputBoundaries[inputBoundaries.length-1].end, formula.length),
+
+        result[0] = {text: formula.slice(0, filteredInputBoundaries[0].start), isInput: false};
+        result[1] = serviceDef.createInput(formula, tactic, filteredInputBoundaries[0]);
+        for (var i = 1; i < filteredInputBoundaries.length; i++) {
+          result[2*i] = {text: formula.slice(filteredInputBoundaries[i-1].end, filteredInputBoundaries[i].start), isInput: false};
+          result[2*i+1] = serviceDef.createInput(formula, tactic, filteredInputBoundaries[i]);
+        }
+        result[2*filteredInputBoundaries.length] = {
+          text: formula.slice(filteredInputBoundaries[filteredInputBoundaries.length-1].end, formula.length),
           isInput: false
         }
       } else {

@@ -10,15 +10,14 @@ import scala.collection.immutable.{Map, _}
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.bellerophon.{OnAll, RenUSubst, _}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable
 
 /**
   * Created by yongkiat on 11/27/16.
   */
-object PolynomialArith {
-
-  private val DEBUG = false
+object PolynomialArith extends Logging {
 
   /**
     * Normalised polynomial arithmetic
@@ -146,22 +145,22 @@ object PolynomialArith {
     prop & OnAll(existsL('L) & prop) <( existsR('R), existsR('R), existsR("x_".asTerm)('R), existsR("x_".asTerm)('Rlast)) & OnAll(prop))
 
   private lazy val existsOr2 = proveBy("\\exists x_ p_(x_) | q_() <-> (\\exists x_ (p_(x_) |  q_()))".asFormula,
-    prop & OnAll((existsL('L)*) & (existsR('R)*) & prop))
+    prop & OnAll(SaturateTactic(existsL('L)) & SaturateTactic(existsR('R)) & prop))
 
   private lazy val existsOr3 = proveBy("q_() | \\exists x_ p_(x_) <-> (\\exists x_ (p_(x_) |  q_()))".asFormula,
-    prop & OnAll((existsL('L)*) & (existsR('R)*) & prop))
+    prop & OnAll(SaturateTactic(existsL('L)) & SaturateTactic(existsR('R)) & prop))
 
   private lazy val existsAnd1 = proveBy("(\\exists x_ p_(x_) & \\exists y_ q_(y_)) <-> (\\exists x_ \\exists y_ (p_(x_) & q_(y_)))".asFormula,
-    prop & OnAll((existsL('L)*) & prop) <( existsR('R) & existsR('R) & prop, existsR('R) & prop,existsR('R)&prop))
+    prop & OnAll(SaturateTactic(existsL('L)) & prop) <( existsR('R) & existsR('R) & prop, existsR('R) & prop,existsR('R)&prop))
 
   private lazy val existsAnd2 = proveBy("(\\exists x_ p_(x_) & q_()) <-> (\\exists x_ (p_(x_) & q_()))".asFormula,
-    prop & OnAll((existsL('L)*) & (existsR('R)*) & prop))
+    prop & OnAll(SaturateTactic(existsL('L)) & SaturateTactic(existsR('R)) & prop))
 
   private lazy val existsAnd3 = proveBy("(q_() & \\exists x_ p_(x_)) <-> (\\exists x_ (p_(x_) & q_()))".asFormula,
-    prop & OnAll((existsL('L)*) & (existsR('R)*) & prop))
+    prop & OnAll(SaturateTactic(existsL('L)) & SaturateTactic(existsR('R)) & prop))
 
   private lazy val existsRename = proveBy("(\\exists x_ p_(x_) & \\exists x_ q_(x_)) <-> (\\exists x_ p_(x_) & \\exists z_ q_(z_))".asFormula,
-    prop & OnAll((existsL('L)*) & prop) <(existsR("x_".asTerm)('R), existsR("z_".asTerm)('R)) & OnAll(prop))
+    prop & OnAll(SaturateTactic(existsL('L)) & prop) <(existsR("x_".asTerm)('R), existsR("z_".asTerm)('R)) & OnAll(prop))
 
   //A=0 | B = 0 <-> A*B=0
   //A=0 & B = 0 <-> A^2+B^2=0
@@ -223,7 +222,7 @@ object PolynomialArith {
   //Additional check: the terms in "variable" position are actual variables
   //The nested variables i.e. those in l must be lexicographically smaller so (a^5)*b^3 is valid, (b^3)*a^5 is invalid
   def checkMono(t:Term,maxs:Option[Term] = None): Boolean = {
-    if(DEBUG) println("Checking ",t,maxs)
+    logger.debug(s"Checking $t, $maxs")
     t match {
       case n:Number => n.value == 1
       case Times(l,Power(s,n:Number)) if isVar(s) =>
@@ -262,7 +261,7 @@ object PolynomialArith {
     def compare(l: Term, r: Term): Int = {
       val ol = ordMono(l)
       val or = ordMono(r)
-      if(DEBUG) println("monos:",l,r,ol,or)
+      logger.debug(s"monos: $l, $r, $ol, $or")
       if (ol < or) -1
       else if(ol > or) 1
       else lexMono(l,r)
@@ -283,7 +282,7 @@ object PolynomialArith {
 
   //Sanity check that a term representing a polynomial satisfies the normalisation requirement
   def checkPoly(t:Term,maxm:Option[Term] = None): Boolean = {
-    if(DEBUG) println("Checking",t,maxm)
+    logger.debug(s"Checking $t, $maxm")
     t match {
       case n:Number => n.value == 0
       case Plus(l,Times(c,m)) =>
@@ -417,7 +416,7 @@ object PolynomialArith {
 
   //Multiplies a normalized polynomial (l) by a constant (c) and a normalized monomial (r)
   def mulPolyMono(l:Term,c:Term,r:Term,skip_proofs:Boolean = false): (Term,ProvableSig) = {
-    if(DEBUG) println("mul poly, const, mono",l,c,r)
+    logger.debug(s"mul poly, const, mono $l, $c, $r")
     val lhs = Times(l,Times(c,r))
     val prover = getProver(skip_proofs)
     l match {
@@ -587,7 +586,7 @@ object PolynomialArith {
   //Normalizes an otherwise un-normalized term
   def normalise(l:Term,skip_proofs:Boolean = false) : (Term,ProvableSig) = {
 
-    if(DEBUG) println("Normalizing at",l)
+    logger.debug(s"Normalizing at $l")
     val prover = getProver(skip_proofs)
 
 //    if(isMono(l)){
@@ -888,7 +887,7 @@ object PolynomialArith {
           inst.foldRight(ident)(
             (h, tac) =>
               implyRi(keep = true)(AntePos(h._1), SuccPos(0))
-                & useAt("ANON", axMov, PosInExpr(1 :: Nil), (us: Option[Subst]) => us.get ++ RenUSubst(("g_()".asTerm, h._2) :: Nil))(1)
+                & useAt(axMov, PosInExpr(1 :: Nil), (us: Option[Subst]) => us.get ++ RenUSubst(("g_()".asTerm, h._2) :: Nil))(1)
                 & tac) &
           normaliseAt(SuccPosition(1, 0 :: Nil)) &
           ?(cohideR(1) & byUS("= reflexive"))
@@ -975,7 +974,7 @@ object PolynomialArith {
           case LessEqual(f, g) => useAt(leAnte)(ind) & existsL(ind)
           case _ => DebuggingTactics.print("Hiding: "+fi._1) & hideL(ind)
         }) & tac
-      } & ((notR('R))*)
+      } & SaturateTactic(notR('R))
     }
   }
 
@@ -1072,7 +1071,7 @@ object PolynomialArith {
   // Given a term, turns it into a "rational form" and proves |- t = t, where A , B do not contain divisions
   // If no division occurs in the term then it does nothing
   def ratForm(l:Term) : (Option[ProvableSig]) = {
-    if(DEBUG) println("rat form at",l)
+    logger.debug(s"rat form at $l")
     val res = l match {
       case Power(_,_) => None //(a/b)^k unhandled
       case b: BinaryCompositeTerm =>
@@ -1172,7 +1171,7 @@ object PolynomialArith {
 
   //Move everything into antecedents via double negation
   lazy val clearSuccNNF:BelleExpr =
-    ((useAt(doubleNeg)(1) & notR(1))*) & fullSimpTac(faxs = composeIndex(defaultFaxs,chaseIndex),taxs = emptyTaxs)
+  SaturateTactic(useAt(doubleNeg)(1) & notR(1)) & fullSimpTac(faxs = composeIndex(defaultFaxs,chaseIndex),taxs = emptyTaxs)
 
   //NOTE: this doesn't (can't?) make use of the alternate inequality formulation!
   def renWitness(f:Formula,ctx:context) : List[ProvableSig] = {
@@ -1214,7 +1213,7 @@ object PolynomialArith {
           case Less(f, g) => useAt(ltAnteZ)(ind)
           case _ => ident
         }) & tac
-      } & (andL('L)*)
+      } & SaturateTactic(andL('L))
     }
   }
 
@@ -1232,10 +1231,10 @@ object PolynomialArith {
 
   lazy val normAntes1 = fullSimpTac(ths = ths,faxs = renWitness,taxs = emptyTaxs,simpSuccs = false)
   lazy val normAntes2 = fullSimpTac(ths = List(andEqz,orEqz),faxs = emptyFaxs,taxs = emptyTaxs,simpSuccs = false)
-  lazy val normaliseNNF = clearSuccNNF & (onAll(alphaRule)*) & relaxStrict2 & hideTopNeq & normAntes1 & (existsL('L)*) & normAntes2 & (notR('R)*)
+  lazy val normaliseNNF = clearSuccNNF & SaturateTactic(onAll(alphaRule)) & relaxStrict2 & hideTopNeq & normAntes1 & SaturateTactic(existsL('L)) & normAntes2 & SaturateTactic(notR('R))
 
   //Just to rearrange things back into equalities first then inequalities
-  lazy val resortEqs = hideTopNeq & (notR('R)*)
+  lazy val resortEqs = hideTopNeq & SaturateTactic(notR('R))
 
   //lazy val normaliseNNF = clearSuccNNF & (onAll(alphaRule)*) & normAntes1 & (existsL('L)*) & normAntes2
 }

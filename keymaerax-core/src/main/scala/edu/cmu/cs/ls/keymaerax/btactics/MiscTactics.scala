@@ -4,19 +4,23 @@ import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.core._
 import Augmentors._
 import ProofRuleTactics.requireOneSubgoal
-import edu.cmu.cs.ls.keymaerax.lemma.LemmaDB
+import edu.cmu.cs.ls.keymaerax.Configuration
+import edu.cmu.cs.ls.keymaerax.btactics.ExpressionTraversal.{ExpressionTraversalFunction, StopTraversal}
+import edu.cmu.cs.ls.keymaerax.lemma.{LemmaDB, LemmaDBFactory}
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
 import edu.cmu.cs.ls.keymaerax.tools.ToolEvidence
+import org.apache.logging.log4j.scala.{Logger, Logging}
 
 import scala.collection.immutable
-import scala.language.postfixOps
 
 /**
  * @author Nathan Fulton
  */
 object DebuggingTactics {
   //@todo import a debug flag as in Tactics.DEBUG
-  private val DEBUG = System.getProperty("DEBUG", "false")=="true"
+  private val DEBUG = Configuration(Configuration.Keys.DEBUG) == "true"
+
+  private val logger = Logger(getClass)
 
   def error(e : Throwable) = new BuiltInTactic("Error") {
     override def result(provable: ProvableSig): ProvableSig = throw e
@@ -30,7 +34,7 @@ object DebuggingTactics {
 
   def recordQECall(): BuiltInTactic = new BuiltInTactic("recordQECall") {
     override def result(provable: ProvableSig): ProvableSig = {
-      println(s"QE CALL\n==QE==\n${provable.subgoals(0).prettyString}\n==END_QE==")
+      logger.info(s"QE CALL\n==QE==\n${provable.subgoals(0).prettyString}\n==END_QE==")
       provable
     }
   }
@@ -39,7 +43,7 @@ object DebuggingTactics {
   def debug(message: => String, doPrint: Boolean = DEBUG, printer: ProvableSig => String = _.toString): StringInputTactic =
       new StringInputTactic(if (doPrint) "print" else "debug", message::Nil) {
     override def result(provable: ProvableSig): ProvableSig = {
-      if (doPrint) println("===== " + message + " ==== " + printer(provable) + " =====")
+      if (doPrint) logger.info("===== " + message + " ==== " + printer(provable) + " =====")
       provable
     }
   }
@@ -53,7 +57,7 @@ object DebuggingTactics {
   /** debug is a no-op tactic that prints a message and the current provable, if the system property DEBUG is true. */
   def debugAt(message: => String, doPrint: Boolean = DEBUG): BuiltInPositionTactic = new BuiltInPositionTactic("debug") {
     override def computeResult(provable: ProvableSig, pos: Position): ProvableSig = {
-      if (doPrint) println("===== " + message + " ==== " + "\n\t with formula: " + provable.subgoals.head.at(pos)
+      if (doPrint) logger.info("===== " + message + " ==== " + "\n\t with formula: " + provable.subgoals.head.at(pos)
         + " at position " + pos + " of first subgoal,"
         + "\n\t entire provable: " + provable + " =====")
       provable
@@ -101,13 +105,24 @@ object DebuggingTactics {
     }
   }
 
-  /** assert is a no-op tactic that raises an error if the provable does not satisfy a condition. */
+  /** assert is a no-op tactic that raises an error if the provable does not satisfy a condition on the sole subgoal. */
   def assert(cond: Sequent=>Boolean, message: => String): BuiltInTactic = new BuiltInTactic("assert") {
     override def result(provable: ProvableSig): ProvableSig = {
       if (provable.subgoals.size != 1 || !cond(provable.subgoals.head)) {
         throw BelleUserGeneratedError(message + "\nExpected 1 subgoal whose sequent matches condition " + cond + ",\n\t but got " +
           (if (provable.subgoals.size != 1) provable.subgoals.size + " subgoals"
           else provable.subgoals.head.prettyString))
+      }
+      provable
+    }
+  }
+
+  /** assertOnAll is a no-op tactic that raises an error the provable does not satisfy a condition on all subgoals. */
+  def assertOnAll(cond: Sequent=>Boolean, message: => String): BuiltInTactic = new BuiltInTactic("assert") {
+    override def result(provable: ProvableSig): ProvableSig = {
+      if (!provable.subgoals.forall(cond(_))) {
+        throw BelleUserGeneratedError(message + "\nExpected all subgoals match condition " + cond + ",\n\t but " +
+          provable.subgoals.filter(!cond(_)).mkString("\n") + " do not match")
       }
       provable
     }
@@ -145,10 +160,16 @@ object DebuggingTactics {
 
   /** @see [[TactixLibrary.done]] */
   lazy val done: BelleExpr = done()
-  def done(msg: String = ""): BelleExpr = new BuiltInTactic("done") {
-    override def result(provable : ProvableSig): ProvableSig = {
-      if (provable.isProved) { print(msg + {if (msg.nonEmpty) ": " else ""} + "checked done"); provable }
-      else throw new BelleThrowable((if (msg.nonEmpty) msg + "\n" else "") + "Expected proved provable, but got " + provable)
+  def done(msg: String = "", storeLemma: Option[String] = None): BelleExpr = new StringInputTactic("done",
+      if (msg != "" && storeLemma.isDefined) msg::storeLemma.get::Nil
+      else if (msg != "") msg::Nil
+      else Nil) {
+    override def result(provable: ProvableSig): ProvableSig = {
+      if (provable.isProved) {
+        print(msg + {if (msg.nonEmpty) ": " else ""} + "checked done")
+        if (storeLemma.isDefined) LemmaDBFactory.lemmaDB.add(Lemma(provable, Lemma.requiredEvidence(provable), storeLemma))
+        provable
+      } else throw new BelleThrowable((if (msg.nonEmpty) msg + "\n" else "") + "Expected proved provable, but got " + provable)
     }
   }
 }
@@ -166,6 +187,7 @@ object Idioms {
   lazy val nil: BelleExpr = new BuiltInTactic("nil") {
     override def result(provable: ProvableSig): ProvableSig = provable
   }
+  /** no-op nil */
   lazy val ident: BelleExpr = nil
 
   /** Optional tactic */
@@ -174,8 +196,9 @@ object Idioms {
   /** Execute ts by branch order. */
   def <(t: BelleExpr*): BelleExpr = BranchTactic(t)
 
-  /** Execute ts by branch label, fall back to branch order if branches come without labels.
-    * <((lbl1,t1), (lbl2,t2)) uses tactic t1 on branch labelled lbl1 and t2 on lbl2
+  /** Execute different tactics depending on branch label, fall back to branch order if branches come without labels.
+    * <((lbl1,t1), (lbl2,t2)) uses tactic t1 on branch labelled lbl1 and uses t2 on lbl2.
+    * @see [[BelleLabels]]
     */
   def <(s1: (BelleLabel, BelleExpr), spec: (BelleLabel, BelleExpr)*): BelleExpr = new LabelledGoalsDependentTactic("onBranch") {
     override def computeExpr(provable: ProvableSig, labels: List[BelleLabel]): BelleExpr = {
@@ -183,7 +206,7 @@ object Idioms {
       Idioms.<(labels.map(l => labelledTactics(l)):_*)
     }
     override def computeExpr(provable: ProvableSig): BelleExpr = {
-      if (DEBUG) println("No branch labels, executing by branch order")
+      logger.debug("No branch labels, executing by branch order")
       Idioms.<((s1 +: spec).map(_._2):_*)
     }
   }
@@ -204,7 +227,7 @@ object Idioms {
     }
 
     val caseTactics = cases.map({ case (Case(fml, doSimp), t) =>
-      (if (doSimp) simplifyAllButCase(fml) & ((TactixLibrary.hideL('L, True) | TactixLibrary.hideR('R, False))*) else ident) & t}).
+      (if (doSimp) simplifyAllButCase(fml) & SaturateTactic(TactixLibrary.hideL('L, True) | TactixLibrary.hideR('R, False)) else ident) & t}).
       reduceRight[BelleExpr]({ case (t1, t2) => TactixLibrary.orL('Llast) & Idioms.<(t1, t2)})
 
     TactixLibrary.cut(caseFml) & Idioms.<(
@@ -245,7 +268,7 @@ object Idioms {
 
   /** Repeats t while condition at position is true. */
   def repeatWhile(condition: Expression => Boolean)(t: BelleExpr): DependentPositionTactic = "loopwhile" by {(pos: Position) =>
-    (DebuggingTactics.assertAt((_: Expression) => "Stopping loop", condition)(pos) & t)*
+    SaturateTactic(DebuggingTactics.assertAt((_: Expression) => "Stopping loop", condition)(pos) & t)
   }
 
   /** must(t) runs tactic `t` but only if `t` actually changed the goal. */
@@ -280,6 +303,52 @@ object Idioms {
    * shift(child, t) does t to positions shifted by child
    */
   def shift(child: PosInExpr, t: DependentPositionTactic): DependentPositionTactic = shift(p => p ++ child, t)
+
+  /** Map sub-positions of `pos` to Ts that fit to the expressions at those sub-positions per `trafo`. */
+  def mapSubpositions[T](pos: Position, sequent: Sequent, trafo: (Expression, Position) => Option[T]): List[T] = {
+    var result: List[T] = Nil
+
+    def mapTerm(p: PosInExpr, t: Term) = trafo(t, pos ++ p) match {
+      case Some(tt) => result = tt +: result; Left(None)
+      case None => Left(None)
+    }
+
+    def mapFormula(p: PosInExpr, e: Formula) = trafo(e, pos ++ p) match {
+      case Some(tt) => result = tt +: result; Left(None)
+      case None => Left(None)
+    }
+
+    //@note traverse expression, collect Ts in `result` as side effect
+    sequent.sub(pos) match {
+      case Some(f: Formula) =>
+        ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+          override def preF(p: PosInExpr, e: Formula): Either[Option[StopTraversal], Formula] = mapFormula(p, e)
+          override def preT(p: PosInExpr, t: Term): Either[Option[StopTraversal], Term] = mapTerm(p, t)
+        }, f)
+      case Some(t: Term) =>
+        ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+          override def preT(p: PosInExpr, t: Term): Either[Option[StopTraversal], Term] = mapTerm(p, t)
+        }, t)
+      case _ =>
+    }
+
+    result
+  }
+
+  /** Search for formula `f` in the sequent and apply tactic `t` at subposition `in` of the found position. */
+  def searchApplyIn(f: Formula, t: DependentPositionTactic, in: PosInExpr): DependentTactic = "ANON" by ((seq: Sequent) => {
+    //@todo Extend position locators to sub-positions, e.g., 'L.1.0.1, 'Llast.1.1
+    val subPos: Position = {
+      val ante = seq.ante.indexOf(f)
+      if (ante >= 0) AntePosition.base0(ante, in)
+      else {
+        val succ = seq.succ.indexOf(f)
+        if (succ >= 0) SuccPosition.base0(succ, in)
+        else throw BelleTacticFailure("Cannot find formula " + f.prettyString + " in sequent " + seq.prettyString)
+      }
+    }
+    t(subPos)
+  })
 }
 
 /** Creates tactic objects */
@@ -293,19 +362,19 @@ object TacticFactory {
    * @param name The tactic name.
     *             Use the special name "ANON" to indicate that this is an anonymous inner tactic that needs no storage.
    */
-  implicit class TacticForNameFactory(val name: String) {
+  implicit class TacticForNameFactory(val name: String) extends Logging {
     if (name == "") throw new InternalError("Don't use empty name, use ANON for anonymous inner tactics")
     /*if (false)*/ {
       try {
         if (name != "ANON" && DerivationInfo.ofCodeName(name).codeName.toLowerCase() != name.toLowerCase())
-          println("WARNING: codeName should be changed to a consistent name: " + name + " vs. " + DerivationInfo.ofCodeName(name).codeName)
+          logger.warn("WARNING: codeName should be changed to a consistent name: " + name + " vs. " + DerivationInfo.ofCodeName(name).codeName)
       } catch {
-        case _: IllegalArgumentException => //println("WARNING: codeName not found: " + name)
+        case ex: IllegalArgumentException => logger.warn("WARNING: codeName not found: " + name, ex)
       }
     }
 
     /** Creates a named tactic */
-    def by(t: BelleExpr): BelleExpr = new NamedTactic(name, t)
+    def by(t: BelleExpr): BelleExpr = NamedTactic(name, t)
 
     def byTactic(t: ((ProvableSig, Position, Position) => BelleExpr)) = new DependentTwoPositionTactic(name) {
       override def computeExpr(p1: Position, p2: Position): DependentTactic = new DependentTactic("") {
@@ -332,7 +401,7 @@ object TacticFactory {
     }
 
     /** A position tactic with multiple inputs. */
-    def byWithInputs(inputs: List[Any], t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic = new DependentPositionWithAppliedInputTactic(name, inputs) {
+    def byWithInputs(inputs: Seq[Any], t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic = new DependentPositionWithAppliedInputTactic(name, inputs) {
       override def factory(pos: Position): DependentTactic = new SingleGoalDependentTactic(name) {
         override def computeExpr(sequent: Sequent): BelleExpr = {
           require(pos.isIndexDefined(sequent), "Cannot apply at undefined position " + pos + " in sequent " + sequent)
@@ -342,16 +411,16 @@ object TacticFactory {
     }
 
     /** A named tactic with multiple inputs. */
-    def byWithInputs(inputs: List[Any], t: BelleExpr): InputTactic = new InputTactic(name, inputs) {
+    def byWithInputs(inputs: Seq[Any], t: => BelleExpr): InputTactic = new InputTactic(name, inputs) {
       override def computeExpr(): BelleExpr = t
     }
 
     /** A position tactic with a single input. */
     def byWithInput(input: Any, t: ((Position, Sequent) => BelleExpr)): DependentPositionWithAppliedInputTactic =
-      byWithInputs(List(input), t)
+      byWithInputs(input :: Nil, t)
 
     /** A named tactic with a single input. */
-    def byWithInput(input: Any, t: BelleExpr): InputTactic = byWithInputs(List(input), t)
+    def byWithInput(input: Any, t: => BelleExpr): InputTactic = byWithInputs(input :: Nil, t)
 
     /** Creates a dependent tactic, which can inspect the sole sequent */
     def by(t: Sequent => BelleExpr): DependentTactic = new SingleGoalDependentTactic(name) {

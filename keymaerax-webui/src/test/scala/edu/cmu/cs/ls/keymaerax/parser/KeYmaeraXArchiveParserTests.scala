@@ -32,8 +32,29 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "theorem",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
+    )
+  }
+
+  it should "parse a plain problem format" in {
+    val input =
+      """ProgramVariables. R x. R y. End.
+        |Problem. x>y -> x>=y End.
+      """.stripMargin
+    val entries = KeYmaeraXArchiveParser.parse(input)
+    entries should have size 1
+    entries.head shouldBe ParsedArchiveEntry(
+      "Unnamed",
+      "theorem",
+      """ProgramVariables. R x. R y. End.
+        |Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
+      "x>y -> x>=y".asFormula,
+      Nil,
+      Map.empty
     )
   }
 
@@ -104,8 +125,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "theorem",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      ("Proof 1", implyR(1) & QE) :: Nil
+      ("Proof 1", implyR(1) & QE) :: Nil,
+      Map.empty
     )
   }
 
@@ -125,8 +148,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "theorem",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      ("Proof 1", implyR(1) & QE) :: ("Proof 2", implyR('R)) :: Nil
+      ("Proof 1", implyR(1) & QE) :: ("Proof 2", implyR('R)) :: Nil,
+      Map.empty
     )
   }
 
@@ -151,8 +176,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "theorem",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
     )
     entries.last shouldBe ParsedArchiveEntry(
       "Entry 2",
@@ -160,8 +187,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       """Functions. R x(). End.
         |  ProgramVariables R y. End.
         |  Problem. x()>=y -> x()>=y End.""".stripMargin,
+      "Functions. R x(). End.\n ProgramVariables. R y. End.".asDeclarations,
       "x()>=y -> x()>=y".asFormula,
-      ("Prop Proof", prop) :: Nil
+      ("Prop Proof", prop) :: Nil,
+      Map.empty
     )
   }
 
@@ -197,8 +226,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
         "theorem",
         """ProgramVariables. R x. R y. End.
           | Problem. x>y -> x>=y End.""".stripMargin,
+        "ProgramVariables. R x. R y. End.".asDeclarations,
         "x>y -> x>=y".asFormula,
-        Nil
+        Nil,
+        Map.empty
       ) ::
       ParsedArchiveEntry(
         "Entry 2",
@@ -206,24 +237,30 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
         """Functions. R x(). End.
           |  ProgramVariables R y. End.
           |  Problem. x()>=y -> x()>=y End.""".stripMargin,
+        "Functions. R x(). End.\n ProgramVariables. R y. End.".asDeclarations,
         "x()>=y -> x()>=y".asFormula,
-        ("Prop Proof", prop) :: Nil
+        ("Prop Proof", prop) :: Nil,
+        Map.empty
       ) ::
       ParsedArchiveEntry(
         "Entry 3",
         "theorem",
         """ProgramVariables. R x. End.
           |  Problem. x>3 -> x>=3 End.""".stripMargin,
+        "ProgramVariables. R x. End.".asDeclarations,
         "x>3 -> x>=3".asFormula,
-        Nil
+        Nil,
+        Map.empty
       ) ::
       ParsedArchiveEntry(
         "Entry 4",
         "theorem",
         """ProgramVariables. R x. End.
           |  Problem. x>4 -> x>=4 End.""".stripMargin,
+        "ProgramVariables. R x. End.".asDeclarations,
         "x>4 -> x>=4".asFormula,
-        Nil
+        Nil,
+        Map.empty
       ) :: Nil
   }
 
@@ -259,8 +296,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
         "theorem",
         """ProgramVariables. R x. R y. End.
           | Problem. x>y -> x>=y End.""".stripMargin,
+        "ProgramVariables. R x. R y. End.".asDeclarations,
         "x>y -> x>=y".asFormula,
-        Nil
+        Nil,
+        Map.empty
       ) ::
         ParsedArchiveEntry(
           "Lemma 2: Some Entry",
@@ -268,24 +307,30 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
           """Functions. R x(). End.
             |  ProgramVariables R y. End.
             |  Problem. x()>=y -> x()>=y End.""".stripMargin,
+          "Functions. R x(). End.\n ProgramVariables. R y. End.".asDeclarations,
           "x()>=y -> x()>=y".asFormula,
-          ("Prop Proof of Lemma 2", prop) :: Nil
+          ("Prop Proof of Lemma 2", prop) :: Nil,
+          Map.empty
         ) ::
         ParsedArchiveEntry(
           "Theorem 1: Some Entry",
           "theorem",
           """ProgramVariables. R x. End.
             |  Problem. x>3 -> x>=3 End.""".stripMargin,
+          "ProgramVariables. R x. End.".asDeclarations,
           "x>3 -> x>=3".asFormula,
-          Nil
+          Nil,
+          Map.empty
         ) ::
         ParsedArchiveEntry(
           "ArchiveEntry 4: Name",
           "theorem",
           """ProgramVariables. R x. End.
             |  Problem. x>4 -> x>=4 End.""".stripMargin,
+          "ProgramVariables. R x. End.".asDeclarations,
           "x>4 -> x>=4".asFormula,
-          Nil
+          Nil,
+          Map.empty
         ) :: Nil
   }
 
@@ -303,8 +348,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "lemma",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
     )
   }
 
@@ -322,8 +369,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "theorem",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
     )
   }
 
@@ -348,16 +397,47 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
       "lemma",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
     )
     entries(1) shouldBe ParsedArchiveEntry(
       "Entry 2",
       "theorem",
       """ProgramVariables. R x. R y. End.
         | Problem. x>y -> x>=y End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      ("Proof Entry 2", TactixLibrary.useLemma("Entry 1", None))::Nil
+      ("Proof Entry 2", TactixLibrary.useLemma("Entry 1", None))::Nil,
+      Map.empty
+    )
+  }
+
+  it should "parse meta information" in {
+    val input =
+      """
+        |Lemma "Entry 1".
+        | Description "The description of entry 1".
+        | Title "A short entry 1 title".
+        | Link "http://web.keymaerax.org/show/entry1".
+        | ProgramVariables. R x. R y. End.
+        | Problem. x>y -> y<x End.
+        |End.
+      """.stripMargin
+    val entries = KeYmaeraXArchiveParser.parse(input)
+    entries.loneElement shouldBe ParsedArchiveEntry(
+      "Entry 1",
+      "lemma",
+      """ProgramVariables. R x. R y. End.
+        | Problem. x>y -> y<x End.""".stripMargin,
+      "ProgramVariables. R x. R y. End.".asDeclarations,
+      "x>y -> y<x".asFormula,
+      Nil,
+      Map(
+        "Description" -> "The description of entry 1",
+        "Title" -> "A short entry 1 title",
+        "Link" -> "http://web.keymaerax.org/show/entry1")
     )
   }
 
@@ -390,8 +470,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
         |End.
         |ProgramVariables. R x. R y. End.
         | Problem. gt(x,y) -> x>=y End.""".stripMargin,
+      "Definitions.\nB gt(R,R) <-> ( ._0 > ._1 ).\nEnd.\nProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
     )
     entries(1) shouldBe ParsedArchiveEntry(
       "Entry 2",
@@ -401,8 +483,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
         | B geq(R,R) <-> ( ._0 >= ._1 ). End.
         | ProgramVariables. R x. R y. End.
         | Problem. gt(x,y) -> geq(x,y) End.""".stripMargin,
+      "Definitions.\nB gt(R,R) <-> ( ._0 > ._1 ).\n B geq(R,R) <-> ( ._0 >= ._1 ). End.\n ProgramVariables. R x. R y. End.".asDeclarations,
       "x>y -> x>=y".asFormula,
-      ("Proof Entry 2", TactixLibrary.useLemma("Entry 1", None))::Nil
+      ("Proof Entry 2", TactixLibrary.useLemma("Entry 1", None))::Nil,
+      Map.empty
     )
   }
 
@@ -462,8 +546,10 @@ class KeYmaeraXArchiveParserTests extends TacticTestBase {
         | B geq(R,R) <-> ( ._0 >= ._1 ). End.
         | ProgramVariables. R x. R y. End.
         | Problem. gt(x,y) -> geq(x,y) End.""".stripMargin,
+      "Definitions.\nB gt(R,R) <-> ( \\exists t (t=1 & ._0*t > ._1) ).\n B geq(R,R) <-> ( ._0 >= ._1 ). End.\n ProgramVariables. R x. R y. End.".asDeclarations,
       "\\exists t (t=1 & x*t>y) -> x>=y".asFormula,
-      Nil
+      Nil,
+      Map.empty
     )
   }
 

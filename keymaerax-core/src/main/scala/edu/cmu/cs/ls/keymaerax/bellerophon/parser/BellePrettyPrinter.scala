@@ -29,12 +29,14 @@ object BellePrettyPrinter extends (BelleExpr => String) {
         case ApplyDefTactic(DefTactic(name, _)) => name
         case SeqTactic(l,r)     => wrapLeft(e, l, indent) + " " + op(e).terminal.img + " " + wrapRight(e, r, indent)
         case EitherTactic(l,r) => wrapLeft(e, l, indent) + " " + op(e).terminal.img + " " + wrapRight(e, r, indent)
+        case AfterTactic(l,r) => wrapLeft(e, l, indent) + " " + op(e).terminal.img + " " + wrapRight(e, r, indent)
         case BranchTactic(ts) => op(e).terminal.img +
           "(" + newline(indent) + ts.map(pp(_, indent+1)).mkString(", " + newline(indent+1)) + newline(indent) + ")"
         case SaturateTactic(t) => wrapLeft(e, t, indent) + op(e).terminal.img
-        case it : StringInputTactic =>
+        case it: StringInputTactic if it.inputs.nonEmpty =>
           val eargs = it.inputs.map(input => argPrinter(Left(input))).mkString(", ")
           it.name + "(" + eargs + ")"
+        case it: StringInputTactic if it.inputs.isEmpty => it.name
         case b : BuiltInTactic => b.name
         case b: BuiltInPositionTactic => b.name
         case b: BuiltInLeftTactic => b.name
@@ -48,6 +50,7 @@ object BellePrettyPrinter extends (BelleExpr => String) {
             case (a: Formula, v: Formula) => edu.cmu.cs.ls.keymaerax.core.Equiv(a, v)
           })) + ") " + IN.img + " (" +
           newline(indent+1) + pp(inner, indent+1) + newline(indent) + ")"
+        case DependentPositionTactic(name) if name == "ANON" => throw PrinterException("Anonymous tactic cannot be re-parsed: please replace anonymous tactic with its inner steps.")
         case DependentPositionTactic(name) => name // name of a DependentPositionTactic is the codeName
         case adp: AppliedDependentPositionTactic => adp.pt match {
           case e: DependentPositionWithAppliedInputTactic =>

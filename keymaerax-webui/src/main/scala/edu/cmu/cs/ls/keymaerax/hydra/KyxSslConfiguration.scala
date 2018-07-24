@@ -5,21 +5,22 @@
 
 package edu.cmu.cs.ls.keymaerax.hydra
 
-import java.security.{SecureRandom, KeyStore}
+import java.security.{KeyStore, SecureRandom}
 import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory}
-import spray.io._
+
+import edu.cmu.cs.ls.keymaerax.Configuration
 
 
 /**
   * Created by nfulton on 6/25/16.
   * Copied from https://gist.github.com/pymeat/7426513
   */
-trait KyxSslConfiguration {
+object KyxSslConfiguration {
   // if there is no SSLContext in scope implicitly the HttpServer uses the default SSLContext,
   // since we want non-default settings in this example we make a custom SSLContext available here
   implicit def sslContext: SSLContext = {
     val keyStoreResource = "/private/KeyStore.jks"
-    val password = SQLite.ProdDB.getConfiguration("serverconfig").config("jks")
+    val password = Configuration(Configuration.Keys.JKS)
 
     val keyStore = KeyStore.getInstance("jks")
     keyStore.load(getClass.getResourceAsStream(keyStoreResource), password.toCharArray)
@@ -35,11 +36,11 @@ trait KyxSslConfiguration {
   // if there is no ServerSSLEngineProvider in scope implicitly the HttpServer uses the default one,
   // since we want to explicitly enable cipher suites and protocols we make a custom ServerSSLEngineProvider
   // available here
-  implicit def sslEngineProvider: ServerSSLEngineProvider = {
-    ServerSSLEngineProvider { engine =>
-      engine.setEnabledCipherSuites(Array("TLS_RSA_WITH_AES_256_CBC_SHA"))
-      engine.setEnabledProtocols(Array("SSLv3", "TLSv1"))
-      engine
-    }
-  }
+//  implicit def sslEngineProvider: ServerSSLEngineProvider = {
+//    ServerSSLEngineProvider { engine =>
+//      engine.setEnabledCipherSuites(Array("TLS_RSA_WITH_AES_256_CBC_SHA"))
+//      engine.setEnabledProtocols(Array("SSLv3", "TLSv1"))
+//      engine
+//    }
+//  }
 }

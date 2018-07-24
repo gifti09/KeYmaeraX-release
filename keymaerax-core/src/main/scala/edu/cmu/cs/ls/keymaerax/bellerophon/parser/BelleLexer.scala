@@ -2,6 +2,7 @@ package edu.cmu.cs.ls.keymaerax.bellerophon.parser
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser.BelleToken
 import edu.cmu.cs.ls.keymaerax.parser._
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable.List
 
@@ -10,10 +11,8 @@ import scala.collection.immutable.List
   *
   * @author Nathan Fulton
   */
-object BelleLexer extends ((String) => List[BelleToken]) {
+object BelleLexer extends ((String) => List[BelleToken]) with Logging {
   type TokenStream = List[BelleToken]
-
-  private val DEBUG = System.getProperty("DEBUG", "false")=="true"
 
   def apply(s: String) : List[BelleToken] = {
     //Avoids importing a thing with lots of potential name clashes.
@@ -21,7 +20,7 @@ object BelleLexer extends ((String) => List[BelleToken]) {
     //@todo not sure if this position is Ok. This is what's used in the KeYmaera X lexer.
     val startingLocation = SuffixRegion(1,1)
 
-    if (DEBUG) println("LEX: " + correctedInput)
+    logger.debug("LEX: " + correctedInput)
     lex(s, startingLocation)
   }
 
@@ -93,7 +92,6 @@ object BelleLexer extends ((String) => List[BelleToken]) {
       case ON_ALL.startPattern(_*) => consumeTerminalLength(ON_ALL, loc)
       case US_MATCH.startPattern(_*) => consumeTerminalLength(US_MATCH, loc)
       case PARTIAL.startPattern(_*) => consumeTerminalLength(PARTIAL, loc)
-      case DONE.startPattern(_*) => consumeTerminalLength(DONE, loc)
       case LET.startPattern(_*) => consumeTerminalLength(LET, loc)
       case IN.startPattern(_*) => consumeTerminalLength(IN, loc)
       case TACTIC.startPattern(_*) => consumeTerminalLength(TACTIC, loc)
@@ -110,6 +108,7 @@ object BelleLexer extends ((String) => List[BelleToken]) {
       case SEQ_COMBINATOR.startPattern(_*) => consumeTerminalLength(SEQ_COMBINATOR, loc)
       case DEPRECATED_SEQ_COMBINATOR.startPattern(_*) => consumeTerminalLength(DEPRECATED_SEQ_COMBINATOR, loc)
       case EITHER_COMBINATOR.startPattern(_*) => consumeTerminalLength(EITHER_COMBINATOR, loc)
+      case AFTER_COMBINATOR.startPattern(_*) => consumeTerminalLength(AFTER_COMBINATOR, loc)
       case KLEENE_STAR.startPattern(_*) => consumeTerminalLength(KLEENE_STAR, loc)
       case SATURATE.startPattern(_*) => consumeTerminalLength(SATURATE, loc)
       case BRANCH_COMBINATOR.startPattern(_*) => consumeTerminalLength(BRANCH_COMBINATOR, loc)

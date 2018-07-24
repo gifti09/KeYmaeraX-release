@@ -4,9 +4,10 @@ import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.btactics.Idioms._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
-import edu.cmu.cs.ls.keymaerax.core
+import edu.cmu.cs.ls.keymaerax.{Configuration, core}
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+import org.apache.logging.log4j.scala.Logging
 
 
 /**
@@ -16,9 +17,9 @@ import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
   * @author Nathan Fulton
  * @see [[SequentCalculi]]
  */
-private object ProofRuleTactics {
+private object ProofRuleTactics extends Logging {
   //@note Rule.LAX_MODE not accessible outside core
-  val LAX_MODE = System.getProperty("LAX", "true")=="true"
+  val LAX_MODE = Configuration(Configuration.Keys.LAX) == "true"
 
   /**
    * Throw exception if there is more than one open subgoal on the provable.
@@ -38,7 +39,7 @@ private object ProofRuleTactics {
       override def result(provable: ProvableSig): ProvableSig = {
         provable(core.Cut(f), 0)
       }
-    } & Idioms.<(label(BelleLabels.cutUse.label), label(BelleLabels.cutShow.label))
+    } & Idioms.<(label(BelleLabels.cutUse), label(BelleLabels.cutShow))
   }
 
   def cutL(f: Formula): DependentPositionWithAppliedInputTactic = "cutL" byWithInput(f, (pos: Position, _: Sequent) => {
@@ -116,12 +117,14 @@ private object ProofRuleTactics {
     * @return
     * @see [[edu.cmu.cs.ls.keymaerax.core.UniformRenaming]]
     */
-  def uniformRenaming(what: Variable, repl: Variable) = new BuiltInTactic("UniformRenaming") {
-    override def result(provable: ProvableSig): ProvableSig = {
-      requireOneSubgoal(provable, name + "(" + what + "~~>" + repl + ")")
-      provable(core.UniformRenaming(what, repl), 0)
+  def uniformRenaming(what: Variable, repl: Variable): InputTactic = "uniformRename" byWithInputs(what::repl::Nil,
+    new BuiltInTactic("UniformRenaming") {
+      override def result(provable: ProvableSig): ProvableSig = {
+        requireOneSubgoal(provable, name + "(" + what + "~~>" + repl + ")")
+        provable(core.UniformRenaming(what, repl), 0)
+      }
     }
-  }
+  )
 
   import TacticFactory._
   /**
@@ -202,7 +205,7 @@ private object ProofRuleTactics {
           close(-1,1)
         )
       )
-      if (BelleExpr.DEBUG) println("contextualize.side " + side)
+      logger.debug("contextualize.side " + side)
       TactixLibrary.CEat(side)(pos)
     })
 

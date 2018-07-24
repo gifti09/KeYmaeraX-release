@@ -6,10 +6,10 @@ import edu.cmu.cs.ls.keymaerax.btactics.SimplifierV3._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.tools._
 import edu.cmu.cs.ls.keymaerax.core._
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable._
 import scala.collection.mutable.ListBuffer
-import scala.language.postfixOps
 
 /**
   * Differential Saturation (Fig 6.3, Logical Analysis of Hybrid Systems)
@@ -18,18 +18,11 @@ import scala.language.postfixOps
   * Does NOT construct proofs along the way
  */
 
-object DifferentialSaturation {
+object DifferentialSaturation extends Logging {
 
   def pQE(f:Formula) : Formula = {
     val qe = ToolProvider.qeTool().getOrElse(throw new BelleThrowable("partialQE requires a QETool, but got None"))
     qe.qeEvidence(f)._1
-  }
-
-  def simpWithTool(tool: Option[SimplificationTool],t:Term) : Term = {
-    tool match {
-      case None => termSimp(t,emptyCtx,defaultTaxs)._1
-      case Some(tl) => tl.simplify(t,List())
-    }
   }
 
   //Generate a polynomial parametric candidates up to degree deg
@@ -66,37 +59,7 @@ object DifferentialSaturation {
     )
   }
 
-  // Computes and simplifies the lie derivative
-  // Firstly, it turns all remaining differentials into 0, then it simplifies and strips out things like x^0 = 1
-  // The simplifier can't do the last simplification without proof (since 0^0 is nasty)
-  def stripConstants(t:Term) : Term = {
-    t match {
-      case v:DifferentialSymbol => {
-        Number(0)
-      }
-      case bop:BinaryCompositeTerm => bop.reapply(stripConstants(bop.left),stripConstants(bop.right))
-      case uop:UnaryCompositeTerm => uop.reapply(stripConstants(uop.child))
-      case _ => t
-    }
-  }
-
-  def stripPowZero(t:Term) : Term = {
-    t match {
-      case Power(v,n:Number) if n.value.isValidInt && n.value.intValue()== 0 => Number(1)
-      case bop:BinaryCompositeTerm => bop.reapply(stripPowZero(bop.left),stripPowZero(bop.right))
-      case uop:UnaryCompositeTerm => uop.reapply(stripPowZero(uop.child))
-      case _ => t
-    }
-  }
-
-  def simplifiedLieDerivative(p:DifferentialProgram,t:Term, tool: Option[SimplificationTool]) : Term = {
-    val ld = stripConstants(lieDerivative(p,t))
-    val ts1 = simpWithTool(tool,ld)
-    val ts2 = simpWithTool(tool,stripPowZero(ts1))
-    ts2
-  }
-
-  //Closes formula under the differential program
+ //Closes formula under the differential program
   def diffClosure (f:Formula,p:DifferentialProgram) : Formula = {
     val diffVars = StaticSemantics.freeVars(f).intersect(StaticSemantics.boundVars(p))
     diffVars.toSet.toList.foldLeft(f) ( (qf,v) => Forall(Seq(v),qf))
@@ -268,9 +231,9 @@ object DifferentialSaturation {
     var ineqinvs = ListBuffer[(Term,Map[Variable,Term])]()
     var domain = dom.to[ListBuffer]
     for (cs <- candSets) {
-      println("Parametric invariants for",cs)
+      logger.trace("Parametric invariants for " + cs)
       for (deg <- List.range(1,degLimit)) {
-        println("Degree",deg)
+        logger.trace("Degree " + deg)
 
         //Try for equational invariant first
         val eqinv = parametricInvariant(ode,domain.toList,cs,insts,fresh,deg,tool,false) match {
@@ -278,7 +241,7 @@ object DifferentialSaturation {
           case Some((t,s,iv,nf)) =>
             insts = iv
             fresh = nf
-            println("Found = invariant",t)
+            logger.trace("Found = invariant " + t)
             //This unfortunately seems to make PQE do badly...
             domain += Equal(t,Number(0))
             eqinvs+=((t,s))
@@ -293,7 +256,7 @@ object DifferentialSaturation {
             case Some((t, s, iv, nf)) =>
               insts = iv
               fresh = nf
-              println("Found >= invariant", t)
+              logger.trace("Found >= invariant " + t)
               //This unfortunately seems to make PQE do badly...
               domain += GreaterEqual(t, Number(0))
               ineqinvs += ((t, s))

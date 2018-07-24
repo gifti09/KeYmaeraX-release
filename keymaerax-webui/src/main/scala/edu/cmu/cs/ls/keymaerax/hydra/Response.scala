@@ -16,14 +16,20 @@ import edu.cmu.cs.ls.keymaerax.core.{Expression, Formula}
 import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser._
+
 import spray.json._
+import DefaultJsonProtocol._
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import akka.http.scaladsl.marshallers.xml.ScalaXmlSupport._
+
 import java.io.{PrintWriter, StringWriter}
 
 import Helpers._
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.{BelleParser, BellePrettyPrinter}
 import edu.cmu.cs.ls.keymaerax.codegen.{CGenerator, CMonitorGenerator}
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
-import spray.httpx.marshalling.ToResponseMarshallable
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.immutable
@@ -300,8 +306,8 @@ class CreatedIdResponse(id : String) extends Response {
   def getJson = JsObject("id" -> JsString(id))
 }
 
-class PossibleAttackResponse(val msg: String) extends Response {
-  println(s"POSSIBLE ATTACK: $msg")
+class PossibleAttackResponse(val msg: String) extends Response with Logging {
+  logger.fatal(s"POSSIBLE ATTACK: $msg")
   override def getJson: JsValue = new ErrorResponse(msg).getJson
 }
 
@@ -384,7 +390,7 @@ class ProofVerificationResponse(proofId: String, provable: ProvableSig, tactic: 
   override def getJson = JsObject(
     "proofId" -> JsString(proofId),
     "isProved" -> JsBoolean(provable.isProved),
-    "provable" -> JsString(provable.toString),
+    "provable" -> JsString(provable.underlyingProvable.toString),
     "tactic" -> JsString(tactic))
 }
 
@@ -803,37 +809,6 @@ class GetBranchRootResponse(node: ProofTreeNode) extends Response {
 
 case class LemmasResponse(infos: List[ProvableInfo]) extends Response {
   override def getJson: JsValue = {
-    def toDisplayInfoParts(pi: ProvableInfo): JsValue = {
-      val keyPos = AxiomIndex.axiomIndex(pi.canonicalName)._1
-
-      def prettyPrint(s: String): String = {
-        val p = """([a-zA-Z]+)\(\|\|\)""".r("name")
-        val pretty = p.replaceAllIn(s.replaceAll("_", ""), _.group("name").toUpperCase).replaceAll("""\(\|\|\)""", "")
-        UIKeYmaeraXPrettyPrinter.htmlEncode(pretty)
-      }
-
-      //@todo need more verbose axiom info
-      ProvableInfo.locate(pi.canonicalName) match {
-        case Some(i) =>
-          val (cond, op, key, keyPosString, conclusion, conclusionPos) = i.provable.conclusion.succ.head match {
-            case Imply(c, eq@Equiv(l, r)) if keyPos == PosInExpr(1::0::Nil) => (Some(c), OpSpec.op(eq).opcode, l, "1.0", r, "1.1")
-            case Imply(c, eq@Equiv(l, r)) if keyPos == PosInExpr(1::1::Nil) => (Some(c), OpSpec.op(eq).opcode, r, "1.1", l, "1.0")
-            case bcf: BinaryCompositeFormula if keyPos == PosInExpr(0::Nil) => (None, OpSpec.op(bcf).opcode, bcf.left, "0", bcf.right, "1")
-            case bcf: BinaryCompositeFormula if keyPos == PosInExpr(1::Nil) => (None, OpSpec.op(bcf).opcode, bcf.right, "1", bcf.left, "0")
-            case f => (None, OpSpec.op(Equiv(f, True)).opcode, f, "0", True, "1")
-          }
-          JsObject(
-            "cond" -> (if (cond.isDefined) JsString(prettyPrint(cond.get.prettyString)) else JsNull),
-            "op" -> (if (op.nonEmpty) JsString(prettyPrint(op)) else JsNull),
-            "key" -> JsString(prettyPrint(key.prettyString)),
-            "keyPos" -> JsString(keyPosString),
-            "conclusion" -> JsString(prettyPrint(conclusion.prettyString)),
-            "conclusionPos" -> JsString(conclusionPos)
-          )
-        case None => JsNull
-      }
-    }
-
     var json = infos.map(i =>
       JsObject(
         "name" -> JsString(i.canonicalName),
@@ -846,7 +821,7 @@ case class LemmasResponse(infos: List[ProvableInfo]) extends Response {
           case AxiomDisplayInfo(_, f) => JsString(f)
           case _ => JsNull
         }),
-        "displayInfoParts" -> toDisplayInfoParts(i)))
+        "displayInfoParts" -> RequestHelper.jsonDisplayInfoComponents(i)))
 
     JsObject("lemmas" -> JsArray(json:_*))
   }
@@ -890,22 +865,29 @@ case class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Opti
     else JsString(scala.io.Source.fromInputStream(helpResource).mkString)
   }
 
-  def axiomJson(info:DerivationInfo): JsObject = {
+  def axiomJson(info: DerivationInfo): JsObject = {
     val formulaText =
       (info, info.display) match {
         case (_, AxiomDisplayInfo(_, formulaDisplay)) => formulaDisplay
         case (_, InputAxiomDisplayInfo(_, formulaDisplay, _)) => formulaDisplay
         case (info:AxiomInfo, _) => info.formula.prettyString
       }
-    JsObject (
-    "type" -> JsString("axiom"),
-    "formula" -> JsString(formulaText),
-    "input" -> inputsJson(info.inputs),
-    "help" -> helpJson(info.codeName)
+    JsObject(
+      "type" -> JsString("axiom"),
+      "formula" -> JsString(formulaText),
+      "codeName" -> JsString(info.codeName),
+      "canonicalName" -> JsString(info.canonicalName),
+      "defaultKeyPos" -> {
+        var key = AxiomIndex.axiomIndex(info.canonicalName)._1
+        JsString(key.pos.mkString("."))
+      },
+      "displayInfoParts" -> RequestHelper.jsonDisplayInfoComponents(info),
+      "input" -> inputsJson(info.inputs),
+      "help" -> helpJson(info.codeName)
     )
   }
 
-  def tacticJson(info:TacticInfo): JsObject = {
+  def tacticJson(info: DerivationInfo): JsObject = {
     JsObject(
       "type" -> JsString("tactic"),
       "input" -> inputsJson(info.inputs),
@@ -922,7 +904,7 @@ case class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Opti
    json
   }
 
-  def ruleJson(info: TacticInfo, conclusion: SequentDisplay, premises: List[SequentDisplay]): JsObject = {
+  def ruleJson(info: DerivationInfo, conclusion: SequentDisplay, premises: List[SequentDisplay]): JsObject = {
     val conclusionJson = sequentJson(conclusion)
     val premisesJson = JsArray(premises.map(sequentJson):_*)
     val helpJson = {
@@ -944,16 +926,14 @@ case class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Opti
     else s"${i.display.name} <code>${i.codeName}</code>"
 
   def derivationJson(derivationInfo: DerivationInfo): JsObject = {
-    val derivation =
-      derivationInfo match {
-        case info:AxiomInfo => axiomJson(info)
-        case info:TacticInfo =>
-          info.display match {
-            case _: SimpleDisplayInfo => tacticJson(info)
-            case display : AxiomDisplayInfo => axiomJson(info)
-            case RuleDisplayInfo(_, conclusion, premises) => ruleJson(info, conclusion, premises)
-          }
+    val derivation = derivationInfo match {
+      case info: AxiomInfo => axiomJson(info)
+      case info: DerivationInfo => info.display match {
+        case _: SimpleDisplayInfo => tacticJson(info)
+        case _: AxiomDisplayInfo => axiomJson(info)
+        case RuleDisplayInfo(_, conclusion, premises) => ruleJson(info, conclusion, premises)
       }
+    }
     JsObject(
       "id" -> new JsString(derivationInfo.codeName),
       "name" -> new JsString(derivationInfo.display.name),
@@ -964,7 +944,7 @@ case class ApplicableAxiomsResponse(derivationInfos : List[(DerivationInfo, Opti
   }
 
   private def posJson(pos: Option[PositionLocator]): JsValue = pos match {
-    case Some(Fixed(pos, _, _)) => new JsString(pos.toString)
+    case Some(Fixed(p, _, _)) => new JsString(p.toString)
     case Some(Find(_, _, _: AntePosition, _)) => new JsString("L")
     case Some(Find(_, _, _: SuccPosition, _)) => new JsString("R")
     case _ => JsNull

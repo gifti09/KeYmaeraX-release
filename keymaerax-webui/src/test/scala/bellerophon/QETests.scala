@@ -1,13 +1,14 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.bellerophon.parser.BelleParser
-import edu.cmu.cs.ls.keymaerax.bellerophon.{BelleProvable, BelleThrowable, SequentialInterpreter, SpoonFeedingInterpreter}
+import edu.cmu.cs.ls.keymaerax.bellerophon._
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.parser.StringConverter._
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.launcher.DefaultConfiguration
 import edu.cmu.cs.ls.keymaerax.parser.KeYmaeraXProblemParser
 import edu.cmu.cs.ls.keymaerax.pt.ProvableSig
+import edu.cmu.cs.ls.keymaerax.tools.Tool
 
 import scala.collection.immutable.IndexedSeq
 
@@ -61,7 +62,7 @@ class QETests extends TacticTestBase {
 
   it should "fail x()=x" in withMathematica { qeTool =>
     the [BelleThrowable] thrownBy proveBy("x()=x".asFormula, ToolTactics.fullQE(qeTool) & done) should have message
-      """[Bellerophon Runtime] Expected proved provable, but got NoProofTermProvable(Provable(  ==>  x()=x
+      """[Bellerophon Runtime] Expected proved provable, but got ElidingProvable(Provable(  ==>  x()=x
         |  from     ==>  false))""".stripMargin
   }
 
@@ -109,7 +110,8 @@ class QETests extends TacticTestBase {
     ToolProvider.setProvider(provider)
     val modelContent = "Variables. R x. End. Problem. x>0 -> x>=0&\\exists s x*s^2>0 End."
     val proofId = db.createProof(modelContent)
-    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db), SequentialInterpreter))
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db),
+      ExhaustiveSequentialInterpreter))
     interpreter(BelleParser("implyR(1); andR(1); <(QE({`Z3`}), QE({`Mathematica`}))"),
       BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(modelContent))))
     db.extractTactic(proofId) shouldBe BelleParser("implyR(1); andR(1); <(QE({`Z3`}), QE({`Mathematica`}))")
@@ -121,7 +123,8 @@ class QETests extends TacticTestBase {
     ToolProvider.setProvider(provider)
     val modelContent = "Variables. R x. End. Problem. x>0 -> x>=0&x>=-1 End."
     val proofId = db.createProof(modelContent)
-    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db), SequentialInterpreter))
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db),
+      ExhaustiveSequentialInterpreter))
     interpreter(BelleParser("implyR(1); andR(1); <(QE, QE)"),
       BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(modelContent))))
     db.extractTactic(proofId) shouldBe BelleParser("implyR(1); andR(1); <(QE, QE)")
@@ -134,49 +137,41 @@ class QETests extends TacticTestBase {
     proveBy("x>0 ==> x>=0&\\exists s x*s^2>0&x>=-2".asSequent, tactic) shouldBe 'proved
   }
 
-  it should "fail on internal decimal representations" in withMathematica { qeTool =>
-    val result = proveBy(Equal(Number(0.33333333333333),Divide(Number(1),Number(3))),ToolTactics.fullQE(qeTool))
-    result.isProved shouldBe false
-    result.subgoals should have size 1
-    result.subgoals.head.succ should contain theSameElementsAs "false".asFormula::Nil
-  }
+  "QE with timeout" should "reset timeout when done" in withDatabase{ db => withQE { _ =>
+    val modelContent = "Variables. R x. End. Problem. x>1 -> x>0 End."
+    val proofId = db.createProof(modelContent)
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db),
+      ExhaustiveSequentialInterpreter))
+    interpreter(QE(Nil, None, Some(7)), BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(modelContent))))
+    db.extractTactic(proofId) shouldBe BelleParser("QE({`7`})")
+  }}
 
-  it should "fail (?) on internal decimal representations (2)" in withMathematica { qeTool =>
-    // This isn't as bad as the above two
-    proveBy(Equal(Number(1.0),Minus(Number(4),Number(3))),ToolTactics.fullQE(qeTool)) shouldBe 'proved
-  }
+  it should "omit timeout reset when no timeout" in withDatabase{ db => withQE { _ =>
+    val modelContent = "Variables. R x. End. Problem. x>1 -> x>0 End."
+    val proofId = db.createProof(modelContent)
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db),
+      ExhaustiveSequentialInterpreter))
+    interpreter(QE, BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(modelContent))))
+    db.extractTactic(proofId) shouldBe BelleParser("QE")
+  }}
 
-  it should "fail x()=x" in withMathematica { qeTool =>
-    the [BelleThrowable] thrownBy proveBy("x()=x".asFormula, ToolTactics.fullQE(qeTool) & done) should have message
-      """[Bellerophon Runtime] Expected proved provable, but got NoProofTermProvable(Provable(  ==>  x()=x
-        |  from     ==>  false))""".stripMargin
-  }
+  it should "use the right tool" in withDatabase{ db => withQE { case tool: Tool =>
+    val modelContent = "Variables. R x. End. Problem. x>1 -> x>0 End."
+    val proofId = db.createProof(modelContent)
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db),
+      ExhaustiveSequentialInterpreter))
+    interpreter(QE(Nil, Some(tool.name), Some(7)), BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(modelContent))))
+    db.extractTactic(proofId) shouldBe BelleParser(s"QE({`${tool.name}`}, {`7`})")
+  }}
 
-  it should "not choke on predicates" in withMathematica { tool =>
-    proveBy("p_() & q_() -> 2<3".asFormula,ToolTactics.fullQE(tool)) shouldBe 'proved
-  }
-
-  it should "close predicates if possible" in withMathematica { tool =>
-    proveBy("p_() & q_() -> p_() | 2<3".asFormula,ToolTactics.fullQE(tool)) shouldBe 'proved
-  }
-
-  it should "not fail when already proved" in withMathematica { tool =>
-    proveBy("x>0 -> x>0".asFormula, prop & ToolTactics.fullQE(tool)) shouldBe 'proved
-  }
-
-  it should "not have soundness bug with decimal representations " in withMathematica { _ =>
-
-    val pr = proveBy("false".asFormula,
-      cut("1-3 * 0.33333333333333 = 0".asFormula) <( QE,
-      cut("3 * 0.33333333333333 = 1 ".asFormula)  <( eqL2R(-1)(2) & QE,
-         QE)))
-
-    pr.isProved shouldBe false
-    pr.subgoals should have size 1
-    pr.subgoals.head.ante shouldBe empty
-    pr.subgoals.head.succ should contain theSameElementsAs "false".asFormula::Nil
-  }
-
+  it should "complain about the wrong tool" in withDatabase{ db => withZ3 { _ =>
+    val modelContent = "Variables. R x. End. Problem. x>1 -> x>0 End."
+    val proofId = db.createProof(modelContent)
+    val interpreter = registerInterpreter(SpoonFeedingInterpreter(proofId, -1, db.db.createProof, listener(db.db),
+      ExhaustiveSequentialInterpreter))
+    the [BelleThrowable] thrownBy interpreter(QE(Nil, Some("Mathematica"), Some(7)),
+      BelleProvable(ProvableSig.startProof(KeYmaeraXProblemParser(modelContent)))) should have message "[Bellerophon Runtime] QE requires Mathematica, but got None"
+  }}
 
   "Partial QE" should "not fail on |-" in withMathematica { qeTool =>
     val result = proveBy(Sequent(IndexedSeq(), IndexedSeq()), ToolTactics.partialQE(qeTool))

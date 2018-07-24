@@ -19,7 +19,7 @@ sealed abstract class BelleTerminal(val img: String, val postfix: String = "[\\s
 }
 
 private case class IDENT(name: String) extends BelleTerminal(name) {
-  assert(name != "USMatch" && name.toLowerCase != "partial" && name.toLowerCase != "done")
+  assert(name != "USMatch" && name.toLowerCase != "partial")
   override def toString = s"IDENT($name)"
 }
 private object IDENT {
@@ -40,6 +40,10 @@ private object DEPRECATED_SEQ_COMBINATOR extends BelleTerminal("&") {
 
 private object EITHER_COMBINATOR extends BelleTerminal("|") {
   override def regexp = "\\|".r
+}
+
+private object AFTER_COMBINATOR extends BelleTerminal(">") {
+  override def regexp = ">".r
 }
 
 object BRANCH_COMBINATOR extends BelleTerminal("<")
@@ -118,10 +122,6 @@ private object UNIFIABLE_MATCH extends BelleTerminal("~=") with TACTIC_ARGUMENT
 
 private object PARTIAL extends BelleTerminal("partial") {
   override def regexp = "(?i)partial".r // allow case-insensitive use of the word partial.
-}
-
-private object DONE extends BelleTerminal("done") {
-  override def regexp = "(?i)done".r // allow case-insensitive use of the word done.
 }
 
 /** A tactic argument expression. We allow strings, terms, and formulas as arguments. */

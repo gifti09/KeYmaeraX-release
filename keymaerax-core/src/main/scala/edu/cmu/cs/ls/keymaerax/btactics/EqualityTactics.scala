@@ -1,6 +1,7 @@
 package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.bellerophon._
+import edu.cmu.cs.ls.keymaerax.btactics.Idioms.?
 import edu.cmu.cs.ls.keymaerax.btactics.TactixLibrary._
 import edu.cmu.cs.ls.keymaerax.btactics.TacticFactory._
 import edu.cmu.cs.ls.keymaerax.core._
@@ -9,7 +10,6 @@ import Augmentors._
 import StaticSemanticsTools._
 
 import scala.collection.immutable._
-import scala.language.postfixOps
 
 /**
  * Implementation: Tactics to rewrite equalities and introduce abbreviations.
@@ -65,13 +65,13 @@ private object EqualityTactics {
       case Some(eq@Equal(lhs, rhs)) =>
         val (condEquiv@Imply(_, Equiv(_, repl)), dottedRepl) = sequent.sub(pos) match {
           case Some(f: Formula) =>
-            (Imply(eq, Equiv(sequent(pos.top), sequent(pos.top).replaceAt(pos.inExpr, f.replaceFree(lhs, rhs)).asInstanceOf[Formula])),
+            (Imply(eq, Equiv(sequent(pos.top), sequent(pos.top).replaceAt(pos.inExpr, f.replaceFree(lhs, rhs)))),
               sequent(pos.top).replaceAt(pos.inExpr, f.replaceFree(lhs, DotTerm())))
           case Some(t: Term) if t == lhs =>
-            (Imply(eq, Equiv(sequent(pos.top), sequent(pos.top).replaceAt(pos.inExpr, rhs).asInstanceOf[Formula])),
+            (Imply(eq, Equiv(sequent(pos.top), sequent(pos.top).replaceAt(pos.inExpr, rhs))),
               sequent(pos.top).replaceAt(pos.inExpr, DotTerm()))
           case Some(t: Term) if t != lhs =>
-            (Imply(eq, Equiv(sequent(pos.top), sequent(pos.top).replaceAt(pos.inExpr, t.replaceFree(lhs, rhs)).asInstanceOf[Formula])),
+            (Imply(eq, Equiv(sequent(pos.top), sequent(pos.top).replaceAt(pos.inExpr, t.replaceFree(lhs, rhs)))),
               sequent(pos.top).replaceAt(pos.inExpr, t.replaceFree(lhs, DotTerm())))
         }
 
@@ -207,5 +207,19 @@ private object EqualityTactics {
       abbrv(minmax, Some(minmaxVar)) &
         useAt("= commute")('L, Equal(minmaxVar, minmax)) &
         useAt(fn)('L, Equal(minmax, minmaxVar))
+  })
+
+  /** Expands all special functions (abs/min/max). */
+  def expandAll: BelleExpr = "expandAll" by ((s: Sequent) => {
+    val allTopPos = s.ante.indices.map(i => AntePos(i)) ++ s.succ.indices.map(i => SuccPos(i))
+    val tactics = allTopPos.flatMap(p =>
+      Idioms.mapSubpositions(p, s, {
+        case (FuncOf(Function("abs", _, _, _, true), _), pos: Position) => Some(?(abs(pos)))
+        case (FuncOf(Function("min", _, _, _, true), _), pos: Position) => Some(?(minmax(pos)))
+        case (FuncOf(Function("max", _, _, _, true), _), pos: Position) => Some(?(minmax(pos)))
+        case _ => None
+      })
+    )
+    tactics.reduceOption(_ & _).getOrElse(skip)
   })
 }

@@ -6,6 +6,7 @@ package edu.cmu.cs.ls.keymaerax.btactics
 
 import edu.cmu.cs.ls.keymaerax.core._
 import edu.cmu.cs.ls.keymaerax.bellerophon.PosInExpr
+import org.apache.logging.log4j.scala.Logging
 
 import scala.annotation.switch
 
@@ -18,7 +19,7 @@ import scala.annotation.switch
  * @see [[edu.cmu.cs.ls.keymaerax.core.AxiomBase]]
  * @see [[edu.cmu.cs.ls.keymaerax.btactics.AxiomInfo]]
  */
-object AxiomIndex {
+object AxiomIndex extends Logging {
 
   /**
     * AxiomIndex (key,recursor) where the key identifies the subformula used for matching and the recursors lists resulting siblings for subsequent chase.
@@ -44,7 +45,11 @@ object AxiomIndex {
     case "[++] choice" | "<++> choice" => binaryDefault
     case "[;] compose" | "<;> compose" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::PosInExpr(Nil)::Nil)
     case "[*] iterate" | "<*> iterate" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
+    case "[*-] backiterate" => (PosInExpr(0::Nil), PosInExpr(1::1::Nil)::Nil)
     case "[d] dual"    | "<d> dual" | "[d] dual direct"    | "<d> dual direct"    => (PosInExpr(0::Nil), PosInExpr(0::Nil)::Nil)
+
+    case "<?> invtest" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
+    case "&true inv" => (PosInExpr(0::Nil), PosInExpr(Nil)::Nil)
 
     case "DW base"              => (PosInExpr(Nil), Nil)
     case "DC differential cut" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
@@ -98,6 +103,7 @@ object AxiomIndex {
       (PosInExpr(1::Nil), PosInExpr(Nil)::Nil)
     case "[]T system" => (PosInExpr(Nil), Nil)
     case "K modal modus ponens" => (PosInExpr(1::1::Nil), PosInExpr(Nil)::Nil)
+    case "Ieq induction" => (PosInExpr(0::Nil), PosInExpr(1::1::1::Nil)::PosInExpr(1::Nil)::Nil)
     case "I induction" => (PosInExpr(1::Nil), /*PosInExpr(0::Nil)::*/PosInExpr(1::1::Nil)::PosInExpr(1::Nil)::Nil)
     // derived
     case "' linear" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
@@ -107,7 +113,6 @@ object AxiomIndex {
     case "DW differential weakening" => (PosInExpr(0::Nil), unknown)
     case "DI differential invariant" => (PosInExpr(1::Nil), PosInExpr(1::1::Nil)::Nil)
     case "DIo open differential invariance >" | "DIo open differential invariance <" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
-    case "DIo open differential invariance >=" | "DIo open differential invariance <=" => (PosInExpr(1::0::Nil), PosInExpr(Nil)::Nil)
     case "DV differential variant >=" | "DV differential variant <=" => (PosInExpr(1::Nil), PosInExpr(0::1::1::1::0::Nil)::PosInExpr(0::1::1::1::1::0::Nil)::PosInExpr(0::1::Nil)::PosInExpr(Nil)::Nil)
     //@todo other axioms
 
@@ -124,7 +129,11 @@ object AxiomIndex {
     case "[] split left" | "[] split right" => directReduction
     case "<*> approx" => (PosInExpr(1::Nil), PosInExpr(Nil)::Nil)
     case "<*> stuck" => (PosInExpr(0::Nil), Nil)
+    case "<a> stuck" => (PosInExpr(0::Nil), PosInExpr(1::Nil)::Nil)
+    case "<?> combine" => (PosInExpr(0::Nil), PosInExpr(Nil)::Nil)
     case "<'> stuck" => (PosInExpr(0::Nil), Nil)
+    case "all stutter" => (PosInExpr(0::Nil), Nil)
+    case "exists stutter" => (PosInExpr(0::Nil), Nil)
 
     case "[] post weaken" => (PosInExpr(1::Nil), PosInExpr(Nil)::Nil)
 
@@ -251,7 +260,7 @@ object AxiomIndex {
         case _: Choice => "<++> choice" :: Nil
         case _: Dual => "<d> dual direct" :: Nil
         case _: Loop => "<*> iterate" :: unknown
-        case _: ODESystem => println("AxiomIndex for <ODE> still missing. Use tactic ODE"); unknown
+        case _: ODESystem => logger.warn("AxiomIndex for <ODE> still missing. Use tactic ODE"); unknown
         case _ => Nil
       }
 

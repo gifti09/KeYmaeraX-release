@@ -16,7 +16,6 @@ import edu.cmu.cs.ls.keymaerax.btactics.arithmetic.signanalysis.SignAnalysis
 import edu.cmu.cs.ls.keymaerax.core._
 
 import scala.collection.mutable.ListBuffer
-import scala.language.postfixOps
 
 /**
   * Tactics for simplifying arithmetic sub-goals.
@@ -25,6 +24,11 @@ import scala.language.postfixOps
 object ArithmeticSpeculativeSimplification {
 
   private val DEBUG = false
+
+  /** @todo I'm not sure where the error function was defined prior to this. Maybe it was a Scala 2.11->2.12 thing? */
+  class ErrorException(msg: String) extends Exception
+  def error[T](message : String) : T = throw new ErrorException(message)
+
 
   /** Tries decreasingly aggressive strategies of hiding formulas before QE, until finally falling back to full QE if none
     * of the simplifications work out. */
@@ -62,7 +66,7 @@ object ArithmeticSpeculativeSimplification {
   /** Proves abs by trying to find contradictions; falls back to QE if contradictions fail */
   lazy val proveOrRefuteAbs: BelleExpr = "proveOrRefuteAbs" by ((sequent: Sequent) => {
     val symbols = (sequent.ante.flatMap(StaticSemantics.symbols) ++ sequent.succ.flatMap(StaticSemantics.symbols)).toSet
-    if (symbols.exists(_.name == "abs")) exhaustiveAbsSplit & OnAll(((hideR('R)*) & assertNoCex & QE & TactixLibrary.done) | speculativeQENoAbs)
+    if (symbols.exists(_.name == "abs")) exhaustiveAbsSplit & OnAll((SaturateTactic(hideR('R)) & assertNoCex & QE & TactixLibrary.done) | speculativeQENoAbs)
     else error("Sequent does not contain abs")
   })
 
@@ -92,7 +96,7 @@ object ArithmeticSpeculativeSimplification {
       map{ case (_,p) => p.map(pos => OnAll(abs(pos) & orL('Llast) partial)).reduceLeft[BelleExpr](_&_) }.
       reduceLeft[BelleExpr](_&_)
 
-    absTactic & OnAll((andL('_)*) partial) & OnAll((exhaustiveEqL2R(hide=true)('L)*) partial)
+    absTactic & OnAll(SaturateTactic(andL('_)) partial) & OnAll(SaturateTactic(exhaustiveEqL2R(hide=true)('L)) partial)
   })
 
   /** Hides formulas with non-matching bounds. */

@@ -28,17 +28,20 @@ import java.io._
 import java.text.SimpleDateFormat
 import java.util.{Calendar, Locale}
 
+import edu.cmu.cs.ls.keymaerax.Configuration
 import edu.cmu.cs.ls.keymaerax.btactics.Generator.Generator
-import edu.cmu.cs.ls.keymaerax.pt.{NoProofTermProvable, ProvableSig}
+import edu.cmu.cs.ls.keymaerax.pt.{ElidingProvable, ProvableSig}
 
 import scala.io.Source
 import scala.collection.immutable._
 import scala.collection.mutable
 import edu.cmu.cs.ls.keymaerax.btactics.cexsearch
 import edu.cmu.cs.ls.keymaerax.btactics.cexsearch.{BoundedDFS, BreadthFirstSearch, ProgramSearchNode, SearchNode}
+import edu.cmu.cs.ls.keymaerax.btactics.helpers.DifferentialHelper
 import edu.cmu.cs.ls.keymaerax.codegen.{CControllerGenerator, CGenerator, CMonitorGenerator}
 import edu.cmu.cs.ls.keymaerax.hydra.DatabasePopulator.TutorialEntry
 import edu.cmu.cs.ls.keymaerax.lemma.LemmaDBFactory
+import org.apache.logging.log4j.scala.Logging
 
 import scala.util.Try
 
@@ -53,7 +56,7 @@ import scala.util.Try
  *
  * Request.getResultingUpdates might be run from a new thread.
  */
-sealed trait Request {
+sealed trait Request extends Logging {
   /** Checks read/write/registered access. Additional checks by overriding doPermission. */
   final def permission(t: SessionToken): Boolean = (t match {
     case t: ReadonlyToken => this.isInstanceOf[ReadRequest]
@@ -276,7 +279,7 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
         if (ToolProvider.odeTool().isDefined) fml match {
           case Imply(initial, b@Box(prg, _)) =>
             // all symbols because we need frame constraints for constants
-            val vars = (StaticSemantics.symbols(prg) ++ StaticSemantics.symbols(initial)).filter(_.isInstanceOf[Variable])
+            val vars = (StaticSemantics.symbols(prg) ++ StaticSemantics.symbols(initial)).filter(_.isInstanceOf[BaseVariable])
             val Box(prgPre, _) = vars.foldLeft[Formula](b)((b, v) => b.replaceAll(v, Variable("pre" + v.name, v.index, v.sort)))
             val stateRelEqs = vars.map(v => Equal(v.asInstanceOf[Term], Variable("pre" + v.name, v.index, v.sort))).reduceRightOption(And).getOrElse(True)
             val simSpec = Diamond(solveODEs(prgPre), stateRelEqs)
@@ -318,11 +321,11 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
 
   private def solve(ode: DifferentialProgram, evoldomain: Formula): Program = {
     val iv: Map[Variable, Variable] =
-      primedSymbols(ode).map(v => v -> Variable(v.name + "0", v.index, v.sort)).toMap
+      DifferentialHelper.getPrimedVariables(ode).map(v => v -> Variable(v.name + "0", v.index, v.sort)).toMap
     val time: Variable = Variable("t_", None, Real)
     //@note replace initial values with original variable, since we turn them into assignments
     val solution = replaceFree(ToolProvider.odeTool().get.odeSolve(ode, time, iv).get, iv.map(_.swap))
-    val flatSolution = flattenConjunctions(solution).
+    val flatSolution = FormulaTools.conjuncts(solution).
       sortWith((f, g) => StaticSemantics.symbols(f).size < StaticSemantics.symbols(g).size)
     Compose(
       flatSolution.map({ case Equal(v: Variable, r) => Assign(v, r) }).reduceRightOption(Compose).getOrElse(Test(True)),
@@ -332,37 +335,23 @@ class SetupSimulationRequest(db: DBAbstraction, userId: String, proofId: String,
   private def replaceFree(f: Formula, vars: Map[Variable, Variable]) = {
     vars.keySet.foldLeft[Formula](f)((b, v) => b.replaceFree(v, vars(v)))
   }
-
-  private def primedSymbols(ode: DifferentialProgram) = {
-    var primedSymbols = Set[Variable]()
-    ExpressionTraversal.traverse(new ExpressionTraversal.ExpressionTraversalFunction {
-      override def preT(p: PosInExpr, t: Term): Either[Option[ExpressionTraversal.StopTraversal], Term] = t match {
-        case DifferentialSymbol(ps) => primedSymbols += ps; Left(None)
-        case Differential(_) => throw new IllegalArgumentException("Only derivatives of variables supported")
-        case _ => Left(None)
-      }
-    }, ode)
-    primedSymbols
-  }
-
-  private def flattenConjunctions(f: Formula): List[Formula] = {
-    var result: List[Formula] = Nil
-    ExpressionTraversal.traverse(new ExpressionTraversal.ExpressionTraversalFunction {
-      override def preF(p: PosInExpr, f: Formula): Either[Option[ExpressionTraversal.StopTraversal], Formula] = f match {
-        case And(l, r) => result = result ++ flattenConjunctions(l) ++ flattenConjunctions(r); Left(Some(ExpressionTraversal.stop))
-        case a => result = result :+ a; Left(Some(ExpressionTraversal.stop))
-      }
-    }, f)
-    result
-  }
 }
 
 class SimulationRequest(db: DBAbstraction, userId: String, proofId: String, nodeId: String, initial: Formula, stateRelation: Formula, steps: Int, n: Int, stepDuration: Term) extends UserProofRequest(db, userId, proofId) with RegisteredOnlyRequest {
   override protected def doResultingResponses(): List[Response] = {
+    def replaceFuncs(fml: Formula) = ExpressionTraversal.traverse(new ExpressionTraversalFunction() {
+      override def preT(p: PosInExpr, e: Term): Either[Option[StopTraversal], Term] = e match {
+        case FuncOf(Function(name, idx, Unit, Real, false), _) => Right(BaseVariable(name, idx))
+        case _ => Left(None)
+      }
+    }, fml)
+
     ToolProvider.simulationTool() match {
       case Some(s) =>
-        val timedStateRelation = stateRelation.replaceFree(Variable("t_"), stepDuration)
-        val simulation = s.simulate(initial, timedStateRelation, steps, n)
+        val varsStateRelation = replaceFuncs(stateRelation).get
+        val varsInitial = replaceFuncs(initial).get
+        val timedStateRelation = varsStateRelation.replaceFree(Variable("t_"), stepDuration)
+        val simulation = s.simulate(varsInitial, timedStateRelation, steps, n)
         new SimulationResponse(simulation, stepDuration) :: Nil
       case _ => new ErrorResponse("No simulation tool configured, please setup Mathematica") :: Nil
     }
@@ -376,13 +365,12 @@ class SimulationRequest(db: DBAbstraction, userId: String, proofId: String, node
 class KyxConfigRequest(db: DBAbstraction) extends LocalhostOnlyRequest with ReadRequest {
   val newline = "\n"
   override def resultingResponses() : List[Response] = {
-    val mathConfig = db.getConfiguration("mathematica").config
     // keymaera X version
     val kyxConfig = "KeYmaera X version: " + VERSION + newline +
       "Java version: " + System.getProperty("java.runtime.version") + " with " + System.getProperty("sun.arch.data.model") + " bits" + newline +
       "OS: " + System.getProperty("os.name") + " " + System.getProperty("os.version") + newline +
-      "LinkName: " + mathConfig.apply("linkName") + newline +
-      "jlinkLibDir: " + mathConfig.apply("jlinkLibDir")
+      "LinkName: " + Configuration.getOption(Configuration.Keys.MATHEMATICA_LINK_NAME) + newline +
+      "jlinkLibDir: " + Configuration.getOption(Configuration.Keys.MATHEMATICA_JLINK_LIB_DIR)
     new KyxConfigResponse(kyxConfig) :: Nil
   }
 }
@@ -436,21 +424,9 @@ class ConfigureMathematicaRequest(db : DBAbstraction, linkName : String, jlinkLi
         if (jlinkLibNamePrefix.exists()) jlinkLibNamePrefix.toString else "", false) :: Nil
     }
     else {
-      val originalConfig = db.getConfiguration("mathematica")
-      val configMap = scala.collection.immutable.Map("linkName" -> linkName, "jlinkLibDir" -> jlinkLibDir.getAbsolutePath)
-      val newConfig = new ConfigurationPOJO("mathematica", configMap)
-
-      db.updateConfiguration(newConfig)
-
-      try {
-        new ConfigureMathematicaResponse(linkName, jlinkLibDir.getAbsolutePath, true) :: Nil
-      } catch {
-        /* @todo Is this exception ever actually raised? */
-        case e : FileNotFoundException =>
-          db.updateConfiguration(originalConfig)
-          e.printStackTrace()
-          new ConfigureMathematicaResponse(linkName, jlinkLibDir.getAbsolutePath, false) :: Nil
-      }
+      Configuration.set(Configuration.Keys.MATHEMATICA_LINK_NAME, linkName)
+      Configuration.set(Configuration.Keys.MATHEMATICA_JLINK_LIB_DIR, jlinkLibDir.getAbsolutePath)
+      new ConfigureMathematicaResponse(linkName, jlinkLibDir.getAbsolutePath, true) :: Nil
     }
   }
 }
@@ -526,7 +502,7 @@ class LicensesRequest() extends Request with ReadRequest {
 class GetToolRequest(db: DBAbstraction) extends LocalhostOnlyRequest with ReadRequest {
   override def resultingResponses(): List[Response] = {
     //@todo more/different tools
-    new KvpResponse("tool", db.getConfiguration("tool").config("qe")) :: Nil
+    new KvpResponse("tool", Configuration(Configuration.Keys.QE_TOOL)) :: Nil
   }
 }
 
@@ -536,8 +512,7 @@ class SetToolRequest(db: DBAbstraction, tool: String) extends LocalhostOnlyReque
     if (tool != "mathematica" && tool != "z3") new ErrorResponse("Unknown tool " + tool + ", expected either 'mathematica' or 'z3'")::Nil
     else {
       assert(tool == "mathematica" || tool == "z3", "Expected either Mathematica or Z3 tool")
-      val toolConfig = new ConfigurationPOJO("tool", Map("qe" -> tool))
-      db.updateConfiguration(toolConfig)
+      Configuration.set(Configuration.Keys.QE_TOOL, tool)
       new KvpResponse("tool", tool) :: Nil
     }
   }
@@ -545,7 +520,6 @@ class SetToolRequest(db: DBAbstraction, tool: String) extends LocalhostOnlyReque
 
 class GetMathematicaConfigurationRequest(db : DBAbstraction) extends LocalhostOnlyRequest with ReadRequest {
   override def resultingResponses(): List[Response] = {
-    val config = db.getConfiguration("mathematica").config
     val osName = System.getProperty("os.name").toLowerCase(Locale.ENGLISH)
     val jlinkLibFile = {
       if(osName.contains("win")) "JLinkNativeLibrary.dll"
@@ -553,8 +527,8 @@ class GetMathematicaConfigurationRequest(db : DBAbstraction) extends LocalhostOn
       else if(osName.contains("nix") || osName.contains("nux") || osName.contains("aix")) "libJLinkNativeLibrary.so"
       else "Unknown"
     }
-    if (config.contains("linkName") && config.contains("jlinkLibDir")) {
-      new MathematicaConfigurationResponse(config("linkName"), config("jlinkLibDir") + File.separator + jlinkLibFile) :: Nil
+    if (Configuration.contains(Configuration.Keys.MATHEMATICA_LINK_NAME) && Configuration.contains(Configuration.Keys.MATHEMATICA_JLINK_LIB_DIR)) {
+      new MathematicaConfigurationResponse(Configuration(Configuration.Keys.MATHEMATICA_LINK_NAME), Configuration(Configuration.Keys.MATHEMATICA_JLINK_LIB_DIR) + File.separator + jlinkLibFile) :: Nil
     } else {
       new MathematicaConfigurationResponse("", "") :: Nil
     }
@@ -585,8 +559,8 @@ class SetUserThemeRequest(db: DBAbstraction, userName: String, themeCss: String,
 
 class MathematicaStatusRequest(db : DBAbstraction) extends Request with ReadRequest {
   override def resultingResponses(): List[Response] = {
-    val config = db.getConfiguration("mathematica").config
-    new ToolStatusResponse("Mathematica", config.contains("linkName") && config.contains("jlinkLibDir")) :: Nil
+    new ToolStatusResponse("Mathematica", Configuration.contains(Configuration.Keys.MATHEMATICA_LINK_NAME) &&
+      Configuration.contains(Configuration.Keys.MATHEMATICA_JLINK_LIB_DIR)) :: Nil
   }
 }
 
@@ -601,22 +575,22 @@ class ListExamplesRequest(db: DBAbstraction, userId: String) extends UserRequest
       new ExamplePOJO(0, "STTT Tutorial",
         "Automated stop sign braking for cars",
         "/dashboard.html?#/tutorials",
-        "classpath:/examples/tutorials/sttt/sttt.json",
+        "classpath:/examples/tutorials/sttt/sttt.kyx",
         "/examples/tutorials/sttt/sttt.png", 1) ::
       new ExamplePOJO(1, "CPSWeek 2016 Tutorial",
         "Proving ODEs",
         "http://www.ls.cs.cmu.edu/KeYmaeraX/KeYmaeraX-tutorial.pdf",
-        "classpath:/examples/tutorials/cpsweek/cpsweek.json",
+        "classpath:/examples/tutorials/cpsweek/cpsweek.kyx",
         "/examples/tutorials/cpsweek/cpsweek.png", 1) ::
       new ExamplePOJO(2, "FM 2016 Tutorial",
         "Tactics and Proofs",
         "/dashboard.html?#/tutorials",
-        "classpath:/examples/tutorials/fm/fm.json",
+        "classpath:/examples/tutorials/fm/fm.kyx",
         "/examples/tutorials/fm/fm.png", 1) ::
       new ExamplePOJO(3, "Beginner's Tutorial",
         "Feature Tour Tutorial",
         "/dashboard.html?#/tutorials",
-        "classpath:/examples/tutorials/basic/basic.json",
+        "classpath:/examples/tutorials/basic/basictutorial.kyx",
         "/examples/tutorials/fm/fm.png", 0) ::
         new ExamplePOJO(3, "DLDS",
           "Dynamic Logic for Dynamical Systems Examples",
@@ -721,17 +695,17 @@ class UploadArchiveRequest(db: DBAbstraction, userId: String, kyaFileContents: S
   def resultingResponses(): List[Response] = {
     try {
       val archiveEntries = KeYmaeraXArchiveParser.read(kyaFileContents)
-      val (failedModels, succeededModels) = archiveEntries.foldLeft((List[String](), List[String]()))({ case ((failedImports, succeededImports), (name, modelFileContent, _, tactic)) =>
+      val (failedModels, succeededModels) = archiveEntries.foldLeft((List[String](), List[String]()))({ case ((failedImports, succeededImports), (name, modelFileContent, _, tactic, info)) =>
         // parse entry's model and tactics
         val (d, _) = KeYmaeraXProblemParser.parseProblem(modelFileContent)
         tactic.foreach({ case (_, ttext) => BelleParser.parseWithInvGen(ttext, None, d) })
 
         val uniqueModelName = db.getUniqueModelName(userId, name)
-        db.createModel(userId, uniqueModelName, modelFileContent, currentDate(), None, None, None,
-          tactic.headOption.map(_._2)) match {
+        db.createModel(userId, uniqueModelName, modelFileContent, currentDate(), info.get("Description"),
+          info.get("Title"), info.get("Link"), tactic.headOption.map(_._2)) match {
           case None =>
             // really should not get here. print and continue importing the remainder of the archive
-            println(s"Model import failed: model $name already exists in the database and attempt of importing under uniquified name $uniqueModelName failed. Continuing with remainder of the archive.")
+            logger.info(s"Model import failed: model $name already exists in the database and attempt of importing under uniquified name $uniqueModelName failed. Continuing with remainder of the archive.")
             (failedImports :+ name, succeededImports)
           case Some(modelId) =>
             tactic.foreach({ case (tname, ttext) =>
@@ -756,7 +730,7 @@ class ImportExampleRepoRequest(db: DBAbstraction, userId: String, repoUrl: Strin
     if (repoUrl.endsWith(".json")) {
       DatabasePopulator.importJson(db, userId, repoUrl, prove=false)
       BooleanResponse(flag=true) :: Nil
-    } else if (repoUrl.endsWith(".kya")) {
+    } else if (repoUrl.endsWith(".kya") || repoUrl.endsWith(".kyx")) {
       DatabasePopulator.importKya(db, userId, repoUrl, prove=false, Nil)
       BooleanResponse(flag=true) :: Nil
     } else {
@@ -910,7 +884,7 @@ class ModelPlexRequest(db: DBAbstraction, userId: String, modelId: String, artif
               CGenerator.printStateDeclaration(stateVars) + "\n" +
               CGenerator.printInputDeclaration(inputs)
             val fallbackCode = new CControllerGenerator()(prg, stateVars, inputs)
-            val monitorCode = new CMonitorGenerator(monitorShape)(monitorFml, stateVars, inputs)
+            val monitorCode = (new CMonitorGenerator)(monitorFml, stateVars, inputs)
 
             val sandbox =
               s"""
@@ -969,7 +943,7 @@ class ModelPlexRequest(db: DBAbstraction, userId: String, modelId: String, artif
         case "kym" => new ModelPlexArtifactResponse(model, monitorFml) :: Nil
         case "c" =>
           val inputs = CGenerator.getInputs(prg)
-          val monitor = (new CGenerator(new CMonitorGenerator(monitorShape)))(monitorFml, vars, inputs, model.name)
+          val monitor = (new CGenerator(new CMonitorGenerator))(monitorFml, vars, inputs, model.name)
           val code =
             s"""
               |${CGenerator.printHeader(model.name)}
@@ -997,7 +971,7 @@ class ModelPlexRequest(db: DBAbstraction, userId: String, modelId: String, artif
 class TestSynthesisRequest(db: DBAbstraction, userId: String, modelId: String, monitorKind: String, testKinds: Map[String, Boolean],
                            amount: Int, timeout: Option[Int]) extends UserRequest(userId) with RegisteredOnlyRequest {
   def resultingResponses(): List[Response]  = {
-    println("Got Test Synthesis Request")
+    logger.debug("Got Test Synthesis Request")
     val model = db.getModel(modelId)
     val modelFml = KeYmaeraXProblemParser.parseAsProblemOrFormula(model.keyFile)
     val vars = StaticSemantics.boundVars(modelFml).symbols.filter(_.isInstanceOf[BaseVariable]).toList
@@ -1169,10 +1143,11 @@ class OpenProofRequest(db: DBAbstraction, userId: String, proofId: String, wait:
         case None => new ErrorResponse("Unable to open proof " + proofId + ", because it does not refer to a model")::Nil // duplicate check to above
         case Some(mId) =>
           val generator = new ConfigurableGenerator[Formula]()
-          KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) => generator.products += (p -> inv))
+          KeYmaeraXParser.setAnnotationListener((p: Program, inv: Formula) =>
+            generator.products += (p -> (generator.products.getOrElse(p, Nil) :+ inv)))
           val defsGenerator = new ConfigurableGenerator[Expression]()
           val (d, _) = KeYmaeraXProblemParser.parseProblem(db.getModel(mId).keyFile)
-          d.substs.foreach(sp => defsGenerator.products += (sp.what -> sp.repl))
+          d.substs.foreach(sp => defsGenerator.products += (sp.what -> (sp.repl::Nil)))
           session += proofId -> ProofSession(proofId, generator, d)
           TactixLibrary.invGenerator = generator //@todo should not store invariant generator globally for all users
           new OpenProofResponse(proofInfo, "loaded" /*TaskManagement.TaskLoadStatus.Loaded.toString.toLowerCase()*/) :: Nil
@@ -1438,7 +1413,7 @@ class ProofTaskExpandRequest(db: DBAbstraction, userId: String, proofId: String,
         val (localProvable, parentStep, parentRule) = (node.localProvable, node.children.head.maker.get, node.children.head.makerShortName.get)
         val localProofId = db.createProof(localProvable)
         val innerInterpreter = SpoonFeedingInterpreter(localProofId, -1, db.createProof,
-          RequestHelper.listenerFactory(db), SequentialInterpreter, 1, strict=false)
+          RequestHelper.listenerFactory(db), ExhaustiveSequentialInterpreter, 1, strict=false)
         val parentTactic = BelleParser(parentStep)
         innerInterpreter(parentTactic, BelleProvable(localProvable))
         innerInterpreter.kill()
@@ -1523,11 +1498,14 @@ class GetApplicableTwoPosTacticsRequest(db:DBAbstraction, userId: String, proofI
   }
 }
 
-class GetDerivationInfoRequest(db: DBAbstraction, userId: String, proofId: String, nodeId: String, axiomId: String)
-  extends UserProofRequest(db, userId, proofId) with ReadRequest {
+class GetDerivationInfoRequest(db: DBAbstraction, userId: String, proofId: String, nodeId: String,
+                               axiomId: Option[String]) extends UserProofRequest(db, userId, proofId) with ReadRequest {
   override protected def doResultingResponses(): List[Response] = {
-    val info = (DerivationInfo.ofCodeName(axiomId), UIIndex.comfortOf(axiomId).map(DerivationInfo.ofCodeName)) :: Nil
-    new ApplicableAxiomsResponse(info, Map.empty) :: Nil
+    val infos = axiomId match {
+      case Some(aid) => (DerivationInfo.ofCodeName(aid), UIIndex.comfortOf(aid).map(DerivationInfo.ofCodeName)) :: Nil
+      case None => DerivationInfo.allInfo.map(di => (di, UIIndex.comfortOf(di.codeName).map(DerivationInfo.ofCodeName)))
+    }
+    ApplicableAxiomsResponse(infos, Map.empty) :: Nil
   }
 }
 
@@ -1610,6 +1588,7 @@ class CheckTacticInputRequest(db: DBAbstraction, userId: String, proofId: String
         case BelleTermInput(value, Some(arg: FormulaArg)) => arg -> (KeYmaeraXParser(value) :: Nil)
         case BelleTermInput(value, Some(arg: VariableArg)) => arg -> (KeYmaeraXParser(value) :: Nil)
         case BelleTermInput(value, Some(arg: ExpressionArg)) => arg -> (KeYmaeraXParser(value) :: Nil)
+        case BelleTermInput(value, Some(OptionArg(arg))) => arg -> (KeYmaeraXParser(value) :: Nil)
         case BelleTermInput(value, Some(arg@ListArg(_, "formula", _))) => arg -> value.split(",").map(KeYmaeraXParser).toList
       }
 
@@ -1745,7 +1724,7 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
               case (Some(_), None, expr: BelleExpr) => expr
               case (Some(Fixed(p1, None, _)), Some(Fixed(p2, None, _)), expr: BuiltInTwoPositionTactic) => expr(p1, p2)
               case (Some(_), Some(_), expr: BelleExpr) => expr
-              case _ => println("pos " + pos.getClass.getName + ", expr " + expr.getClass.getName); throw new ProverException("Match error")
+              case _ => logger.error("Position error running tactic at pos " + pos.getClass.getName + ", expr " + expr.getClass.getName); throw new ProverException("Match error")
             }
 
             val ruleName =
@@ -1754,7 +1733,7 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
 
             def interpreter(proofId: Int, startNodeId: Int) = new Interpreter {
               val inner = SpoonFeedingInterpreter(proofId, startNodeId, db.createProof, RequestHelper.listenerFactory(db),
-                SequentialInterpreter, 0, strict = false)
+                ExhaustiveSequentialInterpreter, 0, strict = false)
 
               override def apply(expr: BelleExpr, v: BelleValue): BelleValue = try {
                 inner(expr, v)
@@ -1770,6 +1749,8 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
               }
 
               override def kill(): Unit = inner.kill()
+              override def isDead: Boolean = inner.isDead
+              override def listeners: Seq[IOListener] = inner.listeners
             }
 
             if (stepwise) {
@@ -1791,7 +1772,7 @@ class RunBelleTermRequest(db: DBAbstraction, userId: String, proofId: String, no
               }
             } else {
               //@note execute clicked single-step tactics on sequential interpreter right away
-              val taskId = node.runTactic(userId, SequentialInterpreter, appliedExpr, ruleName)
+              val taskId = node.runTactic(userId, ExhaustiveSequentialInterpreter, appliedExpr, ruleName)
               RunBelleTermResponse(proofId, node.id.toString, taskId) :: Nil
             }
           } catch {
@@ -1824,7 +1805,7 @@ class InitializeProofFromTacticRequest(db: DBAbstraction, userId: String, proofI
             //@note if spoonfeeding interpreter fails, try sequential interpreter so that tactics at least proofcheck
             //      even if browsing then shows a single step only
             val tree: ProofTree = DbProofTree(db, proofId)
-            val taskId = tree.root.runTactic(userId, SequentialInterpreter, tactic, "custom")
+            val taskId = tree.root.runTactic(userId, ExhaustiveSequentialInterpreter, tactic, "custom")
             RunBelleTermResponse(proofId, "()", taskId) :: Nil
         }
     }
@@ -2040,7 +2021,7 @@ class ShutdownReqeuest() extends LocalhostOnlyRequest with RegisteredOnlyRequest
           ToolProvider.shutdown()
           System.out.flush()
           System.err.flush()
-          HyDRAServerConfig.system.shutdown()
+          HyDRAServerConfig.system.terminate()
           System.out.flush()
           System.err.flush()
           this.synchronized {
@@ -2148,7 +2129,7 @@ class MockRequest(resourceName: String) extends Request {
 /** Global server state for proof validation requests.
   * For now, scheduling immediately dispatches a new thread where the validation occurs. In the future, we may want
   * to rate-limit validation requests. The easiest way to do that is to create a thread pool with a max size. */
-object ProofValidationRunner {
+object ProofValidationRunner extends Logging {
   private val results : mutable.Map[String, (Formula, BelleExpr, Option[Boolean])] = mutable.Map()
 
   case class ValidationRequestDNE(taskId: String) extends Exception(s"The requested taskId $taskId does not exist.")
@@ -2166,8 +2147,8 @@ object ProofValidationRunner {
 
     new Thread(new Runnable() {
       override def run(): Unit = {
-        println(s"Received request to validate $taskId. Running in separate thread.")
-        val provable = NoProofTermProvable( Provable.startProof(model) )
+        logger.trace(s"Received request to validate $taskId. Running in separate thread.")
+        val provable = ElidingProvable( Provable.startProof(model) )
 
         try {
           BelleInterpreter(proof, BelleProvable(provable)) match {
@@ -2179,7 +2160,7 @@ object ProofValidationRunner {
           case e : Throwable => results update (taskId, (model, proof, Some(false)))
         }
 
-        println(s"Done executing validation check for $taskId")
+        logger.trace(s"Done executing validation check for $taskId")
       }
     }).start()
 
@@ -2235,6 +2216,31 @@ object RequestHelper {
          |  $content
          |End.""".stripMargin
     }
+
+  def jsonDisplayInfoComponents(di: DerivationInfo): JsValue = {
+    val keyPos = AxiomIndex.axiomIndex(di.canonicalName)._1
+
+    //@todo need more verbose axiom info
+    ProvableInfo.locate(di.canonicalName) match {
+      case Some(i) =>
+        val (cond, op, key, keyPosString, conclusion, conclusionPos) = i.provable.conclusion.succ.head match {
+          case Imply(c, eq@Equiv(l, r)) if keyPos == PosInExpr(1::0::Nil) => (Some(c), OpSpec.op(eq).opcode, l, "1.0", r, "1.1")
+          case Imply(c, eq@Equiv(l, r)) if keyPos == PosInExpr(1::1::Nil) => (Some(c), OpSpec.op(eq).opcode, r, "1.1", l, "1.0")
+          case bcf: BinaryCompositeFormula if keyPos == PosInExpr(0::Nil) => (None, OpSpec.op(bcf).opcode, bcf.left, "0", bcf.right, "1")
+          case bcf: BinaryCompositeFormula if keyPos == PosInExpr(1::Nil) => (None, OpSpec.op(bcf).opcode, bcf.right, "1", bcf.left, "0")
+          case f => (None, OpSpec.op(Equiv(f, True)).opcode, f, "0", True, "1")
+        }
+        JsObject(
+          "cond" -> (if (cond.isDefined) JsString(UIKeYmaeraXAxiomPrettyPrinter.pp(cond.get)) else JsNull),
+          "op" -> (if (op.nonEmpty) JsString(UIKeYmaeraXAxiomPrettyPrinter.pp.htmlEncode(op)) else JsNull),
+          "key" -> JsString(UIKeYmaeraXAxiomPrettyPrinter.pp(key)),
+          "keyPos" -> JsString(keyPosString),
+          "conclusion" -> JsString(UIKeYmaeraXAxiomPrettyPrinter.pp(conclusion)),
+          "conclusionPos" -> JsString(conclusionPos)
+        )
+      case None => JsNull
+    }
+  }
 
   /* String representation of the actual step (if tacticId refers to stepAt, otherwise tacticId).
      For display purposes only. */

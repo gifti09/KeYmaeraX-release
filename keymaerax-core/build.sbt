@@ -7,13 +7,21 @@ version := new BufferedReader(new FileReader("keymaerax-core/src/main/resources/
 
 assemblyJarName in assembly := s"keymaerax-core-${version.value}.jar"
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.12.4"
 
 //scalacOptions ++= Seq("-Xno-patmat-analysis")
 
-libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.11.7"
+libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.12.4"
 
-libraryDependencies += "org.scala-lang" % "scala-compiler" % "2.11.7"
+libraryDependencies += "org.scala-lang" % "scala-compiler" % "2.12.4"
+
+libraryDependencies += "org.apache.commons" % "commons-configuration2" % "2.2"
+
+libraryDependencies += "org.apache.logging.log4j" % "log4j-api" % "2.10.0"
+
+libraryDependencies += "org.apache.logging.log4j" % "log4j-core" % "2.10.0"
+
+libraryDependencies += "org.apache.logging.log4j" %% "log4j-api-scala" % "11.0"
 
 scalacOptions in (Compile, doc) ++= Seq("-doc-root-content", "rootdoc.txt")
 

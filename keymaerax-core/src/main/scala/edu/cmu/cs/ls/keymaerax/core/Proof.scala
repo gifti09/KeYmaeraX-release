@@ -19,6 +19,7 @@ package edu.cmu.cs.ls.keymaerax.core
 
 // require favoring immutable Seqs for soundness
 
+import edu.cmu.cs.ls.keymaerax.Configuration
 import edu.cmu.cs.ls.keymaerax.pt._
 
 import scala.collection.immutable
@@ -579,14 +580,14 @@ final case class Provable private(conclusion: Sequent, subgoals: immutable.Index
     r => r.subgoals == immutable.List(r.conclusion), "sub Provable is an unfinished Provable")
 
   override def toString: String = "Provable(" + conclusion + (if (isProved) " proved" else "\n  from   " + subgoals.mkString("\n  with   ")) + ")"
-  def prettyString: String = "Provable(" + conclusion.prettyString + (if (isProved) " proved" else "\n  from   " + subgoals.map(_.prettyString).mkString("\n  with   ")) + ")"
+  def prettyString: String = "Provable{" + (if (isProved) conclusion.prettyString + " proved" else "\n" + conclusion.prettyString + "\n  from\n" + subgoals.map(_.prettyString).mkString("\n  with\n")) + "}"
 }
 
 
 /** Starting new Provables to begin a proof, either with unproved conjectures or with proved axioms or axiomatic proof rules. */
 object Provable {
   //@todo Code Review: it would be nice if LAX_MODE were false
-  private val LAX_MODE = System.getProperty("LAX", "true")=="true"
+  private val LAX_MODE = Configuration(Configuration.Keys.LAX) == "true"
   /** List of the class names of all external real arithmetic tools whose answers KeYmaera X would believe */
   private[this] val trustedTools: immutable.List[String] =
   "edu.cmu.cs.ls.keymaerax.tools.Mathematica" :: "edu.cmu.cs.ls.keymaerax.tools.Z3" ::
@@ -671,7 +672,7 @@ object Provable {
     //@note soundness-critical
     val fact = Provable.oracle(new Sequent(immutable.IndexedSeq(), immutable.IndexedSeq(Equiv(f, equivalent))),
       immutable.IndexedSeq())
-    Lemma(NoProofTermProvable(fact), Lemma.requiredEvidence(NoProofTermProvable(fact), evidence :: Nil), None)
+    Lemma(ElidingProvable(fact), Lemma.requiredEvidence(ElidingProvable(fact), evidence :: Nil), None)
   }
 
   /**

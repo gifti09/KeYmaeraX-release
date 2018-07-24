@@ -12,13 +12,13 @@ assemblyJarName in (Test, assembly) := s"keymaerax-${version.value}.jar"
 
 scalacOptions in (Compile, doc) ++= Seq("-doc-root-content", "rootdoc.txt")
 
-libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.11.7"
+libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.12.4"
 
-libraryDependencies += "org.scala-lang" % "scala-compiler" % "2.11.7"
+libraryDependencies += "org.scala-lang" % "scala-compiler" % "2.12.4"
 
-libraryDependencies += "org.scalatest" % "scalatest_2.11" % "3.0.1" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.4" % "test"
 
-libraryDependencies += "org.pegdown" % "pegdown" % "1.5.0" % "test"      // (For Html Scalatest reports)
+libraryDependencies += "org.pegdown" % "pegdown" % "1.6.0" % "test"      // (For Html Scalatest reports)
 
 /// sqlite driver
 
@@ -26,7 +26,7 @@ libraryDependencies += "com.typesafe.slick" %% "slick" % "2.1.0"
 
 libraryDependencies += "com.typesafe.slick" %% "slick-codegen" % "2.1.0"
 
-libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.7.2"
+libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.20.1"
 
 ////////////////////////////////////////////////////////////////////////////////
 // HyDRA Settings
@@ -39,25 +39,26 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
 javaOptions += "-Xss20M"
 
-libraryDependencies ++= {
-  val akkaV = "2.3.12"
-  val sprayV = "1.3.1"
-  Seq(
-    "io.spray"            %%  "spray-json"    % "1.3.2",
-    "io.spray"            %%   "spray-can"     % sprayV,
-    "io.spray"            %%   "spray-routing" % sprayV,
-    //"io.spray"            %%   "spray-testkit" % sprayV  % "test",
-    "com.typesafe.akka"   %%  "akka-actor"    % akkaV,
-    "com.typesafe.akka"   %% "akka-slf4j"     % akkaV,
-    "ch.qos.logback"      % "logback-classic" % "1.0.13",
-    //"com.typesafe.akka"   %  "akka-testkit"  % akkaV   % "test",
-    //"org.specs2"          % "specs2-core"    % "3.6.4" % "test",
-    "com.github.fge"      % "json-schema-validator" % "2.2.6" // only update to even-numbered versions please.
-  )
-}
+//region Akka
+
+val akkaV = "2.5.11"
+
+libraryDependencies += "com.typesafe.akka" %% "akka-http"   % "10.1.0"
+
+libraryDependencies += "com.typesafe.akka" %% "akka-http-xml" % "10.1.0"
+
+libraryDependencies += "com.typesafe.akka" %% "akka-stream" % akkaV
+
+libraryDependencies += "io.spray" %% "spray-json" % "1.3.3"
+
+libraryDependencies += "com.typesafe.akka" %% "akka-http-spray-json" % "10.1.0"
+
+libraryDependencies += "com.typesafe.akka"   %% "akka-slf4j"     % akkaV
+
+//endregion
 
 ////////////////////////////////////////////////////////////////////////////////
-// Continuous testing/running settgings (i.e., definiting behavior of the ~
+// Continuous testing/running settings (i.e., defining behavior of the ~
 // command
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,10 +81,16 @@ watchSources <++= baseDirectory map {
 
 parallelExecution in Test := false
 
-fork in Test := true
+// set fork to true in order to run tests in their own Java process.
+// not forking avoids broken pipe exceptions in test reporter, but forking might become necessary in certain
+// multithreaded setups (see ScalaTest documentation)
+fork in Test := false
 
-//@todo reenable once unserializable exceptions fixed:
-// testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-h", "target/test-reports")
+// set HTML test report output directory
+testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-h", "target/test-reports")
+
+// record and report test durations
+testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 
 testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework")
 
