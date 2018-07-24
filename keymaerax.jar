@@ -37,10 +37,10 @@
     <meta property="og:image" content="https://avatars1.githubusercontent.com/u/3936877?s=400&amp;v=4" /><meta property="og:site_name" content="GitHub" /><meta property="og:type" content="object" /><meta property="og:title" content="LS-Lab/KeYmaeraX-release" /><meta property="og:url" content="https://github.com/LS-Lab/KeYmaeraX-release" /><meta property="og:description" content="KeYmaeraX-release - KeYmaera X: An aXiomatic Tactical Theorem Prover for Hybrid Systems (release)" />
 
   <link rel="assets" href="https://assets-cdn.github.com/">
-  <link rel="web-socket" href="wss://live.github.com/_sockets/VjI6MjY5NjMyMzA4OmVhOTY4MzMxYjNjN2Q1OWMyZTBkMThlZGQ4MzYwODNjMDk1NmZmZjk5NTMwOTAxZDEyMzA3NjA4Y2U4NGNlOTg=--fa6dc12388c3f24e0c8cc2f2fea364ec8a735ab8">
+  <link rel="web-socket" href="wss://live.github.com/_sockets/VjI6MjY5NjMyMzA4OjcwZWUyZTBlOGE1ZDdiZGVlNDQ1OTI0ZjA2OTg2MTZkNTBhMjdhN2FiMmY4OGVmZDdhYzdkNWFiMTk3NDFiZGY=--497ec9c124707bcde9ec86dff241749d04970537">
   <meta name="pjax-timeout" content="1000">
   <link rel="sudo-modal" href="/sessions/sudo_modal">
-  <meta name="request-id" content="D170:55CB:EE0FEF:1D73B2F:5B5727E7" data-pjax-transient>
+  <meta name="request-id" content="DA37:55CE:33525D6:5DD9D0A:5B572CFC" data-pjax-transient>
 
 
   
@@ -52,7 +52,7 @@
   <meta name="google-site-verification" content="GXs5KoUUkNCoaAZn7wPN-t01Pywp9M3sEjnt_3_ZWPc">
     <meta name="google-analytics" content="UA-3769691-2">
 
-<meta name="octolytics-host" content="collector.githubapp.com" /><meta name="octolytics-app-id" content="github" /><meta name="octolytics-event-url" content="https://collector.githubapp.com/github-external/browser_event" /><meta name="octolytics-dimension-request_id" content="D170:55CB:EE0FEF:1D73B2F:5B5727E7" /><meta name="octolytics-dimension-region_edge" content="iad" /><meta name="octolytics-dimension-region_render" content="iad" /><meta name="octolytics-actor-id" content="5322267" /><meta name="octolytics-actor-login" content="muelas" /><meta name="octolytics-actor-hash" content="ad45e4a10dcad5b2201ff0eebfb3de2e6336bdd14fcea6b66abb0a72eba8b431" />
+<meta name="octolytics-host" content="collector.githubapp.com" /><meta name="octolytics-app-id" content="github" /><meta name="octolytics-event-url" content="https://collector.githubapp.com/github-external/browser_event" /><meta name="octolytics-dimension-request_id" content="DA37:55CE:33525D6:5DD9D0A:5B572CFC" /><meta name="octolytics-dimension-region_edge" content="iad" /><meta name="octolytics-dimension-region_render" content="iad" /><meta name="octolytics-actor-id" content="5322267" /><meta name="octolytics-actor-login" content="muelas" /><meta name="octolytics-actor-hash" content="ad45e4a10dcad5b2201ff0eebfb3de2e6336bdd14fcea6b66abb0a72eba8b431" />
 <meta name="analytics-location" content="/&lt;user-name&gt;/&lt;repo-name&gt;/blob/show" data-pjax-transient="true" />
 
 
@@ -68,7 +68,7 @@
     <meta name="user-login" content="muelas">
 
       <meta name="expected-hostname" content="github.com">
-    <meta name="js-proxy-site-detection-payload" content="MjIxNWJmNDVhZWIzYTM4MDBiYWU5OWI0OTQ2MmFhNTQ2NTY2NTZhMGFmZmRhNjgyZTI5NmQyOTZkNDFhNzE1Mnx7InJlbW90ZV9hZGRyZXNzIjoiMTQwLjc4LjkyLjE3MCIsInJlcXVlc3RfaWQiOiJEMTcwOjU1Q0I6RUUwRkVGOjFENzNCMkY6NUI1NzI3RTciLCJ0aW1lc3RhbXAiOjE1MzI0Mzg1MDcsImhvc3QiOiJnaXRodWIuY29tIn0=">
+    <meta name="js-proxy-site-detection-payload" content="YjhiZGM4N2YxNDZhZTJkMzY3OTJkYmRhNTcxNWVkNzZiYzYyODA4ZGRmZWVjYzY3NjQ5OTNhYzAxNDEzNzJmN3x7InJlbW90ZV9hZGRyZXNzIjoiMTQwLjc4LjkyLjE3MCIsInJlcXVlc3RfaWQiOiJEQTM3OjU1Q0U6MzM1MjVENjo1REQ5RDBBOjVCNTcyQ0ZDIiwidGltZXN0YW1wIjoxNTMyNDM5ODEyLCJob3N0IjoiZ2l0aHViLmNvbSJ9">
 
     <meta name="enabled-features" content="UNIVERSE_BANNER,FREE_TRIALS,MARKETPLACE_INSIGHTS,MARKETPLACE_SEARCH,MARKETPLACE_INSIGHTS_CONVERSION_PERCENTAGES">
 
@@ -152,7 +152,7 @@
           autocapitalize="off"
           aria-autocomplete="list"
           aria-controls="jump-to-results"
-          data-jump-to-suggestions-path="/_graphql/GetSuggestedNavigationDestinations#csrf-token=Nltaxjcr3mP5LjISKOy1JCGLBjwR+xEOv7YWcJ+Ta9g+1wrP350vxdKFh4Qezrww9xEuOJezlMUp/RCrgFph8Q=="
+          data-jump-to-suggestions-path="/_graphql/GetSuggestedNavigationDestinations#csrf-token=NpoWXZ7FZBQN/d0dbti/pF5rf5XEh2RkHAIpfA8JETY+FkZUdnOVsiZWaItY+rawiPFXkULP4a+KSS+nEMAbHw=="
           spellcheck="false"
           autocomplete="off"
           >
@@ -301,7 +301,7 @@
           <li><a role="menuitem" class="dropdown-item" href="https://help.github.com" data-ga-click="Header, go to help, text:help">Help</a></li>
           <li><a role="menuitem" class="dropdown-item" href="/settings/profile" data-ga-click="Header, go to settings, icon:settings">Settings</a></li>
           <li>
-            <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="logout-form" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="3EAsWVWekAgOLbfMCZSIMm/SWMgnmQOQDMJi6qzOzQPfGdTcu+safdZY5gTCsA4bECuwmbmfkUkpHizui8lCOw==" />
+            <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="logout-form" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="sXuTIbNROR94UXqqmhIMr8hcWT2vccoTdIl6oplbx+SyImukXSSzaqAkK2JRNoqGt6WxbDF3WMpRVTSmvlxI3A==" />
               <button type="submit" class="dropdown-item dropdown-signout" data-ga-click="Header, sign out, icon:logout" role="menuitem">
                 Sign out
               </button>
@@ -314,7 +314,7 @@
 
 
 
-        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="sr-only right-0" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="8CBe7wZ+pmi6sZR1NfzHgh6DiJOe/Se6hzWrF3odxADzeaZq6AssHWLExb3+2EGrYXpgwgD7tWOi6eUTXRpLOA==" />
+        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="sr-only right-0" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="Wel4nca7qoK6cVBXYeZAmqzgqpqvkeTlfXeKWzVgOJFasIAYKM4g92IEAZ+qwsaz0xlCyzGXdjxYq8RfEme3qQ==" />
           <button type="submit" class="dropdown-item dropdown-signout" data-ga-click="Header, sign out, icon:logout">
             Sign out
           </button>
@@ -352,7 +352,7 @@
 
       <ul class="pagehead-actions">
   <li>
-        <!-- '"` --><!-- </textarea></xmp> --></option></form><form data-autosubmit="true" data-remote="true" class="js-social-container" action="/notifications/subscribe" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="vfJ8AmloGjrtdrSi3L4MKGv3zxboeqlhbUnz/8cVn4ztlLusBJ81sd44RvQGomc1tPWVtb9PqtY9YhFrkjJsCQ==" />      <input type="hidden" name="repository_id" id="repository_id" value="41432826" class="form-control" />
+        <!-- '"` --><!-- </textarea></xmp> --></option></form><form data-autosubmit="true" data-remote="true" class="js-social-container" action="/notifications/subscribe" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="HMTv22nX//eS86dotzeScLlFZ84VWMp81e1reodOg3JMoih1BCDQfKG9VT5tK/ltZkc9bUJtycuFxonu0mlw9w==" />      <input type="hidden" name="repository_id" id="repository_id" value="41432826" class="form-control" />
 
         <div class="select-menu js-menu-container js-select-menu">
           <a href="/LS-Lab/KeYmaeraX-release/subscription"
@@ -432,7 +432,7 @@
   <li>
     
   <div class="js-toggler-container js-social-container starring-container ">
-    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="starred js-social-form" action="/LS-Lab/KeYmaeraX-release/unstar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="GXB/AAFu/wq4Yine9FJeO6y5bYE7Dn/QgAkxncfNIFl5cACe9859pkhT2x7MSeSRuLh7m7kHEy2vDjRdrWvSww==" />
+    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="starred js-social-form" action="/LS-Lab/KeYmaeraX-release/unstar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="wCDHSu2x1vcCvoWvuzTe20bNBnA1p/Wkb74sVnrz6hqgILjUGxFUW/KPd2+DL2RxUswQareumVlAuSmWEFUYgA==" />
       <input type="hidden" name="context" value="repository"></input>
       <button
         type="submit"
@@ -447,7 +447,7 @@
           21
         </a>
 </form>
-    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="unstarred js-social-form" action="/LS-Lab/KeYmaeraX-release/star" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="UcW4fVGiX7w7Yh5bLORjfmEMqohlLqDt1IcrMKwouJ6T+VNg/BLl3rdqPolJkTK5IRFu+jFEZgbeLDGOmqcNDg==" />
+    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="unstarred js-social-form" action="/LS-Lab/KeYmaeraX-release/star" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="jR4FffKagQWK9SFbRInCDLy+xZ5ZU3cN1UmQPCiq4ylPIu5gXyo7Zwb9AYkh/JPL/KMB7A05sebf4oqCHiVWuQ==" />
       <input type="hidden" name="context" value="repository"></input>
       <button
         type="submit"
@@ -466,7 +466,7 @@
   </li>
 
   <li>
-          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="btn-with-count" action="/LS-Lab/KeYmaeraX-release/fork" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="1VbIVMcfOI/WiXcl6heIfrF4DJr9EmTlzYeTU4FFUAqNMTwISXpL/7NqPgqfA5XPSrAFfGW8kGo9FRgOEGQ9bA==" />
+          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="btn-with-count" action="/LS-Lab/KeYmaeraX-release/fork" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="80j5p6T8WGr2WjNclDqjt+fqXaK/1dmKd0jLhhRYlryrLw37KpkrGpO5enPhLr4GHCJURCd7LQWH2kDbhXn72g==" />
             <button
                 type="submit"
                 class="btn btn-sm btn-with-count"
@@ -1086,13 +1086,13 @@
             <svg class="octicon octicon-device-desktop" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M15 2H1c-.55 0-1 .45-1 1v9c0 .55.45 1 1 1h5.34c-.25.61-.86 1.39-2.34 2h8c-1.48-.61-2.09-1.39-2.34-2H15c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm0 9H1V3h14v8z"/></svg>
         </a>
 
-          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="inline-form js-update-url-with-hash" action="/LS-Lab/KeYmaeraX-release/edit/master/keymaerax.jar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="H28Tm7mMRpLjCwqpxwR6Mx4ivQ2iSoznbU54zZr1Js/XYrPyJedWe5J5bsv5pM3odDdXrHa4cPPklL6Sbw4B3Q==" />
+          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="inline-form js-update-url-with-hash" action="/LS-Lab/KeYmaeraX-release/edit/master/keymaerax.jar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="sqYN0YvTpIBsSU5aiZ9CY64rb2kwrSHPDuNjpLb9BgZ6q624F7i0aR07Kji3P/W4xD6FyORf3duHOaX7QwYhFA==" />
             <button class="btn-octicon tooltipped tooltipped-nw" type="submit"
               aria-label="Edit the file in your fork of this project" data-hotkey="e" data-disable-with>
               <svg class="octicon octicon-pencil" viewBox="0 0 14 16" version="1.1" width="14" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M0 12v3h3l8-8-3-3-8 8zm3 2H1v-2h1v1h1v1zm10.3-9.3L12 6 9 3l1.3-1.3a.996.996 0 0 1 1.41 0l1.59 1.59c.39.39.39 1.02 0 1.41z"/></svg>
             </button>
 </form>
-        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="inline-form" action="/LS-Lab/KeYmaeraX-release/delete/master/keymaerax.jar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="h3Eep+JgGHyhk5MyWJ6PyPRzCL5e0DfYLpPQw/qhYyrZf+wQnHglB7CHsutuz77dd+DYkLd3GScTCL0bwScRVg==" />
+        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="inline-form" action="/LS-Lab/KeYmaeraX-release/delete/master/keymaerax.jar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="DC/qn8qQt9IAZwTNrNLuYkAxkar89xJKc9CeOk06LktSIRgotIiKqRFzJRSag993w6JBhBVQPLVOS/PidrxcNw==" />
           <button class="btn-octicon btn-octicon-danger tooltipped tooltipped-nw" type="submit"
             aria-label="Delete the file in your fork of this project" data-disable-with>
             <svg class="octicon octicon-trashcan" viewBox="0 0 12 16" version="1.1" width="12" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M11 2H9c0-.55-.45-1-1-1H5c-.55 0-1 .45-1 1H2c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1v9c0 .55.45 1 1 1h7c.55 0 1-.45 1-1V5c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm-1 12H3V5h1v8h1V5h1v8h1V5h1v8h1V5h1v9zm1-10H2V3h9v1z"/></svg>
@@ -1159,7 +1159,7 @@
 <div class="footer container-lg px-3" role="contentinfo">
   <div class="position-relative d-flex flex-justify-between pt-6 pb-2 mt-6 f6 text-gray border-top border-gray-light ">
     <ul class="list-style-none d-flex flex-wrap ">
-      <li class="mr-3">&copy; 2018 <span title="0.29622s from unicorn-1069473300-s15j0">GitHub</span>, Inc.</li>
+      <li class="mr-3">&copy; 2018 <span title="0.29885s from unicorn-7b4dcf8f47-pl2nj">GitHub</span>, Inc.</li>
         <li class="mr-3"><a data-ga-click="Footer, go to terms, text:terms" href="https://github.com/site/terms">Terms</a></li>
         <li class="mr-3"><a data-ga-click="Footer, go to privacy, text:privacy" href="https://github.com/site/privacy">Privacy</a></li>
         <li class="mr-3"><a href="https://help.github.com/articles/github-security/" data-ga-click="Footer, go to security, text:security">Security</a></li>
