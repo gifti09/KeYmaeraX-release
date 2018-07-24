@@ -869,7 +869,6 @@ object KeYmaeraX {
     pw.write(output)
     pw.close()
 
-
     options.get('ptOut) match {
       case Some(path:String) =>
         val pwHOL = new PrintWriter(outputFileName + ".holconfiggen")
