@@ -514,6 +514,14 @@ End.
    )
  End.
 
+  /* AM Axioms */
+ Axiom "DCi".
+   [{c&H(||)}]p(||) -> [{c&H(||)&r(||)}]p(||)
+ End.
 
+  /*  DOES NOT PARSE */
+ Axiom "DGiA".
+   [{c{||}&q(||)}]p(||)  ->  [{y_{||},z_{||},c{||}&q(||)}]p(||)
+ End.
 """
 }

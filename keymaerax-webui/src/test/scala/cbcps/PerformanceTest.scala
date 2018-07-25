@@ -210,8 +210,11 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Monolithic Automated Robot Cruise Control"
   it should "prove Automated System" in withMathematica { implicit tool =>
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
+
+    val s = {
+      if (AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoMono.kyx")))
+    }
 
     val invariant = "0<=sAct&sAct<=S & sAc=sAct & sActTr=sAcTr & 0<=sAcTr&sAcTr<=S".asFormula
 
@@ -226,8 +229,11 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Expert Automated Robot Cruise Control"
   it should "prove Automated System" in withMathematica { implicit tool =>
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
+
+    val s = {
+      if(AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\AutoExpert.kyx")))
+    }
 
     val invariant = "0<=sAct&sAct<=S & sAc=sAct & sActTr=sAcTr & 0<=sAcTr&sAcTr<=S".asFormula
 
@@ -351,8 +357,11 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Monolithic Guided Robot Cruise Control"
   it should "prove Guided System" in withMathematica { implicit tool =>
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
+    //    val s =
+    val s = {
+      if(AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
+    }
 
     val invariant = "0<=sAct&sAct<=S & sGc=sAct & sActTr=sGcTr & 0<=sGcTr&sGcTr<=S & 0<=sGcUsr & sGcUsr<=S".asFormula
 
@@ -368,8 +377,10 @@ class PerformanceTest extends TacticTestBase {
 
   behavior of "Expert Guided Robot Cruise Control"
   it should "prove Guided System" in withMathematica { implicit tool =>
-    //    val s = parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
-    val s = parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedExpert.kyx")))
+    val s = {
+      if(AT_HOME) parseToSequent(new FileInputStream(new File("W:\\Users\\Andreas\\Documents\\Arbeit\\JKU\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedExpert.kyx")))
+      else parseToSequent(new FileInputStream(new File("C:\\svn-vde\\documents\\diss-am\\models\\running\\2-cruise\\GuidedMono.kyx")))
+    }
 
     val invariant = "0<=sAct&sAct<=S & sGc=sAct & sActTr=sGcTr & 0<=sGcTr&sGcTr<=S & 0<=sGcUsr & sGcUsr<=S".asFormula
 
@@ -1701,7 +1712,7 @@ class PerformanceTest extends TacticTestBase {
   }
 
   //Mathematica
-  behavior of "Component-based Robix"
+  behavior of "Component-based Global Robix"
   ignore should "prove Robot Component" in withMathematica { implicit tool =>
     cb_robix_robot()
   }
@@ -1715,13 +1726,13 @@ class PerformanceTest extends TacticTestBase {
     cb_robix_composition()
   }
 
-  behavior of "Monolithic Robix"
+  behavior of "Monolithic Global Robix"
   ignore should "prove System" in withMathematica { implicit tool =>
     mon_robix
   }
 
   //Z3
-  behavior of "Component-based Robix Z3"
+  behavior of "Component-based Global Robix Z3"
   ignore should "prove Robot Component" in withZ3 { implicit tool =>
     cb_robix_robot("-Z3")
   }
@@ -1735,7 +1746,7 @@ class PerformanceTest extends TacticTestBase {
     cb_robix_composition("-Z3")
   }
 
-  behavior of "Monolithic Robix Z3"
+  behavior of "Monolithic Global Robix Z3"
   ignore should "prove System" in withZ3 { implicit tool =>
     mon_robix
   }
